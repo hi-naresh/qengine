@@ -1,6 +1,6 @@
-import jesse.helpers as jh
-import jesse.services.logger as logger
-from jesse.store import store
+import qengine.helpers as jh
+import qengine.services.logger as logger
+from qengine.store import store
 
 
 def set_up():

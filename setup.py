@@ -1,8 +1,8 @@
 from setuptools import setup, find_packages
 
 # also change in version.py
-VERSION = "1.13.8"
-DESCRIPTION = "A trading framework for cryptocurrencies"
+VERSION = "2.0.0"
+DESCRIPTION = "A multi-asset algorithmic trading platform for forex, commodities, and more"
 with open("requirements.txt", "r", encoding="utf-8") as f:
     REQUIRED_PACKAGES = f.read().splitlines()
 
@@ -10,25 +10,17 @@ with open("README.md", "r", encoding="utf-8") as f:
     LONG_DESCRIPTION = f.read()
 
 setup(
-    name='jesse',
+    name='qengine',
     version=VERSION,
-    author="Saleh Mir",
-    author_email="saleh@jesse.trade",
+    author="Naresh",
     packages=find_packages(),
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
-    url="https://jesse.trade",
-    project_urls={
-        'Documentation': 'https://docs.jesse.trade',
-        'Say Thanks!': 'https://jesse.trade/discord',
-        'Source': 'https://github.com/jesse-ai/jesse',
-        'Tracker': 'https://github.com/jesse-ai/jesse/issues',
-    },
     install_requires=REQUIRED_PACKAGES,
     entry_points='''
         [console_scripts]
-        jesse=jesse.__init__:cli
+        qengine=qengine.__init__:cli
     ''',
     classifiers=[
         "Programming Language :: Python :: 3",

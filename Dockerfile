@@ -1,5 +1,5 @@
 ARG TEST_BUILD=0
-FROM python:3.11-slim-bullseye AS jesse_basic_env
+FROM python:3.11-slim-bullseye AS qengine_basic_env
 ENV PYTHONUNBUFFERED 1
 
 RUN apt-get update \
@@ -10,22 +10,22 @@ RUN apt-get update \
 RUN pip3 install Cython numpy
 
 # Prepare environment
-RUN mkdir /jesse-docker
-WORKDIR /jesse-docker
+RUN mkdir /qengine
+WORKDIR /qengine
 
 # Install dependencies
-COPY requirements.txt /jesse-docker
+COPY requirements.txt /qengine
 RUN pip3 install -r requirements.txt
 
 # Build
-COPY . /jesse-docker
+COPY . /qengine
 RUN pip3 install -e .
 
-FROM jesse_basic_env AS jesse_with_test_0
+FROM qengine_basic_env AS qengine_with_test_0
 WORKDIR /home
 
-FROM jesse_basic_env AS jesse_with_test_1
+FROM qengine_basic_env AS qengine_with_test_1
 RUN pip3 install codecov pytest-cov
 ENTRYPOINT pytest --cov=./ # && codecov
 
-FROM jesse_with_test_${TEST_BUILD} AS jesse_final
+FROM qengine_with_test_${TEST_BUILD} AS qengine_final

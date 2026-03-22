@@ -1,10 +1,10 @@
-from jesse.config import config, reset_config
-from jesse.enums import exchanges
-from jesse.factories import fake_order
-from jesse.store import store
-from jesse.routes import router
-from jesse.services import exchange_service, order_service, position_service
-import jesse.helpers as jh
+from qengine.config import config, reset_config
+from qengine.enums import exchanges
+from qengine.factories import fake_order
+from qengine.store import store
+from qengine.routes import router
+from qengine.services import exchange_service, order_service, position_service
+import qengine.helpers as jh
 
 
 def set_up():

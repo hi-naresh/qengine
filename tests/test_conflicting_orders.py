@@ -1,12 +1,12 @@
-import jesse.helpers as jh
-from jesse.config import reset_config
-from jesse.enums import exchanges
-from jesse.factories import candles_from_close_prices
-from jesse.models import ClosedTrade
-from jesse.routes import router
-from jesse.store import store
-from jesse.config import config
-from jesse.testing_utils import single_route_backtest
+import qengine.helpers as jh
+from qengine.config import reset_config
+from qengine.enums import exchanges
+from qengine.factories import candles_from_close_prices
+from qengine.models import ClosedTrade
+from qengine.routes import router
+from qengine.store import store
+from qengine.config import config
+from qengine.testing_utils import single_route_backtest
 
 
 def get_btc_candles():

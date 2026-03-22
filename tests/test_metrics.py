@@ -1,6 +1,6 @@
-from jesse.store import store
-from jesse.testing_utils import single_route_backtest
-from jesse.services import metrics
+from qengine.store import store
+from qengine.testing_utils import single_route_backtest
+from qengine.services import metrics
 import numpy as np
 
 

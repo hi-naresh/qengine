@@ -1,8 +1,8 @@
 import pytest
-import jesse.helpers as jh
-from jesse.factories import candles_from_close_prices
-from jesse.strategies import Strategy
-from jesse import research
+import qengine.helpers as jh
+from qengine.factories import candles_from_close_prices
+from qengine.strategies import Strategy
+from qengine import research
 
 
 def test_can_pass_strategy_as_string_in_futures_exchange():
@@ -33,8 +33,10 @@ def test_can_pass_strategy_as_string_in_futures_exchange():
 
     result = research.backtest(config, routes, data_routes, candles)
 
-    # result must have None values because the strategy makes no decisions
-    assert result['metrics'] == {'net_profit_percentage': 0, 'total': 0, 'win_rate': 0}
+    # result must have zero-trade metrics because the strategy makes no decisions
+    assert result['metrics']['total'] == 0
+    assert result['metrics']['net_profit_percentage'] == 0
+    assert result['metrics']['win_rate'] == 0
 
 
 def test_can_pass_strategy_as_class_in_a_futures_exchange():
@@ -79,8 +81,10 @@ def test_can_pass_strategy_as_class_in_a_futures_exchange():
 
     result = research.backtest(config, routes, data_routes, candles)
 
-    # result must have None values because the strategy makes no decisions
-    assert result['metrics'] == {'net_profit_percentage': 0, 'total': 0, 'win_rate': 0}
+    # result must have zero-trade metrics because the strategy makes no decisions
+    assert result['metrics']['total'] == 0
+    assert result['metrics']['net_profit_percentage'] == 0
+    assert result['metrics']['win_rate'] == 0
 
 
 def test_can_pass_strategy_as_class_in_a_spot_exchange():
@@ -123,15 +127,17 @@ def test_can_pass_strategy_as_class_in_a_spot_exchange():
 
     result = research.backtest(config, routes, data_routes, candles)
 
-    # result must have None values because the strategy makes no decisions
-    assert result['metrics'] == {'net_profit_percentage': 0, 'total': 0, 'win_rate': 0}
+    # result must have zero-trade metrics because the strategy makes no decisions
+    assert result['metrics']['total'] == 0
+    assert result['metrics']['net_profit_percentage'] == 0
+    assert result['metrics']['win_rate'] == 0
 
 
 def test_store_state_app_is_reset_properly_in_isolated_backtest():
     class TestStateApp(Strategy):
         def before(self) -> None:
             if self.index == 0:
-                from jesse.store import store
+                from qengine.store import store
                 assert store.app.daily_balance == [10000]
 
         def should_long(self) -> bool:

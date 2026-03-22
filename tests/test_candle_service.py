@@ -1,5 +1,5 @@
-from jesse.factories import range_candles
-from jesse.services import candle_service
+from qengine.factories import range_candles
+from qengine.services import candle_service
 import numpy as np
 
 

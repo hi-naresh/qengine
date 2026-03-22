@@ -150,3 +150,9 @@ testing-*.py
 # lsp
 jesse/lsp/
 pyrightconfig.json
+/qengine/lsp/node_modules/
+/storage/csv/
+/storage/full-reports/
+/storage/logs/
+/storage/temp/
+/storage/trading-view-pine-editor/

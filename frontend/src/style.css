@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Theme: CSS variables for surface palette ── */
+:root {
+  /* Light mode (default) — inverted semantics so existing classes work */
+  --surface-50: 2 6 23;       /* darkest text */
+  --surface-100: 15 23 42;    /* primary text */
+  --surface-200: 30 41 59;    /* secondary text */
+  --surface-300: 51 65 85;    /* muted headings */
+  --surface-400: 100 116 139; /* muted text */
+  --surface-500: 148 163 184; /* placeholder text */
+  --surface-600: 203 213 225; /* borders */
+  --surface-700: 226 232 240; /* subtle borders / dividers */
+  --surface-800: 241 245 249; /* input backgrounds */
+  --surface-850: 248 250 252; /* card backgrounds */
+  --surface-900: 255 255 255; /* sidebar / panel backgrounds */
+  --surface-950: 241 245 249; /* page background */
+}
+
+html.dark {
+  --surface-50: 248 250 252;
+  --surface-100: 241 245 249;
+  --surface-200: 226 232 240;
+  --surface-300: 203 213 225;
+  --surface-400: 148 163 184;
+  --surface-500: 100 116 139;
+  --surface-600: 71 85 105;
+  --surface-700: 51 65 85;
+  --surface-800: 30 41 59;
+  --surface-850: 23 32 51;
+  --surface-900: 15 23 42;
+  --surface-950: 2 6 23;
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+  ::-webkit-scrollbar {
+    @apply w-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-surface-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-600 rounded-full;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium text-sm transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 hover:bg-brand-700 text-white;
+  }
+  .btn-secondary {
+    @apply btn bg-surface-700 hover:bg-surface-600 text-surface-200;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 hover:bg-red-700 text-white;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+  .input {
+    @apply w-full px-3 py-2 bg-surface-800 border border-surface-600 rounded-lg text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm;
+  }
+  .select {
+    @apply input appearance-none cursor-pointer;
+  }
+  .card {
+    @apply bg-surface-850 border border-surface-700 rounded-xl p-5;
+  }
+  .label {
+    @apply block text-xs font-medium text-surface-400 mb-1;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-green {
+    @apply badge bg-green-500/20 text-green-400;
+  }
+  .badge-blue {
+    @apply badge bg-brand-500/20 text-brand-400;
+  }
+  .badge-yellow {
+    @apply badge bg-yellow-500/20 text-yellow-400;
+  }
+  .badge-red {
+    @apply badge bg-red-500/20 text-red-400;
+  }
+  .badge-gray {
+    @apply badge bg-surface-500/20 text-surface-400;
+  }
+}

@@ -1,5 +1,5 @@
-import jesse.helpers as jh
-import jesse.modes.import_candles_mode as importer
+import qengine.helpers as jh
+import qengine.modes.import_candles_mode as importer
 from tests.data import test_candles_0
 
 test_object_candles = []

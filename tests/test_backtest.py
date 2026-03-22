@@ -1,12 +1,12 @@
-import jesse.helpers as jh
-from jesse.config import reset_config
-from jesse.enums import timeframes, exchanges
-from jesse.factories import range_candles
-from jesse.modes import backtest_mode
-from jesse.routes import router
-from jesse.store import store
-from jesse.config import config
-from jesse.services import candle_service
+import qengine.helpers as jh
+from qengine.config import reset_config
+from qengine.enums import timeframes, exchanges
+from qengine.factories import range_candles
+from qengine.modes import backtest_mode
+from qengine.routes import router
+from qengine.store import store
+from qengine.config import config
+from qengine.services import candle_service
 
 
 def test_backtesting_one_route():

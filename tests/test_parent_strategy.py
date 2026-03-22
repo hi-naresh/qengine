@@ -1,22 +1,22 @@
 import math
-from jesse.services import candle_service
+from qengine.services import candle_service
 import numpy as np
 import pytest
 
-import jesse.helpers as jh
-from jesse import exceptions
-from jesse.config import reset_config
-from jesse.enums import exchanges, timeframes, order_types
-from jesse.factories import range_candles, candles_from_close_prices
-from jesse.models import ClosedTrade
-from jesse.models.Order import Order
-from jesse.modes import backtest_mode
-from jesse.routes import router
-from jesse.store import store
-from jesse.strategies import Strategy
+import qengine.helpers as jh
+from qengine import exceptions
+from qengine.config import reset_config
+from qengine.enums import exchanges, timeframes, order_types
+from qengine.factories import range_candles, candles_from_close_prices
+from qengine.models import ClosedTrade
+from qengine.models.Order import Order
+from qengine.modes import backtest_mode
+from qengine.routes import router
+from qengine.store import store
+from qengine.strategies import Strategy
 from tests.data import test_candles_0
 from tests.data import test_candles_1
-from jesse.testing_utils import set_up, single_route_backtest, two_routes_backtest, two_data_routes_backtest
+from qengine.testing_utils import set_up, single_route_backtest, two_routes_backtest, two_data_routes_backtest
 
 
 def test_average_stop_loss_exception():
@@ -851,7 +851,7 @@ def test_before_terminate2():
 def test_terminate():
     single_route_backtest('TestTerminate')
 
-    from jesse.store import store
+    from qengine.store import store
     assert store.app.starting_time == 1
 
 

@@ -1,8 +1,8 @@
-from jesse.config import config
-from jesse.enums import exchanges, timeframes
-from jesse.routes import router
-from jesse.store import store
-from jesse.services import exchange_service, order_service, position_service
+from qengine.config import config
+from qengine.enums import exchanges, timeframes
+from qengine.routes import router
+from qengine.store import store
+from qengine.services import exchange_service, order_service, position_service
 
 
 def test_routes():

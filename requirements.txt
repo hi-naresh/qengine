@@ -28,10 +28,12 @@ PyJWT~=2.8.0
 cryptography~=42.0.5
 ecdsa>=0.16.0
 optuna~=4.2.0
-ray; python_version not in "3.13"
-eth-account~=0.13.5
+ray
 msgpack~=1.1.0
-starkbank-ecdsa~=1.1.0
 jesse-rust==1.0.1
-joblib~=1.5.3
-scikit-learn~=1.8.0
+# LLM providers (install the one you use)
+google-genai
+anthropic>=0.39.0
+openai>=1.50.0
+# IBKR live trading (optional)
+ib_insync>=0.9.86

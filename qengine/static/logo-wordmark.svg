@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 256" fill="none">
+  <defs>
+    <linearGradient id="q-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#408cff" /> <!-- brand 400 -->
+      <stop offset="100%" stop-color="#006edc" /> <!-- brand 700 -->
+    </linearGradient>
+    <linearGradient id="q-inner" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#99c1ff" /> <!-- brand 200 -->
+      <stop offset="100%" stop-color="#004d99" /> <!-- brand 900 -->
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(64, 48) scale(0.3125)">
+    <!-- Base Circle for Q -->
+    <circle cx="216" cy="216" r="140" fill="none" stroke="url(#q-grad)" stroke-width="56" />
+
+    <!-- Quantum / Genetic Data Node Inside -->
+    <circle cx="216" cy="216" r="48" fill="url(#q-inner)" />
+    <circle cx="216" cy="216" r="76" fill="none" stroke="url(#q-inner)" stroke-width="4" stroke-dasharray="12 12" />
+
+    <!-- The Tail of the Q (Algorithm / Chart going up/down) -->
+    <path d="M 315 315 L 436 436" stroke="url(#q-grad)" stroke-width="56" stroke-linecap="round" />
+    <circle cx="436" cy="436" r="28" fill="url(#q-inner)" />
+  </g>
+
+  <g transform="translate(250, 156)">
+    <text font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="96" font-weight="800" fill="currentColor" letter-spacing="-2">QEngine</text>
+  </g>
+</svg>

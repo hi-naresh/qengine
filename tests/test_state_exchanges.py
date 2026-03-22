@@ -1,8 +1,8 @@
-from jesse.config import config, reset_config
-from jesse.enums import exchanges
-from jesse.store import store
-from jesse.routes import router
-from jesse.services import exchange_service, order_service, position_service
+from qengine.config import config, reset_config
+from qengine.enums import exchanges
+from qengine.store import store
+from qengine.routes import router
+from qengine.services import exchange_service, order_service, position_service
 
 
 def set_up():

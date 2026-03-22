@@ -1,8 +1,8 @@
 import numpy as np
 
-import jesse.helpers as jh
-from jesse.config import config, reset_config
-from jesse.store import store
+import qengine.helpers as jh
+from qengine.config import config, reset_config
+from qengine.store import store
 
 
 def set_up():

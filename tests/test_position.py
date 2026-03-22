@@ -1,7 +1,7 @@
-from jesse.enums import exchanges
-from jesse.models import Position
-from jesse.testing_utils import set_up, single_route_backtest
-from jesse.services import position_service
+from qengine.enums import exchanges
+from qengine.models import Position
+from qengine.testing_utils import set_up, single_route_backtest
+from qengine.services import position_service
 
 
 def test_increase_a_long_position():

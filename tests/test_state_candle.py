@@ -1,13 +1,13 @@
 import numpy as np
-from jesse.config import config, reset_config
-from jesse.factories import fake_candle, range_candles
-from jesse.services import candle_service
-from jesse.store import store
+from qengine.config import config, reset_config
+from qengine.factories import fake_candle, range_candles
+from qengine.services import candle_service
+from qengine.store import store
 
 
 def set_up():
     reset_config()
-    from jesse.routes import router
+    from qengine.routes import router
     router.set_routes([
         {'exchange': 'Sandbox', 'symbol': 'BTC-USD', 'timeframe': '1m', 'strategy': 'Test01'}
     ])
