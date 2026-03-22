@@ -64,7 +64,7 @@ class SurefireHedgeV2(Strategy):
 
             # --- MOMENTUM (for direction) ---
             {'name': 'mom_method',         'type': str,   'options': ['ema_cross', 'rsi_midline', 'macd_hist'],
-                                                                       'default': 'ema_cross'},
+             'default': 'ema_cross'},
             {'name': 'fast_period',        'type': int,   'min': 3,    'max': 30,   'default': 8},
             {'name': 'slow_period',        'type': int,   'min': 10,   'max': 100,  'default': 21},
             {'name': 'adx_threshold',      'type': float, 'min': 10.0, 'max': 40.0, 'default': 20.0},
@@ -74,12 +74,12 @@ class SurefireHedgeV2(Strategy):
             {'name': 'min_atr_pips',       'type': float, 'min': 1.0,  'max': 30.0, 'default': 5.0},
             {'name': 'max_atr_pips',       'type': float, 'min': 30.0, 'max': 300.0,'default': 150.0},
             {'name': 'session_filter',     'type': str,   'options': ['london', 'new_york', 'overlap', 'london_ny', 'any'],
-                                                                       'default': 'london_ny'},
+             'default': 'london_ny'},
 
             # --- HEDGE MECHANICS (secondary, narrow ranges) ---
             {'name': 'multiplier',         'type': float, 'min': 1.5,  'max': 2.5,  'default': 2.0},
             {'name': 'max_levels',         'type': int,   'min': 3,    'max': 6,    'default': 5},
-            {'name': 'base_size',          'type': float, 'min': 0.01, 'max': 100.0,'default': 1.0},
+            {'name': 'equity_pct',         'type': float, 'min': 0.5,  'max': 10.0, 'default': 2.0},
 
             # --- SAFETY ---
             {'name': 'max_risk_pct',       'type': float, 'min': 0.05, 'max': 0.25, 'default': 0.15},
@@ -110,8 +110,8 @@ class SurefireHedgeV2(Strategy):
         return self.hp.get('max_levels', 5)
 
     @property
-    def base_size(self) -> float:
-        return self.hp.get('base_size', 1.0)
+    def equity_pct(self) -> float:
+        return self.hp.get('equity_pct', 2.0)
 
     @property
     def cooldown_bars(self) -> int:
@@ -242,13 +242,13 @@ class SurefireHedgeV2(Strategy):
             return True
         hedge_pips = self.vars.get('_hedge_pips', 0)
         if hedge_pips <= 0:
-            # Distances not computed yet, compute now
             self._compute_distances()
             hedge_pips = self.vars['_hedge_pips']
+        initial_size = self._base_size_from_equity()
         pip_value = self.pip_size * self.contract_size
         return self.safety.can_afford_cycle(
             balance=self.balance,
-            initial_size=self.base_size,
+            initial_size=initial_size,
             multiplier=self.multiplier,
             max_levels=self.max_levels,
             hedge_pips=hedge_pips,
@@ -260,13 +260,36 @@ class SurefireHedgeV2(Strategy):
     #  SIZING
     # ──────────────────────────────────────────────────────────────
 
+    def _base_size_from_equity(self) -> float:
+        """
+        Convert equity_pct to position units (lots).
+
+        equity_pct=2.0 means "risk 2% of current balance as the Level-0 notional."
+        Units = (balance * equity_pct/100) / (pip_value_per_unit * hedge_pips)
+
+        This way the dollar risk of the first leg is always equity_pct% of balance,
+        and it scales automatically as equity grows or shrinks.
+        """
+        hedge_pips = self.vars.get('_hedge_pips', 0)
+        if hedge_pips <= 0:
+            self._compute_distances()
+            hedge_pips = self.vars['_hedge_pips']
+
+        pip_value_per_unit = self.pip_size * self.contract_size  # e.g. 10 for EUR-USD std lot
+        if pip_value_per_unit <= 0 or hedge_pips <= 0:
+            return 0.0
+
+        risk_dollars = self.balance * (self.equity_pct / 100.0)
+        return risk_dollars / (pip_value_per_unit * hedge_pips)
+
     def _safe_initial_size(self) -> float:
-        """Initial size capped by safety sizing."""
+        """Initial size: equity-based, then capped by safety sizing."""
+        base = self._base_size_from_equity()
         hedge_pips = self.vars['_hedge_pips']
         pip_value = self.pip_size * self.contract_size
         return self.safety.dynamic_size(
             balance=self.balance,
-            base_size=self.base_size,
+            base_size=base,
             multiplier=self.multiplier,
             max_levels=self.max_levels,
             hedge_pips=hedge_pips,
@@ -471,7 +494,9 @@ class SurefireHedgeV2(Strategy):
             ['atr_pips', round(self._current_atr_pips(), 1)],
             ['adx', round(ta.adx(self.candles, period=14), 1)],
             ['momentum', self._momentum_direction()],
-            ['safe_size', round(self._safe_initial_size(), 4)],
+            ['equity_pct', f'{self.equity_pct}%'],
+            ['base_lots', round(self._base_size_from_equity(), 4)],
+            ['safe_lots', round(self._safe_initial_size(), 4)],
             ['completed_sessions', len(self.vars['sessions'])],
         ]
 
