@@ -7,11 +7,17 @@ from qengine.services import logger
 
 
 class API:
+    """Unified exchange API facade.
+
+    Drivers are **not** initialised at construction time.  Call
+    :meth:`initiate_drivers` explicitly once the session configuration is
+    ready (i.e. after ``config['app']['considering_exchanges']`` is populated).
+    This avoids the eager-instantiation problem where importing this module
+    before the config is set up would raise an exception.
+    """
+
     def __init__(self) -> None:
         self.drivers = {}
-
-        if not jh.is_live():
-            self.initiate_drivers()
 
     def initiate_drivers(self) -> None:
         considering_exchanges = jh.get_config('app.considering_exchanges')
@@ -85,4 +91,6 @@ class API:
         return self.drivers[exchange].cancel_order(symbol, order_id)
 
 
+# Module-level singleton.  Drivers are intentionally **not** initialised here;
+# call api.initiate_drivers() after the session config has been populated.
 api = API()

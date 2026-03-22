@@ -1,9 +1,11 @@
 import qengine.helpers as jh
-from qengine.services import logger
 from qengine.info import exchange_info
 
 
 def save_daily_portfolio_balance(is_initial=False) -> None:
+    # Lazy import to avoid circular dependency: config → modes.utils → logger → redis → env → config
+    from qengine.services import logger
+
     if is_initial:
         logger.reset()
 

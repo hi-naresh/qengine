@@ -498,6 +498,11 @@ def is_unit_testing() -> bool:
     if script_name in ["pytest", "py.test"]:
         return True
 
+    # Detect `python -m pytest`: pytest is loaded as a module, so it will be present in sys.modules
+    # even during the test-collection phase before PYTEST_CURRENT_TEST is set.
+    if 'pytest' in sys.modules:
+        return True
+
     # Otherwise, the code is not running by running pytest or PyCharm's test runner.
     return False
 

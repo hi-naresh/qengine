@@ -36,6 +36,14 @@ def initialize_exchanges_state() -> None:
                 f'Your value is "{exchange_type}"'
             )
 
+    # Initialise API order-routing drivers for non-live modes (backtest, optimize, paper).
+    # In live mode the caller sets api.drivers directly after constructing the broker driver.
+    # Only initialise when there are exchanges to route (considering_exchanges may be empty
+    # in lightweight test setups that only configure trading_exchanges).
+    if not jh.is_live() and config['app'].get('considering_exchanges'):
+        from qengine.services.api import api
+        api.initiate_drivers()
+
 
 def _apply_backtest_cost_settings(exchange: ForexCFDExchange) -> None:
     """Apply saved backtest cost/randomness settings to a ForexCFD exchange."""

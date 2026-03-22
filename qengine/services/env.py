@@ -22,7 +22,7 @@ if jh.is_unit_testing():
     ENV_VALUES['IS_DEV_ENV'] = 'TRUE'
     ENV_VALUES['LSP_PORT'] = 9001
 
-if jh.is_qengine_project():
+elif jh.is_qengine_project():
     # load env
     load_dotenv()
 
@@ -30,19 +30,19 @@ if jh.is_qengine_project():
     ENV_VALUES = dotenv_values('.env')
 
     # validation for existence of .env file
+    # Use print+os._exit instead of jh.error() to avoid a circular import:
+    # jh.error() → config → modes.utils → logger → redis → env (partially initialised)
     if len(list(ENV_VALUES.keys())) == 0:
-        jh.error(
-            '.env file is missing from within your local project. '
+        print(
+            '[QEngine] .env file is missing from within your local project. '
             'This usually happens when you\'re in the wrong directory. '
             '\n\nIf you haven\'t created a QEngine project yet, do that by running: \n'
             'qengine make-project {name}\n'
-            'And then go into that project, and run the same command.',
-            force_print=True
+            'And then go into that project, and run the same command.'
         )
         os._exit(1)
-        # raise FileNotFoundError('.env file is missing from within your local project. This usually happens when you\'re in the wrong directory. You can create one by running "cp .env.example .env"')
 
-    if not jh.is_unit_testing() and ENV_VALUES['PASSWORD'] == '':
+    if ENV_VALUES['PASSWORD'] == '':
         raise EnvironmentError('You forgot to set the PASSWORD in your .env file')
 
 

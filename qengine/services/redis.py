@@ -19,7 +19,7 @@ async def init_redis():
 
 async_redis = None
 sync_redis = None
-if jh.is_qengine_project():
+if jh.is_qengine_project() and not jh.is_unit_testing():
     if not jh.is_notebook():
         async_redis = asyncio.run(init_redis())
         sync_redis = sync_redis_lib.Redis(

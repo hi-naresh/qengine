@@ -1,7 +1,14 @@
+from abc import ABC
 import numpy as np
 
 
-class BaseCandlesPipeline:
+class BaseCandlesPipeline(ABC):
+    """
+    Abstract base class for candle transformation pipelines used in research/Monte Carlo modes.
+
+    Subclasses override :meth:`process` to inject custom transformations (noise, resampling, etc.)
+    into the 1-minute candle stream before it reaches the strategy engine.
+    """
     def __init__(self, batch_size: int) -> None:
         self._batch_size = batch_size
         self._output: np.ndarray = np.zeros((batch_size, 6))

@@ -13,3 +13,22 @@ drivers = {
 }
 
 driver_names = list(drivers.keys())
+
+
+def register_driver(name: str, driver_class) -> None:
+    """Register a third-party candle-import driver under the given exchange name.
+
+    This allows external packages to extend QEngine with new data-source
+    integrations without modifying the core codebase::
+
+        from qengine.modes.import_candles_mode.drivers import register_driver
+        from my_exchange import MyExchangeCandles
+
+        register_driver('My Exchange', MyExchangeCandles)
+
+    The registered driver will be available for candle-import sessions that
+    reference ``'My Exchange'`` as the exchange name.
+    """
+    drivers[name] = driver_class
+    if name not in driver_names:
+        driver_names.append(name)
