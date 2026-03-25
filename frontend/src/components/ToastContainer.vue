@@ -35,9 +35,19 @@ function toastClass(type) {
 </script>
 
 <style scoped>
-.toast-enter-active { transition: all 0.3s ease-out; }
-.toast-leave-active { transition: all 0.2s ease-in; }
-.toast-enter-from { transform: translateX(100%); opacity: 0; }
-.toast-leave-to { transform: translateX(100%); opacity: 0; }
-.toast-move { transition: transform 0.3s ease; }
+/* Mobile: slide up from bottom with spring easing */
+@media (hover: none) and (pointer: coarse) {
+  .toast-enter-active { transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+  .toast-leave-active { transition: all 0.2s ease-in; }
+  .toast-enter-from { transform: translateY(100%); opacity: 0; }
+  .toast-leave-to { transform: translateY(40%); opacity: 0; }
+}
+/* Desktop: slide from right */
+@media (hover: hover) and (pointer: fine) {
+  .toast-enter-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  .toast-leave-active { transition: all 0.2s ease-in; }
+  .toast-enter-from { transform: translateX(100%); opacity: 0; }
+  .toast-leave-to { transform: translateX(100%); opacity: 0; }
+}
+.toast-move { transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 </style>
