@@ -1,6 +1,6 @@
 # QEngine
 
-A multi-asset algorithmic trading platform for forex, commodities, and more.
+A multi-asset algorithmic trading platform for forex, commodities, and more (coming soon).
 
 ---
 
