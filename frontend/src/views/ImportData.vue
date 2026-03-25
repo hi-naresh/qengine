@@ -205,34 +205,46 @@ useWebSocket((msg) => {
   // Note: msg.id is os.getpid() (integer), not the task UUID.
   // The event prefix already namespaces messages, so no id filtering needed.
 
-  if (event === 'import_candles.progressbar') {
+  if (event === 'candles.progressbar') {
     progress.value = {
       current: data?.current || 0,
       eta: data?.estimated_remaining_seconds || 0,
     }
-  } else if (event === 'import_candles.general_info') {
+    // Update import info from progress data
+    if (data?.count !== undefined) {
+      importInfo.value = { ...importInfo.value, count: data.count }
+    }
+  } else if (event === 'candles.general_info') {
     importInfo.value = data
-  } else if (event === 'import_candles.notification') {
+  } else if (event === 'candles.alert') {
     if (data?.type === 'success') {
       importMsg.value = data?.message || 'Import completed!'
       importError.value = false
       importing.value = false
       progress.value = { current: 100, eta: 0 }
-      setTimeout(loadExisting, 1000)
+      loadExisting()
     } else if (data?.type === 'error') {
       importMsg.value = data?.message || 'Import failed'
       importError.value = true
       importing.value = false
+    } else if (data?.type === 'info') {
+      importMsg.value = data?.message || ''
+      importError.value = false
     }
-  } else if (event === 'import_candles.exception') {
+  } else if (event === 'candles.exception') {
     importMsg.value = data?.error || 'Import failed'
     importError.value = true
     importing.value = false
     progress.value = { current: 0, eta: 0 }
-  } else if (event === 'import_candles.termination') {
+  } else if (event === 'candles.termination') {
     importing.value = false
     importMsg.value = 'Import terminated.'
     importError.value = false
+    progress.value = { current: 0, eta: 0 }
+  } else if (event === 'candles.unexpectedTermination') {
+    importing.value = false
+    importMsg.value = data?.message || 'Import terminated unexpectedly.'
+    importError.value = true
     progress.value = { current: 0, eta: 0 }
   }
 })

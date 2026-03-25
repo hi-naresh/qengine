@@ -27,12 +27,13 @@ class LLMEngine:
         self.temperature = temperature
 
     def configure_from_env(self) -> bool:
-        """Auto-configure from environment variables or .env file. Gemini is checked first."""
+        """Auto-configure from environment variables, .env file, or DB settings (UI)."""
         from qengine.services.env import ENV_VALUES
 
         def _get(key: str, default: str = '') -> str:
             return os.environ.get(key, '') or ENV_VALUES.get(key, '') or default
 
+        # Try env vars / .env first
         gemini_key = _get('GEMINI_API_KEY')
         if gemini_key:
             self.provider = 'gemini'
@@ -53,6 +54,20 @@ class LLMEngine:
             self.api_key = openai_key
             self.model = _get('LLM_MODEL', 'gpt-4o')
             return True
+
+        # Fallback: check DB-stored LLM settings (configured via UI)
+        try:
+            from qengine.controllers.settings_controller import _get_settings_from_db
+            settings = _get_settings_from_db()
+            llm_conf = settings.get('llm', {})
+            if llm_conf.get('api_key') and llm_conf.get('provider'):
+                self.provider = llm_conf['provider']
+                self.api_key = llm_conf['api_key']
+                self.model = llm_conf.get('model', '')
+                self.temperature = llm_conf.get('temperature', 0.3)
+                return True
+        except Exception:
+            pass
 
         return False
 

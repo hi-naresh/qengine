@@ -372,7 +372,8 @@ useWebSocket((msg) => {
   const { event } = msg
   if (event === 'backtest.metrics' || event === 'backtest.exception' || event === 'backtest.termination' ||
       event === 'optimize.alert' || event === 'optimize.exception' || event === 'optimize.termination' ||
-      event === 'monte-carlo.alert' || event === 'monte-carlo.exception' || event === 'monte-carlo.termination') {
+      event === 'monte-carlo.alert' || event === 'monte-carlo.exception' || event === 'monte-carlo.termination' ||
+      event === 'candles.alert' || event === 'candles.exception' || event === 'candles.termination') {
     setTimeout(loadActivity, 1500)
   }
 })

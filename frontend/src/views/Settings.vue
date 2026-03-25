@@ -410,6 +410,17 @@
 
           <div class="flex items-center justify-between p-3 bg-surface-800 rounded-lg">
             <div>
+              <div class="text-sm text-surface-200">Imported Candle Data</div>
+              <div class="text-xs text-surface-500">Delete ALL imported candle data from the database (irreversible)</div>
+            </div>
+            <button @click="doDeleteAllCandles" class="btn-sm bg-red-500/10 text-red-400 hover:bg-red-500/20"
+              :disabled="maintOps.candles">
+              {{ maintOps.candles ? 'Deleting...' : 'Delete All' }}
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between p-3 bg-surface-800 rounded-lg">
+            <div>
               <div class="text-sm text-surface-200">Issues / Tickets</div>
               <div class="text-xs text-surface-500">Clear all issue tickets from the database</div>
             </div>
@@ -531,7 +542,7 @@ const aboutItems = computed(() => {
 
 // Maintenance
 const storageInfo = ref(null)
-const maintOps = ref({ candle: false, pickle: false, redis: false, logs: false, issues: false, all: false })
+const maintOps = ref({ candle: false, pickle: false, redis: false, logs: false, issues: false, candles: false, all: false })
 const clearIssueStatus = ref('')
 const maintMessage = ref('')
 const maintError = ref(false)
@@ -763,6 +774,23 @@ async function doClearIssues() {
     maintError.value = true
   } finally {
     maintOps.value.issues = false
+  }
+}
+
+async function doDeleteAllCandles() {
+  if (!confirm('Are you sure you want to delete ALL imported candle data? This cannot be undone.')) return
+  maintOps.value.candles = true
+  maintMessage.value = ''
+  try {
+    const res = await api.deleteAllCandles()
+    maintMessage.value = res.message || 'All candle data deleted'
+    maintError.value = false
+    await loadStorageInfo()
+  } catch (e) {
+    maintMessage.value = e.message
+    maintError.value = true
+  } finally {
+    maintOps.value.candles = false
   }
 }
 

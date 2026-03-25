@@ -118,3 +118,20 @@ def delete_candles(json_request: DeleteCandlesRequestJson, authorization: Option
         return JSONResponse({'message': 'Candles deleted successfully'}, status_code=200)
     except Exception as e:
         return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.post("/delete-all")
+def delete_all_candles(authorization: Optional[str] = Header(None)) -> JSONResponse:
+    """
+    Delete ALL imported candle data from the database.
+    """
+    if not authenticator.is_valid_token(authorization):
+        return authenticator.unauthorized_response()
+
+    try:
+        from qengine.models.Candle import Candle
+        count = Candle.select().count()
+        Candle.delete().execute()
+        return JSONResponse({'message': f'Deleted all candle data ({count:,} candles)', 'deleted': count}, status_code=200)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)

@@ -48,6 +48,8 @@ class OandaMain(CandleExchange):
         if not key:
             from qengine.services.env import ENV_VALUES
             key = ENV_VALUES.get('OANDA_API_KEY', '')
+        if not key:
+            key = self._load_from_db('api_key')
         return key
 
     def _load_account_id(self) -> str:
@@ -56,7 +58,25 @@ class OandaMain(CandleExchange):
         if not aid:
             from qengine.services.env import ENV_VALUES
             aid = ENV_VALUES.get('OANDA_ACCOUNT_ID', '')
+        if not aid:
+            aid = self._load_from_db('account_id')
         return aid
+
+    def _load_from_db(self, field: str) -> str:
+        """Load broker credential from DB settings (set via UI)."""
+        try:
+            from qengine.controllers.settings_controller import _get_settings_from_db
+            settings = _get_settings_from_db()
+            brokers = settings.get('brokers', {})
+            # Check both OANDA and OANDA Demo
+            for broker_id in ('OANDA', 'OANDA Demo'):
+                conf = brokers.get(broker_id, {})
+                val = conf.get(field, '')
+                if val:
+                    return val
+        except Exception:
+            pass
+        return ''
 
     def _headers(self) -> dict:
         return {
@@ -115,12 +135,12 @@ class OandaMain(CandleExchange):
         if not self.api_key:
             raise ConnectionError(
                 'OANDA API key is not configured. '
-                'Set OANDA_API_KEY in your .env file or environment variables.'
+                'Connect your OANDA broker in Settings, or set OANDA_API_KEY in your .env file.'
             )
         if not self.account_id:
             raise ConnectionError(
                 'OANDA Account ID is not configured. '
-                'Set OANDA_ACCOUNT_ID in your .env file or environment variables.'
+                'Connect your OANDA broker in Settings, or set OANDA_ACCOUNT_ID in your .env file.'
             )
 
     def fetch(self, symbol: str, start_timestamp: int, timeframe: str = '1m') -> Union[List[Dict[str, Any]], None]:

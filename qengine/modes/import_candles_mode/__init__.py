@@ -92,7 +92,16 @@ def run(
     frontend_update_threshold = 100  # Only notify frontend after this many updates when skipping existing candles
     skipped_minutes = 0
     imported_minutes = 0
-    
+
+    # Send initial info to frontend
+    if running_via_dashboard:
+        sync_publish('general_info', {
+            'exchange': exchange,
+            'symbol': symbol,
+            'count': 0,
+            'status': 'importing',
+        })
+
     for i in range(candles_count):
         temp_start_timestamp = start_date.int_timestamp * 1000
         temp_end_timestamp = temp_start_timestamp + (driver.count - 1) * 60000
@@ -198,14 +207,16 @@ def run(
                     if running_via_dashboard:
                         sync_publish('progressbar', {
                             'current': progressbar.current,
-                            'estimated_remaining_seconds': progressbar.estimated_remaining_seconds
+                            'estimated_remaining_seconds': progressbar.estimated_remaining_seconds,
+                            'count': imported_minutes + skipped_minutes,
                         })
             # For new candles being fetched, update frontend normally
             else:
                 if running_via_dashboard:
                     sync_publish('progressbar', {
                         'current': progressbar.current,
-                        'estimated_remaining_seconds': progressbar.estimated_remaining_seconds
+                        'estimated_remaining_seconds': progressbar.estimated_remaining_seconds,
+                        'count': imported_minutes + skipped_minutes,
                     })
             
             if show_progressbar:

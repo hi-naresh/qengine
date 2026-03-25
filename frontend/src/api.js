@@ -143,6 +143,7 @@ export const api = {
   getCandles: (data) => request('POST', '/candles/get', data),
   getExistingCandles: (data) => request('POST', '/candles/existing', data),
   deleteCandles: (exchange, symbol) => request('POST', '/candles/delete', { exchange, symbol }),
+  deleteAllCandles: () => request('POST', '/candles/delete-all'),
 
   // Live Trading
   startLive: (data) => request('POST', '/live', data),

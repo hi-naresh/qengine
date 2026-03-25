@@ -48,7 +48,29 @@ class IGMarketsMain(CandleExchange):
         if not key:
             from qengine.services.env import ENV_VALUES
             key = ENV_VALUES.get('IG_API_KEY', '')
+        if not key:
+            key = self._load_from_db('api_key')
         return key
+
+    def _load_from_db(self, field: str) -> str:
+        """Load broker credential from DB settings (set via UI)."""
+        try:
+            from qengine.controllers.settings_controller import _get_settings_from_db
+            settings = _get_settings_from_db()
+            brokers = settings.get('brokers', {})
+            for broker_id in ('IG Markets', 'IG Markets Demo'):
+                conf = brokers.get(broker_id, {})
+                if field == 'username':
+                    val = conf.get('additional_fields', {}).get('ig_username', '')
+                elif field == 'password':
+                    val = conf.get('additional_fields', {}).get('ig_password', '') or conf.get('api_secret', '')
+                else:
+                    val = conf.get(field, '')
+                if val:
+                    return val
+        except Exception:
+            pass
+        return ''
 
     def _authenticate(self) -> None:
         """Authenticate with IG Markets to get CST and X-SECURITY-TOKEN."""
@@ -59,6 +81,12 @@ class IGMarketsMain(CandleExchange):
         from qengine.services.env import ENV_VALUES
         identifier = os.environ.get('IG_IDENTIFIER', ENV_VALUES.get('IG_IDENTIFIER', ''))
         password = os.environ.get('IG_PASSWORD', ENV_VALUES.get('IG_PASSWORD', ''))
+        if not identifier:
+            identifier = os.environ.get('IG_USERNAME', ENV_VALUES.get('IG_USERNAME', ''))
+        if not identifier:
+            identifier = self._load_from_db('username')
+        if not password:
+            password = self._load_from_db('password')
 
         response = self.session.post(
             f'{self.base_url}/session',
