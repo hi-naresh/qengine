@@ -22,7 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 COPY --from=frontend-build /qengine/static ./qengine/static/
 RUN pip install --no-cache-dir -e .
-RUN mkdir -p /qengine/storage /qengine/strategies
+RUN mkdir -p /qengine/storage/csv /qengine/storage/full-reports \
+    /qengine/storage/logs /qengine/storage/temp \
+    /qengine/storage/trading-view-pine-editor /qengine/strategies
 
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

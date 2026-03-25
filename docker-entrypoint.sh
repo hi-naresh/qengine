@@ -1,8 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generate .env from system environment variables
-# (Railway/Fly set secrets as env vars, but qengine reads from .env file)
+# Parse Railway/Fly connection URLs into individual vars qengine expects
+# REDIS_URL=redis://default:password@host:port
+if [ -n "${REDIS_URL:-}" ] && [ -z "${REDIS_HOST:-}" ]; then
+  # Strip protocol
+  stripped="${REDIS_URL#*://}"
+  # Extract password (between : and @)
+  if [[ "$stripped" == *"@"* ]]; then
+    userpass="${stripped%%@*}"
+    hostport="${stripped#*@}"
+    export REDIS_PASSWORD="${userpass#*:}"
+  else
+    hostport="$stripped"
+    export REDIS_PASSWORD=""
+  fi
+  export REDIS_HOST="${hostport%%:*}"
+  export REDIS_PORT="${hostport#*:}"
+  export REDIS_PORT="${REDIS_PORT%%/*}"
+  echo "[entrypoint] Parsed REDIS_URL -> ${REDIS_HOST}:${REDIS_PORT}"
+fi
+
+# DATABASE_URL=postgresql://user:pass@host:port/dbname
+if [ -n "${DATABASE_URL:-}" ] && [ -z "${POSTGRES_HOST:-}" ]; then
+  stripped="${DATABASE_URL#*://}"
+  userpass="${stripped%%@*}"
+  export POSTGRES_USERNAME="${userpass%%:*}"
+  export POSTGRES_PASSWORD="${userpass#*:}"
+  hostrest="${stripped#*@}"
+  hostport="${hostrest%%/*}"
+  export POSTGRES_HOST="${hostport%%:*}"
+  export POSTGRES_PORT="${hostport#*:}"
+  export POSTGRES_NAME="${hostrest#*/}"
+  export POSTGRES_NAME="${POSTGRES_NAME%%\?*}"
+  echo "[entrypoint] Parsed DATABASE_URL -> ${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_NAME}"
+fi
+
+# Write .env file (qengine reads from file, not env vars)
 ENV_KEYS=(
   POSTGRES_HOST POSTGRES_NAME POSTGRES_PORT POSTGRES_USERNAME POSTGRES_PASSWORD
   REDIS_HOST REDIS_PORT REDIS_DB REDIS_PASSWORD
@@ -13,13 +47,13 @@ ENV_KEYS=(
   IBKR_ACCOUNT_ID IBKR_HOST IBKR_PORT
 )
 
-# Always write all keys (even if empty — app expects them to exist)
 : > /qengine/.env
 for key in "${ENV_KEYS[@]}"; do
   echo "${key}=${!key:-}" >> /qengine/.env
 done
 
-echo "[entrypoint] .env generated with $(wc -l < /qengine/.env) vars"
+echo "[entrypoint] .env generated:"
+cat /qengine/.env | grep -v -E '(PASSWORD|API_KEY|SECRET)' || true
 echo "[entrypoint] Starting: $*"
 
 # Try qengine CLI first, fallback to uvicorn directly
