@@ -1,9 +1,9 @@
 <template>
   <div>
     <!-- Workspace Tabs -->
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-semibold">Optimization</h1>
-      <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+      <h1 class="text-2xl font-bold text-center sm:text-left">Optimization</h1>
+      <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg overflow-x-auto">
         <div v-for="wt in workspaceTabs" :key="wt.id"
           @click="!running && switchWorkspace(wt.id)"
           class="flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer group rounded-md transition-colors"
@@ -530,7 +530,7 @@
           </div>
 
           <!-- Top info -->
-          <div class="grid grid-cols-4 gap-4 mb-6">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
             <div class="text-center">
               <div class="text-xs text-surface-500 mb-1">Rank</div>
               <div class="text-lg font-bold text-surface-200">{{ candidateModal.rank || '#1' }}</div>

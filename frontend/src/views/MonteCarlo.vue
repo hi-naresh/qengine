@@ -1,9 +1,9 @@
 <template>
   <div>
     <!-- Workspace Tabs -->
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-semibold">Monte Carlo</h1>
-      <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+      <h1 class="text-2xl font-bold text-center sm:text-left">Monte Carlo</h1>
+      <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg overflow-x-auto">
         <div v-for="wt in workspaceTabs" :key="wt.id"
           @click="!running && switchWorkspace(wt.id)"
           class="flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer group rounded-md transition-colors"

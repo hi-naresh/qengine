@@ -1,8 +1,8 @@
 <template>
-  <div class="fixed bottom-4 right-4 z-[100] space-y-2 max-w-sm">
+  <div class="fixed bottom-20 lg:bottom-4 right-3 left-3 sm:left-auto sm:right-4 z-[100] space-y-2 sm:max-w-sm">
     <TransitionGroup name="toast">
       <div v-for="t in toasts" :key="t.id"
-        class="flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg border backdrop-blur-sm cursor-pointer"
+        class="flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg border backdrop-blur-xl cursor-pointer"
         :class="toastClass(t.type)"
         @click="dismiss(t.id)">
         <span class="mt-0.5 flex-shrink-0">

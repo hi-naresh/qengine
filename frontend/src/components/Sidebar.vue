@@ -1,6 +1,6 @@
 <template>
-  <aside class="fixed left-0 top-0 h-screen w-56 bg-surface-900 border-r border-surface-700 flex flex-col z-30">
-    <div class="p-4 border-b border-surface-700">
+  <aside class="fixed left-0 top-0 h-screen w-60 flex-col z-40 hidden lg:flex sidebar-glass">
+    <div class="p-5 border-b border-white/[0.06]">
       <div class="flex items-center gap-2">
         <img src="/favicon.svg" alt="QEngine" class="w-8 h-8" />
         <div>
@@ -10,7 +10,7 @@
       </div>
     </div>
 
-    <nav class="flex-1 py-3 px-2 space-y-0.5 overflow-auto">
+    <nav class="flex-1 py-4 px-3 space-y-0.5 overflow-auto">
       <div class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Overview</div>
       <router-link v-for="item in overviewItems" :key="item.to" :to="item.to"
         class="nav-link" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'">
@@ -33,7 +33,7 @@
       </router-link>
     </nav>
 
-    <div class="p-3 border-t border-surface-700 space-y-1">
+    <div class="p-4 border-t border-white/[0.06] space-y-1">
       <button @click="toggleTheme" class="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-sm text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors">
         <component :is="isDark ? SunIcon : MoonIcon" class="w-4 h-4" />
         {{ isDark ? 'Light Mode' : 'Dark Mode' }}
@@ -118,13 +118,23 @@ const toolItems = [
 </script>
 
 <style scoped>
+.sidebar-glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border-right: 1px solid var(--glass-border);
+}
 .nav-link {
-  @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors;
+  @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150;
 }
 .nav-active {
-  @apply bg-brand-600/20 text-brand-400;
+  @apply text-brand-400;
+  background: rgba(0, 128, 255, 0.1);
 }
 .nav-idle {
-  @apply text-surface-400 hover:text-surface-200 hover:bg-surface-800;
+  @apply text-surface-400 hover:text-surface-200;
+}
+.nav-idle:hover {
+  background: var(--glass-inset-bg);
 }
 </style>

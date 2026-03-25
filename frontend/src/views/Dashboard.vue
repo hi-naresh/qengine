@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1 class="text-xl font-semibold mb-6">Dashboard</h1>
+    <h1 class="text-2xl font-bold text-center mb-8">Dashboard</h1>
 
     <div v-if="loading" class="text-surface-500 text-sm">Loading...</div>
 
@@ -18,15 +18,15 @@
           <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-2">Running Now</div>
           <div class="space-y-2">
             <div v-for="task in runningTasks" :key="task.id"
-              class="flex items-center justify-between p-3 bg-surface-800 rounded-lg hover:bg-surface-750 transition-colors cursor-pointer"
+              class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-surface-800 rounded-lg hover:bg-surface-750 transition-colors cursor-pointer"
               @click="navigateTo(task.route)">
-              <div class="flex items-center gap-3">
-                <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                <span class="badge text-[10px]" :class="taskBadgeClass(task.type)">{{ task.type }}</span>
-                <span class="text-sm text-surface-200">{{ task.label }}</span>
-                <span class="text-xs text-surface-500">{{ task.detail }}</span>
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0"></span>
+                <span class="badge text-[10px] shrink-0" :class="taskBadgeClass(task.type)">{{ task.type }}</span>
+                <span class="text-sm text-surface-200 truncate">{{ task.label }}</span>
+                <span class="text-xs text-surface-500 truncate hidden sm:inline">{{ task.detail }}</span>
               </div>
-              <div class="flex items-center gap-3">
+              <div class="flex items-center gap-3 shrink-0">
                 <div v-if="task.progress != null" class="flex items-center gap-2">
                   <div class="w-24 h-1.5 bg-surface-700 rounded-full overflow-hidden">
                     <div class="h-full bg-brand-500 rounded-full transition-all" :style="{ width: task.progress + '%' }"></div>

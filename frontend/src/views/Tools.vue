@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1 class="text-xl font-semibold mb-6">Tools</h1>
+    <h1 class="text-2xl font-bold text-center mb-8">Tools</h1>
 
     <!-- Tool Tabs -->
     <div class="flex gap-2 mb-5">
@@ -15,21 +15,21 @@
       <!-- Pip Calculator -->
       <div class="card mt-6 mb-6">
         <h2 class="text-sm font-semibold mb-4 text-surface-300">Pip Value Calculator</h2>
-        <div class="flex items-end gap-4">
+        <div class="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">
           <div class="flex-1">
             <label class="label">Symbol</label>
             <select v-model="calcSymbol" class="select">
               <option v-for="inst in instruments" :key="inst.symbol" :value="inst.symbol">{{ inst.symbol }}</option>
             </select>
           </div>
-          <div class="w-32">
+          <div class="w-full sm:w-32">
             <label class="label">Lot Size</label>
             <input v-model.number="calcLots" type="number" step="0.01" min="0.01" class="input" />
           </div>
-          <button @click="calculatePip" class="btn-primary">Calculate</button>
+          <button @click="calculatePip" class="btn-primary w-full sm:w-auto">Calculate</button>
         </div>
         <div v-if="pipResult" class="mt-4 p-3 bg-surface-800 rounded-lg text-sm">
-          <div class="grid grid-cols-4 gap-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <span class="text-surface-500 text-xs">Symbol</span>
               <div class="text-surface-100 font-medium">{{ pipResult.symbol }}</div>
@@ -49,21 +49,22 @@
           </div>
         </div>
       </div>
-      <div class="flex items-center gap-3 mb-5">
-        <div class="flex gap-2">
+      <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-5">
+        <div class="flex gap-2 flex-wrap">
           <button v-for="tab in assetTabs" :key="tab.value" @click="assetFilter = tab.value"
             class="btn-sm" :class="assetFilter === tab.value ? 'bg-brand-600 text-white' : 'bg-surface-800 text-surface-400 hover:text-surface-200'">
             {{ tab.label }}
           </button>
         </div>
-        <input v-model="search" type="text" class="input max-w-xs ml-auto" placeholder="Search symbol..." />
+        <input v-model="search" type="text" class="input w-full sm:max-w-xs sm:ml-auto" placeholder="Search symbol..." />
       </div>
 
       <div v-if="loadingInstr" class="text-surface-500 text-sm">Loading...</div>
 
       <div v-else>
         <div class="card overflow-hidden p-0">
-          <table class="w-full text-sm">
+          <div class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[600px]">
             <thead>
               <tr class="text-surface-500 bg-surface-900 text-xs">
                 <th class="text-left px-4 py-2.5 font-medium">Symbol</th>
@@ -94,6 +95,7 @@
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
 
       </div>
@@ -188,7 +190,7 @@
 
     <!-- Detail Modal -->
     <div v-if="detail" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="detail = null">
-      <div class="card w-full max-w-md mx-4">
+      <div class="card w-full max-w-md mx-3 max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-base font-semibold font-mono">{{ detail.symbol }}</h2>
           <button @click="detail = null" class="text-surface-500 hover:text-surface-200 text-xl">&times;</button>

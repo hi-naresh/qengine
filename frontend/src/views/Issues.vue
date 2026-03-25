@@ -1,7 +1,7 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-5">
-      <h1 class="text-xl font-semibold">Issues & Feedback</h1>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+      <h1 class="text-2xl font-bold text-center sm:text-left">Issues & Feedback</h1>
       <button @click="showCreate = true" class="btn-primary btn-sm flex items-center gap-1.5">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
         New Issue
@@ -65,7 +65,7 @@
 
     <!-- Create/Edit Modal -->
     <div v-if="showCreate || showEdit" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeModal">
-      <div class="bg-surface-900 border border-surface-700 rounded-xl w-full max-w-lg mx-4 p-5">
+      <div class="bg-surface-900 border border-surface-700 rounded-xl w-full max-w-lg mx-4 p-5 max-h-[90vh] overflow-y-auto">
         <h2 class="text-sm font-semibold mb-4 text-surface-200">{{ showEdit ? 'Edit Issue' : 'New Issue' }}</h2>
         <div class="space-y-3">
           <div>
@@ -76,7 +76,7 @@
             <label class="label">Description / Log</label>
             <textarea v-model="form.description" class="input min-h-[120px] resize-y" placeholder="Detailed description, steps to reproduce, error logs..."></textarea>
           </div>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label class="label">Status</label>
               <select v-model="form.status" class="select">

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1 class="text-xl font-semibold mb-6">Settings</h1>
+    <h1 class="text-2xl font-bold text-center mb-8">Settings</h1>
 
     <!-- Settings Tabs -->
     <div class="flex gap-2 mb-5 flex-wrap">
@@ -204,7 +204,7 @@
       <!-- Broker Cost Info (leverage, fee model) -->
       <div v-if="costModel" class="card max-w-lg">
         <h2 class="text-sm font-semibold mb-4 text-surface-300">{{ selectedBrokerName }} - Broker Info</h2>
-        <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
           <div class="p-3 bg-surface-800 rounded-lg">
             <div class="text-xs text-surface-500">Fee Model</div>
             <div class="text-sm text-surface-200 capitalize">{{ costModel.fee_model }}</div>
@@ -341,7 +341,7 @@
     <div v-if="activeTab === 'Maintenance'" class="max-w-lg space-y-4">
       <div class="card">
         <h2 class="text-sm font-semibold mb-4 text-surface-300">Storage Overview</h2>
-        <div v-if="storageInfo" class="grid grid-cols-3 gap-3">
+        <div v-if="storageInfo" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div class="p-3 bg-surface-800 rounded-lg">
             <div class="text-xs text-surface-500">Cache</div>
             <div class="text-sm text-surface-200">{{ formatBytes(storageInfo.cache_size_bytes) }}</div>

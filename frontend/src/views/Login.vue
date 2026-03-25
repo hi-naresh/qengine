@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen flex items-center justify-center bg-surface-950">
-    <div class="w-full max-w-sm">
+    <div class="w-full max-w-sm px-4">
       <div class="text-center mb-8 flex flex-col items-center">
         <img src="/favicon.svg" alt="QEngine Logo" class="w-16 h-16 mb-4 drop-shadow-lg" />
         <h1 class="text-2xl font-bold text-surface-100 tracking-tight">QEngine</h1>

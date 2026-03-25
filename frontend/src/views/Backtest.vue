@@ -1,9 +1,9 @@
 <template>
   <div>
     <!-- Workspace Tabs -->
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-semibold">Backtest</h1>
-      <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+      <h1 class="text-2xl font-bold text-center sm:text-left">Backtest</h1>
+      <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg overflow-x-auto">
         <div v-for="wt in workspaceTabs" :key="wt.id"
           @click="!running && switchWorkspace(wt.id)"
           class="flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer group rounded-md transition-colors"
@@ -44,7 +44,7 @@
                 <button @click="addRoute" class="text-xs text-brand-400 hover:text-brand-300">+ Add Route</button>
               </div>
               <div v-for="(route, idx) in form.routes" :key="idx" class="flex gap-2 mb-2 items-start">
-                <div class="flex-1 grid grid-cols-3 gap-1.5">
+                <div class="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                   <div>
                     <select v-if="availableSymbols.length" v-model="route.symbol" class="select text-xs py-1.5" @change="onSymbolChange">
                       <option v-for="s in availableSymbols" :key="s" :value="s">{{ s }}</option>

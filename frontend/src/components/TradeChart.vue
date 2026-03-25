@@ -20,20 +20,20 @@
           </button>
         </div>
         <div v-if="activeTab === 'candles' && availableTimeframes.length > 1" class="w-px h-4 bg-surface-700 mx-0.5"></div>
-        <button @click="fitContent" class="p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" title="Fit content">
+        <button @click="fitContent" class="p-2 sm:p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" title="Fit content">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
         </button>
-        <button @click="zoomIn" class="p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" title="Zoom in">
+        <button @click="zoomIn" class="p-2 sm:p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" title="Zoom in">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"/></svg>
         </button>
-        <button @click="zoomOut" class="p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" title="Zoom out">
+        <button @click="zoomOut" class="p-2 sm:p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" title="Zoom out">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"/></svg>
         </button>
-        <button @click="autoScale" class="p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" title="Auto scale price">
+        <button @click="autoScale" class="p-2 sm:p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" title="Auto scale price">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
         </button>
         <div class="w-px h-4 bg-surface-700 mx-0.5"></div>
-        <button @click="toggleExpand" class="p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" :title="expanded ? 'Exit fullscreen' : 'Expand chart'">
+        <button @click="toggleExpand" class="p-2 sm:p-1.5 rounded text-surface-400 hover:text-white hover:bg-surface-700 transition-colors" :title="expanded ? 'Exit fullscreen' : 'Expand chart'">
           <svg v-if="!expanded" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
           <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"/></svg>
         </button>
@@ -62,8 +62,8 @@ const props = defineProps({
   trades: { type: Array, default: () => [] },
   equityCurve: { type: Array, default: () => [] },
   balance: { type: Number, default: 10000 },
-  candleHeight: { type: String, default: 'h-[450px]' },
-  equityHeight: { type: String, default: 'h-[300px]' },
+  candleHeight: { type: String, default: 'h-[300px] sm:h-[450px]' },
+  equityHeight: { type: String, default: 'h-[220px] sm:h-[300px]' },
   pricePrecision: { type: Number, default: 5 },
   priceMinMove: { type: Number, default: 0.00001 },
 })

@@ -17,6 +17,10 @@
   --surface-850: 248 250 252; /* card backgrounds */
   --surface-900: 255 255 255; /* sidebar / panel backgrounds */
   --surface-950: 241 245 249; /* page background */
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(226, 232, 240, 0.5);
+  --glass-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.06), 0 2px 8px -1px rgba(0, 0, 0, 0.04);
+  --glass-inset-bg: rgba(241, 245, 249, 0.5);
 }
 
 html.dark {
@@ -32,67 +36,96 @@ html.dark {
   --surface-850: 23 32 51;
   --surface-900: 15 23 42;
   --surface-950: 2 6 23;
+  --glass-bg: rgba(15, 23, 42, 0.55);
+  --glass-border: rgba(51, 65, 85, 0.4);
+  --glass-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.2), 0 2px 8px -1px rgba(0, 0, 0, 0.15);
+  --glass-inset-bg: rgba(30, 41, 59, 0.4);
 }
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply antialiased;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
   }
   ::-webkit-scrollbar {
     @apply w-1.5;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-surface-900;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-surface-600 rounded-full;
+    @apply bg-surface-600/50 rounded-full;
   }
 }
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium text-sm transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply px-5 py-2.5 rounded-2xl font-medium text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-brand-600 hover:bg-brand-700 text-white;
+    @apply btn bg-brand-600 hover:bg-brand-500 text-white shadow-lg shadow-brand-600/20 hover:shadow-brand-500/30;
   }
   .btn-secondary {
-    @apply btn bg-surface-700 hover:bg-surface-600 text-surface-200;
+    @apply btn text-surface-200 hover:text-surface-100;
+    background: var(--glass-inset-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .btn-secondary:hover {
+    background: var(--glass-bg);
   }
   .btn-danger {
-    @apply btn bg-red-600 hover:bg-red-700 text-white;
+    @apply btn bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/20;
   }
   .btn-sm {
-    @apply px-3 py-1.5 text-xs;
+    @apply px-4 py-2 text-xs rounded-xl min-h-[36px] inline-flex items-center justify-center;
   }
   .input {
-    @apply w-full px-3 py-2 bg-surface-800 border border-surface-600 rounded-lg text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm;
+    @apply w-full px-4 py-2.5 rounded-xl text-surface-100 placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-transparent text-sm transition-all duration-200;
+    background: var(--glass-inset-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+  }
+  .input:focus {
+    background: var(--glass-bg);
+    box-shadow: 0 0 0 3px rgba(0, 128, 255, 0.1);
   }
   .select {
     @apply input appearance-none cursor-pointer;
   }
   .card {
-    @apply bg-surface-850 border border-surface-700 rounded-xl p-5;
+    @apply rounded-2xl p-5 sm:p-6;
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
   }
   .label {
-    @apply block text-xs font-medium text-surface-400 mb-1;
+    @apply block text-xs font-medium text-surface-400 mb-1.5;
   }
   .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
   .badge-green {
-    @apply badge bg-green-500/20 text-green-400;
+    @apply badge bg-green-500/15 text-green-400;
   }
   .badge-blue {
-    @apply badge bg-brand-500/20 text-brand-400;
+    @apply badge bg-brand-500/15 text-brand-400;
   }
   .badge-yellow {
-    @apply badge bg-yellow-500/20 text-yellow-400;
+    @apply badge bg-yellow-500/15 text-yellow-400;
   }
   .badge-red {
-    @apply badge bg-red-500/20 text-red-400;
+    @apply badge bg-red-500/15 text-red-400;
   }
   .badge-gray {
-    @apply badge bg-surface-500/20 text-surface-400;
+    @apply badge bg-surface-500/15 text-surface-400;
   }
 }

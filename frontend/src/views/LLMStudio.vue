@@ -1,9 +1,9 @@
 <template>
   <div>
-    <h1 class="text-xl font-semibold mb-6">LLM Strategy Studio</h1>
+    <h1 class="text-2xl font-bold text-center mb-8">LLM Strategy Studio</h1>
 
     <!-- Status Bar -->
-    <div class="card mb-5 flex items-center justify-between">
+    <div class="card mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
       <div class="flex items-center gap-3">
         <span class="w-2 h-2 rounded-full" :class="llmStatus.configured ? 'bg-green-400' : 'bg-red-400'"></span>
         <span class="text-sm text-surface-300">
@@ -24,7 +24,7 @@
               <textarea v-model="genForm.description" class="input min-h-[100px] resize-y"
                 placeholder="Buy EUR-USD when RSI is oversold during London session, use 1% risk per trade with 2:1 reward ratio"></textarea>
             </div>
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label class="label">Asset Class</label>
                 <select v-model="genForm.asset_class" class="select">

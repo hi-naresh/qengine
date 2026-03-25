@@ -1,13 +1,13 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-semibold">Trading</h1>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+      <h1 class="text-2xl font-bold text-center sm:text-left">Trading</h1>
       <button @click="openStartModal" class="btn-primary btn-sm">New Session</button>
     </div>
 
     <!-- ════════════ Start Session Modal ════════════ -->
     <div v-if="showStart" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showStart = false">
-      <div class="card w-full max-w-lg mx-4">
+      <div class="card w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-base font-semibold">Start Trading Session</h2>
           <button @click="showStart = false" class="text-surface-500 hover:text-surface-200 text-xl">&times;</button>
@@ -96,7 +96,7 @@
 
       <!-- Header -->
       <div class="card py-3">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex items-center gap-3 flex-wrap">
             <span class="w-2.5 h-2.5 rounded-full" :class="activeMeta.status === 'running' ? 'bg-green-400 animate-pulse' : activeMeta.status === 'stopping' ? 'bg-yellow-400 animate-pulse' : activeMeta.status === 'error' ? 'bg-red-400' : 'bg-surface-500'"></span>
             <span class="text-sm font-semibold uppercase" :class="activeMeta.status === 'running' ? 'text-green-400' : activeMeta.status === 'stopping' ? 'text-yellow-400' : activeMeta.status === 'error' ? 'text-red-400' : 'text-surface-400'">{{ activeMeta.status }}</span>
@@ -196,9 +196,9 @@
       </div>
 
       <!-- Detail Tabs -->
-      <div class="flex gap-1 p-1 bg-surface-800 rounded-lg w-fit">
+      <div class="flex gap-1 p-1 bg-surface-800 rounded-lg w-full sm:w-fit overflow-x-auto">
         <button v-for="tab in availableTabs" :key="tab" @click="detailTab = tab"
-          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors"
+          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors whitespace-nowrap"
           :class="detailTab === tab ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
           {{ tab }}
           <span v-if="tab === 'Orders' && liveState.orders_summary" class="ml-1 text-[10px] text-surface-500">({{ liveState.orders_summary.total }})</span>
@@ -608,9 +608,9 @@
     <!-- ════════════ Main Panel (no active session) ════════════ -->
     <div v-else class="space-y-4">
       <!-- Top-level tabs -->
-      <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg w-fit">
+      <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg w-full sm:w-fit overflow-x-auto">
         <button v-for="tab in mainTabs" :key="tab" @click="mainTab = tab"
-          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors"
+          class="px-3 py-1.5 text-xs rounded-md font-medium transition-colors whitespace-nowrap"
           :class="mainTab === tab ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
           {{ tab }}
         </button>

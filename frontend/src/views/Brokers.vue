@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1 class="text-xl font-semibold mb-6">Brokers</h1>
+    <h1 class="text-2xl font-bold text-center mb-8">Brokers</h1>
 
     <!-- Filter tabs -->
     <div class="flex gap-2 mb-5">

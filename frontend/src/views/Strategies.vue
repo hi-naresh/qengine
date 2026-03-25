@@ -1,10 +1,10 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-semibold">Strategies</h1>
-      <div class="flex items-center gap-3">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+      <h1 class="text-2xl font-bold text-center sm:text-left">Strategies</h1>
+      <div class="flex items-center gap-3 overflow-x-auto">
         <!-- Editor Tabs in header -->
-        <div v-if="openEditorTabs.length" class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg">
+        <div v-if="openEditorTabs.length" class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg shrink-0">
           <div v-for="tab in openEditorTabs" :key="tab.name"
             @click="switchEditorTab(tab.name)"
             class="flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer group rounded-md transition-colors"
@@ -42,7 +42,7 @@
             <textarea v-model="aiForm.description" class="input min-h-[80px] resize-y"
               placeholder="e.g. Buy EUR-USD when 20 EMA crosses above 50 EMA during London session, risk 1% per trade with 2:1 RR"></textarea>
           </div>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div><label class="label">Name</label><input v-model="aiForm.name" class="input" placeholder="Auto" /></div>
             <div><label class="label">Asset Class</label>
               <select v-model="aiForm.asset_class" class="select">

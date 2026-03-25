@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1 class="text-xl font-semibold mb-6">Import Candle Data</h1>
+    <h1 class="text-2xl font-bold text-center mb-8">Import Candle Data</h1>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Import Form -->
@@ -102,7 +102,8 @@
             No candle data found. Import some data using the form.
           </div>
 
-          <table v-else class="w-full text-sm">
+          <div v-else class="overflow-x-auto">
+          <table class="w-full text-sm min-w-[600px]">
             <thead>
               <tr class="text-surface-500 text-xs border-b border-surface-700">
                 <th class="text-left py-2">Exchange</th>
@@ -138,6 +139,7 @@
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>
