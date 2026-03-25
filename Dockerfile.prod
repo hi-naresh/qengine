@@ -22,6 +22,9 @@ COPY . .
 COPY --from=frontend-build /qengine/static ./qengine/static/
 RUN pip install --no-cache-dir -e .
 RUN mkdir -p /qengine/storage /qengine/strategies
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 9000
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["qengine", "run"]
