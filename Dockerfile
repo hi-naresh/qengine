@@ -29,3 +29,5 @@ RUN pip3 install codecov pytest-cov
 ENTRYPOINT pytest --cov=./ # && codecov
 
 FROM qengine_with_test_${TEST_BUILD} AS qengine_final
+WORKDIR /qengine
+CMD ["uvicorn", "qengine:fastapi_app", "--host", "0.0.0.0", "--port", "8000"]
