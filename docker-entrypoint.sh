@@ -13,12 +13,10 @@ ENV_KEYS=(
   IBKR_ACCOUNT_ID IBKR_HOST IBKR_PORT
 )
 
+# Always write all keys (even if empty — app expects them to exist)
 : > /qengine/.env
 for key in "${ENV_KEYS[@]}"; do
-  val="${!key:-}"
-  if [ -n "$val" ]; then
-    echo "${key}=${val}" >> /qengine/.env
-  fi
+  echo "${key}=${!key:-}" >> /qengine/.env
 done
 
 echo "[entrypoint] .env generated with $(wc -l < /qengine/.env) vars"
