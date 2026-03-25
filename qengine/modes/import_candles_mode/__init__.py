@@ -4,7 +4,6 @@ from datetime import timedelta
 from typing import Dict, List, Any, Union
 
 import arrow
-import pydash
 from timeloop import Timeloop
 
 import qengine.helpers as jh
@@ -88,8 +87,6 @@ def run(
     loop_length = int(candles_count / driver.count) + 1
 
     progressbar = Progressbar(loop_length, step=2)
-    frontend_update_counter = 0
-    frontend_update_threshold = 100  # Only notify frontend after this many updates when skipping existing candles
     skipped_minutes = 0
     imported_minutes = 0
 
@@ -101,6 +98,18 @@ def run(
             'count': 0,
             'status': 'importing',
         })
+
+    # Pre-fetch existing timestamp ranges in one query to avoid per-batch DB round-trips
+    existing_timestamps = set()
+    try:
+        rows = Candle.select(Candle.timestamp).where(
+            Candle.exchange == exchange,
+            Candle.symbol == symbol,
+            (Candle.timeframe == '1m') | (Candle.timeframe.is_null()),
+        ).tuples()
+        existing_timestamps = {r[0] for r in rows}
+    except Exception:
+        pass
 
     for i in range(candles_count):
         temp_start_timestamp = start_date.int_timestamp * 1000
@@ -123,14 +132,13 @@ def run(
                 progressbar.update()
             continue
 
-        # prevent duplicates calls to boost performance
-        count = Candle.select().where(
-            Candle.exchange == exchange,
-            Candle.symbol == symbol,
-            (Candle.timeframe == '1m') | (Candle.timeframe.is_null()),
-            Candle.timestamp.between(temp_start_timestamp, temp_end_timestamp)
-        ).count()
-        already_exists = count == driver.count
+        # Check existence using in-memory set instead of DB query per batch
+        expected_count = min(driver.count, int((temp_end_timestamp - temp_start_timestamp) / 60000) + 1)
+        batch_existing = sum(
+            1 for ts in range(temp_start_timestamp, temp_end_timestamp + 60000, 60000)
+            if ts in existing_timestamps
+        )
+        already_exists = batch_existing >= expected_count
 
         if already_exists:
             skipped_minutes += driver.count
@@ -190,35 +198,26 @@ def run(
             candles = _fill_absent_candles(candles, temp_start_timestamp, temp_end_timestamp)
 
             # store in the database (skip if no candles, e.g. market closed)
+            # ON CONFLICT IGNORE handles duplicates, so no pre-check needed
             if candles:
                 store_candles_list(candles)
+                # Update in-memory set with newly stored timestamps
+                for c in candles:
+                    existing_timestamps.add(c['timestamp'])
 
         # add as much as driver's count to the temp_start_time
         start_date = start_date.shift(minutes=driver.count)
 
         if i % 2 == 0:
             progressbar.update()
-            
-            # For existing candles, throttle frontend updates
-            if already_exists:
-                frontend_update_counter += 1
-                if frontend_update_counter >= frontend_update_threshold:
-                    frontend_update_counter = 0
-                    if running_via_dashboard:
-                        sync_publish('progressbar', {
-                            'current': progressbar.current,
-                            'estimated_remaining_seconds': progressbar.estimated_remaining_seconds,
-                            'count': imported_minutes + skipped_minutes,
-                        })
-            # For new candles being fetched, update frontend normally
-            else:
-                if running_via_dashboard:
-                    sync_publish('progressbar', {
-                        'current': progressbar.current,
-                        'estimated_remaining_seconds': progressbar.estimated_remaining_seconds,
-                        'count': imported_minutes + skipped_minutes,
-                    })
-            
+
+            if running_via_dashboard:
+                sync_publish('progressbar', {
+                    'current': progressbar.current,
+                    'estimated_remaining_seconds': progressbar.estimated_remaining_seconds,
+                    'count': imported_minutes + skipped_minutes,
+                })
+
             if show_progressbar:
                 jh.clear_output()
                 print(
@@ -375,54 +374,45 @@ def _get_candles_from_backup_exchange(exchange: str, backup_driver: CandleExchan
 def _fill_absent_candles(temp_candles: List[Dict[str, Union[str, Any]]], start_timestamp: int, end_timestamp: int) -> \
         List[Dict[str, Union[str, Any]]]:
     if not temp_candles:
-        # Return empty list if market is closed (weekend/off-hours) instead of crashing
         return []
 
     symbol = temp_candles[0]['symbol']
     exchange = temp_candles[0]['exchange']
-    candles = []
     first_candle = temp_candles[0]
+
+    # Build O(1) lookup dict instead of O(n) pydash.find per timestamp
+    candle_map = {c['timestamp']: c for c in temp_candles}
+
+    candles = []
     started = False
-    loop_length = ((end_timestamp - start_timestamp) / 60000) + 1
+    loop_length = int((end_timestamp - start_timestamp) / 60000) + 1
+    ts = start_timestamp
 
-    for _ in range(int(loop_length)):
-        candle_for_timestamp = pydash.find(
-            temp_candles, lambda c: c['timestamp'] == start_timestamp)
+    for _ in range(loop_length):
+        candle = candle_map.get(ts)
 
-        if candle_for_timestamp is None:
+        if candle is None:
             if started:
                 last_close = candles[-1]['close']
-                candles.append({
-                    'id': jh.generate_unique_id(),
-                    'exchange': exchange,
-                    'symbol': symbol,
-                    'timeframe': '1m',
-                    'timestamp': start_timestamp,
-                    'open': last_close,
-                    'high': last_close,
-                    'low': last_close,
-                    'close': last_close,
-                    'volume': 0
-                })
             else:
-                candles.append({
-                    'id': jh.generate_unique_id(),
-                    'exchange': exchange,
-                    'symbol': symbol,
-                    'timeframe': '1m',
-                    'timestamp': start_timestamp,
-                    'open': first_candle['open'],
-                    'high': first_candle['open'],
-                    'low': first_candle['open'],
-                    'close': first_candle['open'],
-                    'volume': 0
-                })
-        # candle is present
+                last_close = first_candle['open']
+            candles.append({
+                'id': jh.generate_unique_id(),
+                'exchange': exchange,
+                'symbol': symbol,
+                'timeframe': '1m',
+                'timestamp': ts,
+                'open': last_close,
+                'high': last_close,
+                'low': last_close,
+                'close': last_close,
+                'volume': 0
+            })
         else:
             started = True
-            candles.append(candle_for_timestamp)
+            candles.append(candle)
 
-        start_timestamp += 60000
+        ts += 60000
     return candles
 
 
@@ -430,4 +420,7 @@ def store_candles_list(candles: List[Dict]) -> None:
     for c in candles:
         if 'timeframe' not in c:
             raise Exception('Candle has no timeframe')
-    Candle.insert_many(candles).on_conflict_ignore().execute()
+    # Batch insert in chunks to avoid hitting Postgres parameter limits
+    batch_size = 1000
+    for j in range(0, len(candles), batch_size):
+        Candle.insert_many(candles[j:j + batch_size]).on_conflict_ignore().execute()
