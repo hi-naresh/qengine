@@ -144,6 +144,7 @@
             </span>
             <span v-if="currentEnvStatus.details.account_id" class="ml-3">
               Account: {{ currentEnvStatus.details.account_id }}
+              <span v-if="currentEnvStatus.details.account_type" class="text-surface-500">({{ currentEnvStatus.details.account_type }})</span>
             </span>
           </div>
           <div v-if="currentEnvStatus?.connected === false && currentEnvStatus?.error" class="mt-1 text-xs text-red-400/80">
@@ -174,6 +175,10 @@
             <label class="label">{{ modalBroker.name === 'IG Markets' ? 'Username' : 'Account ID' }}</label>
             <input v-model="form.account_id" class="input"
               :placeholder="modalBroker.name === 'IG Markets' ? 'IG username' : 'Account ID'" />
+          </div>
+          <div v-if="modalBroker.name === 'IG Markets'">
+            <label class="label">Account ID <span class="text-surface-500 font-normal">(optional — auto-detects CFD account if empty)</span></label>
+            <input v-model="form.ig_account_id" class="input" placeholder="e.g. ABCDE" />
           </div>
 
           <button @click="saveAndTest" class="btn-primary w-full" :disabled="saving">
@@ -209,7 +214,7 @@ const connectionStatuses = ref({})
 // Modal state
 const modalBroker = ref(null)
 const modalEnv = ref('demo')
-const form = ref({ api_key: '', api_secret: '', account_id: '' })
+const form = ref({ api_key: '', api_secret: '', account_id: '', ig_account_id: '' })
 const saving = ref(false)
 const formMessage = ref('')
 const formError = ref(false)
@@ -245,7 +250,7 @@ function openModal(broker) {
   } else {
     modalEnv.value = 'demo'
   }
-  form.value = { api_key: '', api_secret: '', account_id: '' }
+  form.value = { api_key: '', api_secret: '', account_id: '', ig_account_id: '' }
   formMessage.value = ''
 }
 
@@ -264,11 +269,15 @@ async function saveAndTest() {
 
   try {
     // Save credentials
+    const additionalFields = {}
+    if (form.value.ig_account_id) additionalFields.ig_account_id = form.value.ig_account_id
+
     await api.saveBrokerSettings({
       broker: envId,
       api_key: form.value.api_key,
       api_secret: form.value.api_secret,
       account_id: form.value.account_id,
+      additional_fields: Object.keys(additionalFields).length ? additionalFields : undefined,
     })
 
     formMessage.value = 'Saved. Testing connection...'
@@ -280,6 +289,7 @@ async function saveAndTest() {
       api_key: form.value.api_key,
       api_secret: form.value.api_secret,
       account_id: form.value.account_id,
+      additional_fields: Object.keys(additionalFields).length ? additionalFields : undefined,
     })
     connectionStatuses.value[envId] = res.data
 
@@ -293,7 +303,7 @@ async function saveAndTest() {
 
     // Refresh broker list + saved settings
     await refreshData()
-    form.value = { api_key: '', api_secret: '', account_id: '' }
+    form.value = { api_key: '', api_secret: '', account_id: '', ig_account_id: '' }
   } catch (e) {
     formMessage.value = e.message
     formError.value = true

@@ -494,7 +494,7 @@ ax.set_xlabel('Average Bust Loss ($)')
 ax.set_title('Bust Severity by Strategy', fontweight='bold')
 ax.axvline(x=0, color='black', linewidth=0.5)
 
-plt.suptitle('SurefireHedge V2: Abort & Sizing Strategies — EUR-USD 5m (2024-2026)',
+plt.suptitle('Surefire V2: Abort & Sizing Strategies — EUR-USD 5m (2024-2026)',
              fontsize=14, fontweight='bold', y=1.01)
 plt.tight_layout()
 fig.savefig(f'{OUTPUT_DIR}/08_abort_sizing.png', dpi=150, bbox_inches='tight')

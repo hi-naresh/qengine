@@ -55,6 +55,7 @@ def live(request_json: LiveRequestJson, authorization: Optional[str] = Header(No
                 'notification_api_key_id': request_json.notification_api_key_id,
                 'routes': request_json.routes,
                 'data_routes': request_json.data_routes,
+                'hyperparameters': request_json.hyperparameters,
             }
         },
     )
@@ -71,6 +72,7 @@ def live(request_json: LiveRequestJson, authorization: Optional[str] = Header(No
         request_json.routes,
         request_json.data_routes,
         trading_mode,
+        request_json.hyperparameters,
     )
 
     mode = 'paper' if is_paper else 'live'

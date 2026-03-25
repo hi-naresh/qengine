@@ -38,8 +38,7 @@ class Strategy(ABC):
         self.last_trade_index = 0
         self.vars = {}
 
-        # Hedge mode: when True, allows simultaneous conceptual long+short legs
-        # tracked in self.vars['_hedge_legs']. Futures only. Bypasses ConflictingRules.
+        # Hedge mode: when True, bypasses ConflictingRules for should_long+should_short
         self.hedge_mode: bool = False
 
         self.increased_count = 0
@@ -72,6 +71,8 @@ class Strategy(ABC):
         self.chart_label: str = ''
 
         # # Variables used for ML calculations
+        # self.ml_mode = "gather" # "gather" or "deploy"
+
         # self._ml_data_points = []  # Stores complete data points with features and labels
         # self._current_ml_point = None  # Tracks the currently open data point
         # self._ml_model = None  # Cached loaded model (loaded once on first prediction)
@@ -477,26 +478,33 @@ class Strategy(ABC):
 
         self._handle_executed_order_for_chart(order)
 
-        # this is the last executed order, and had its effect on
-        # the position. We need to know what its effect was:
-        before_qty = self.position.previous_qty
-        after_qty = self.position.qty
+        # CFD mode: determine effect from ticket changes
+        if self.position.is_cfd_mode:
+            if order.reduce_only:
+                if self.position.ticket_count == 0:
+                    effect = 'closing_position'
+                else:
+                    effect = 'ticket_closed'
+            elif self.position.ticket_count == 1:
+                effect = 'opening_position'
+            else:
+                effect = 'ticket_opened'
+        else:
+            # Standard mode: determine effect from qty changes
+            before_qty = self.position.previous_qty
+            after_qty = self.position.qty
 
-        # if opening position
-        if abs(before_qty) <= abs(self.position._min_qty) < abs(after_qty):
-            effect = 'opening_position'
-        # if closing position
-        elif abs(before_qty) > abs(self.position._min_qty) >= abs(after_qty):
-            effect = 'closing_position'
-        # if increasing position size
-        elif abs(after_qty) > abs(before_qty):
-            effect = 'increased_position'
-        # if reducing position size
-        else:  # abs(after_qty) < abs(before_qty):
-            effect = 'reduced_position'
+            if abs(before_qty) <= abs(self.position._min_qty) < abs(after_qty):
+                effect = 'opening_position'
+            elif abs(before_qty) > abs(self.position._min_qty) >= abs(after_qty):
+                effect = 'closing_position'
+            elif abs(after_qty) > abs(before_qty):
+                effect = 'increased_position'
+            else:
+                effect = 'reduced_position'
 
-        # call the relevant strategy event handler:
         if effect == 'opening_position':
+            after_qty = self.position.qty
             txt = f"OPENED {self.position.type} position for {self.symbol}: qty: {after_qty}, entry_price: {self.position.entry_price}"
             if jh.is_backtesting():
                 store.logs.add(txt, 'position')
@@ -506,7 +514,6 @@ class Strategy(ABC):
                 notifier.notify(txt)
             self._on_open_position(order)
         elif effect == 'closing_position':
-            # Include PnL info in close log
             pnl_txt = ''
             if store.closed_trades.trades:
                 last_trade = store.closed_trades.trades[-1]
@@ -519,7 +526,22 @@ class Strategy(ABC):
             if jh.is_live() and jh.get_config('env.notifications.events.updated_position'):
                 notifier.notify(txt)
             self._on_close_position(order)
+        elif effect == 'ticket_opened':
+            txt = f"CFD ticket #{self.position.ticket_count} opened for {self.symbol}, net qty: {self.position.qty}"
+            if jh.is_backtesting():
+                store.logs.add(txt, 'position')
+            if jh.is_debuggable('position_opened'):
+                logger.info(txt)
+            self.on_ticket_opened(order)
+        elif effect == 'ticket_closed':
+            txt = f"CFD ticket closed for {self.symbol}, {self.position.ticket_count} remaining"
+            if jh.is_backtesting():
+                store.logs.add(txt, 'position')
+            if jh.is_debuggable('position_closed'):
+                logger.info(txt)
+            self.on_ticket_closed(order)
         elif effect == 'increased_position':
+            after_qty = self.position.qty
             txt = f"INCREASED Position size to {after_qty}"
             if jh.is_backtesting():
                 store.logs.add(txt, 'position')
@@ -528,7 +550,8 @@ class Strategy(ABC):
             if jh.is_live() and jh.get_config('env.notifications.events.updated_position'):
                 notifier.notify(txt)
             self._on_increased_position(order)
-        else:  # if effect == 'reduced_position':
+        else:  # reduced_position
+            after_qty = self.position.qty
             txt = f"REDUCED Position size to {after_qty}"
             if jh.is_backtesting():
                 store.logs.add(txt, 'position')
@@ -1041,8 +1064,14 @@ class Strategy(ABC):
         self._simulate_market_order_execution()
 
         # should_long and should_short
-        if self.position.is_close and self.entry_orders == []:
-            self._reset()
+        # In CFD mode: also check for entry while position is open (adding tickets)
+        can_check_entry = self.position.is_close and self.entry_orders == []
+        if self.position.is_cfd_mode and self.position.is_open:
+            can_check_entry = True
+
+        if can_check_entry:
+            if self.position.is_close:
+                self._reset()
 
             should_short = self.should_short()
             # validate that should_short is not True if the exchange_type is spot
@@ -1199,6 +1228,125 @@ class Strategy(ABC):
         """
         pass
 
+    def on_ticket_opened(self, order) -> None:
+        """Called in CFD mode when a new ticket is opened while other tickets exist."""
+        pass
+
+    def on_ticket_closed(self, order) -> None:
+        """Called in CFD mode when a ticket is closed but other tickets remain open."""
+        pass
+
+    def close_all_tickets(self, exit_price: float = None, meta: dict = None) -> None:
+        """Close all CFD tickets at the given price (or current price).
+        Settles all tickets, records per-ticket trades, fires close callback.
+
+        In live trading, also submits market close orders to the broker so that
+        real positions are actually closed (not just internal state).
+
+        Args:
+            exit_price: Price to close at (defaults to current price).
+            meta: Optional dict merged into each trade's meta (e.g. session, level, exit_reason).
+        """
+        if not self.position.is_cfd_mode or not self.position._tickets:
+            return
+        price = exit_price or self.price
+
+        # In live trading, compute gross long/short qty BEFORE clearing tickets
+        # so we can submit broker close orders afterwards.
+        if jh.is_livetrading():
+            long_qty = sum(t.qty for t in self.position._tickets if t.type == 'long')
+            short_qty = sum(t.qty for t in self.position._tickets if t.type == 'short')
+
+        from qengine.services import closed_trade_service
+        results = self.position.close_all_tickets(price)
+        total_pnl = sum(r['pnl'] for r in results)
+        if self.position.exchange:
+            self.position.exchange.add_realized_pnl(total_pnl)
+        for i, r in enumerate(results):
+            ticket_meta = dict(meta) if meta else {}
+            ticket_meta['leg_index'] = i
+            closed_trade_service.record_ticket_close(self.position, r['ticket'], price, r['pnl'], meta=ticket_meta)
+        self.trades_count += len(results)
+        # Reset position state
+        self.position.entry_price = None
+        self.position.exit_price = price
+        self.position.closed_at = jh.now_to_timestamp()
+        # Cancel any pending orders
+        self._execute_cancel()
+
+        # In live trading, submit close orders directly to the broker's REST API.
+        # We use _submit_market_order() to bypass the internal order execution flow
+        # (tickets are already cleared above, so no double callbacks or double PnL).
+        if jh.is_livetrading():
+            from qengine.services.api import api
+            driver = api.drivers.get(self.exchange)
+            if driver:
+                try:
+                    if long_qty > 0:
+                        driver._submit_market_order(self.symbol, long_qty, price, 'sell', reduce_only=True)
+                        logger.info(f'CFD live: submitted broker SELL {long_qty} to close long tickets')
+                    if short_qty > 0:
+                        driver._submit_market_order(self.symbol, short_qty, price, 'buy', reduce_only=True)
+                        logger.info(f'CFD live: submitted broker BUY {short_qty} to close short tickets')
+                except Exception as e:
+                    logger.error(f'CFD live: failed to submit broker close order: {e}')
+
+        # Fire close callback
+        if store.closed_trades.trades:
+            closed_trade = store.closed_trades.trades[-1]
+            self.on_close_position(None, closed_trade)
+
+    def close_ticket(self, ticket_id: str, exit_price: float = None, meta: dict = None) -> None:
+        """Close a specific CFD ticket by ID.
+
+        In live trading, also submits a market close order to the broker.
+
+        Args:
+            ticket_id: ID of the ticket to close.
+            exit_price: Price to close at (defaults to current price).
+            meta: Optional dict merged into the trade's meta.
+        """
+        if not self.position.is_cfd_mode:
+            return
+        # Capture ticket info before closing (needed for broker order in live mode)
+        ticket_obj = self.position.get_ticket(ticket_id)
+        if ticket_obj is None:
+            return
+
+        price = exit_price or self.price
+        from qengine.services import closed_trade_service
+        result = self.position.close_ticket(ticket_id, price)
+        if result is None:
+            return
+        ticket = result['ticket']
+        pnl = result['pnl']
+        if self.position.exchange:
+            self.position.exchange.add_realized_pnl(pnl)
+        closed_trade_service.record_ticket_close(self.position, ticket, price, pnl, meta=meta)
+        self.trades_count += 1
+
+        # In live trading, submit close order to broker
+        if jh.is_livetrading():
+            from qengine.services.api import api
+            driver = api.drivers.get(self.exchange)
+            if driver:
+                try:
+                    close_side = 'sell' if ticket.type == 'long' else 'buy'
+                    driver._submit_market_order(self.symbol, ticket.qty, price, close_side, reduce_only=True)
+                    logger.info(f'CFD live: submitted broker {close_side.upper()} {ticket.qty} to close ticket {ticket.id[:8]}')
+                except Exception as e:
+                    logger.error(f'CFD live: failed to submit broker close for ticket {ticket.id[:8]}: {e}')
+
+        # If all tickets closed, fire close callback
+        if self.position.ticket_count == 0:
+            self.position.entry_price = None
+            self.position.exit_price = price
+            self.position.closed_at = jh.now_to_timestamp()
+            self._execute_cancel()
+            if store.closed_trades.trades:
+                closed_trade = store.closed_trades.trades[-1]
+                self.on_close_position(None, closed_trade)
+
     def on_route_open_position(self, strategy) -> None:
         """used when trading multiple routes that related
 
@@ -1248,19 +1396,21 @@ class Strategy(ABC):
             return
 
         self._is_executing = True
-        
-        # Cache the current price at the start of execution
-        self._cached_price = self.close
-        
-        self.before()
-        self._check()
-        self.after()
-        self._clear_cached_methods()
 
-        # Clear the cached price
-        self._cached_price = None
-        self._is_executing = False
-        self.index += 1
+        try:
+            # Cache the current price at the start of execution
+            self._cached_price = self.close
+
+            self.before()
+            self._check()
+            self.after()
+            self._clear_cached_methods()
+
+            self.index += 1
+        finally:
+            # Always reset execution state so strategy isn't permanently stuck
+            self._cached_price = None
+            self._is_executing = False
 
     def _terminate(self) -> None:
         """
@@ -1292,11 +1442,15 @@ class Strategy(ABC):
             logger.info(
                 f"Closed open {self.exchange}-{self.symbol} position at {self.position.current_price} with PNL: {round(self.position.pnl, 4)}({round(self.position.pnl_percentage, 2)}%) because we reached the end of the backtest session."
             )
-            # first cancel all active orders so the balances would go back to the original state
-            if self.exchange_type == 'spot':
-                self.broker.cancel_all_orders()
-            # fake a closing (market) order so that the calculations would be correct
-            self.broker.reduce_position_at(self.position.qty, self.position.current_price, self.price)
+            if self.position.is_cfd_mode and self.position._tickets:
+                # Close all CFD tickets at current price
+                self.close_all_tickets(self.position.current_price)
+            else:
+                # first cancel all active orders so the balances would go back to the original state
+                if self.exchange_type == 'spot':
+                    self.broker.cancel_all_orders()
+                # fake a closing (market) order so that the calculations would be correct
+                self.broker.reduce_position_at(self.position.qty, self.position.current_price, self.price)
             self.terminate()
             return
 
@@ -1678,13 +1832,13 @@ class Strategy(ABC):
 
             total_position_values = entry_orders_value + positions_value
 
-        # in futures and forex_cfd mode, it's simpler:
-        elif self.is_futures_trading or self.is_forex_cfd_trading:
+        # in futures and cfd mode, it's simpler:
+        elif self.is_futures_trading or self.is_cfd_trading:
             for key, p in self.all_positions.items():
                 total_position_values += p.pnl
 
-        # For spot/futures, PnL is scaled by leverage; for forex_cfd, PnL is already in actual dollars
-        if self.is_forex_cfd_trading:
+        # For spot/futures, PnL is scaled by leverage; for CFD, PnL is already in actual dollars
+        if self.is_cfd_trading:
             return total_position_values + self.balance
         return (total_position_values * self.leverage) + self.balance
 
@@ -1736,8 +1890,14 @@ class Strategy(ABC):
         return self.exchange_type == 'futures'
 
     @property
+    @property
+    def is_cfd_trading(self) -> bool:
+        return self.exchange_type == 'cfd'
+
+    @property
     def is_forex_cfd_trading(self) -> bool:
-        return self.exchange_type in ('forex_cfd', 'cfd', 'multi_asset')
+        """Alias for is_cfd_trading (backwards compatibility)."""
+        return self.is_cfd_trading
 
     # ── Forex/CFD-specific properties ──
 

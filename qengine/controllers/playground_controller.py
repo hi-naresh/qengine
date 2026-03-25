@@ -91,6 +91,19 @@ def get_strategy_hyperparams(request_json: dict = Body(...), authorization: Opti
                                             e.value if isinstance(e, ast.Constant) else str(e)
                                             for e in v.elts
                                         ]
+                                    elif isinstance(v, ast.Dict):
+                                        # Nested dict (e.g. depends_on: {'signal_mode': ['ema', ...]})
+                                        nested = {}
+                                        for nk, nv in zip(v.keys, v.values):
+                                            nkey = nk.value if isinstance(nk, ast.Constant) else str(nk)
+                                            if isinstance(nv, ast.List):
+                                                nested[nkey] = [
+                                                    e.value if isinstance(e, ast.Constant) else str(e)
+                                                    for e in nv.elts
+                                                ]
+                                            elif isinstance(nv, ast.Constant):
+                                                nested[nkey] = nv.value
+                                        hp[key] = nested
                                     elif isinstance(v, ast.UnaryOp) and isinstance(v.op, ast.USub):
                                         if isinstance(v.operand, ast.Constant):
                                             hp[key] = -v.operand.value
@@ -250,8 +263,9 @@ def _run_playground_simulation(
     config['app']['skip_market_hours'] = True  # Playground uses synthetic data, skip market hours
     register_custom_exception_handler()
 
-    # Build user config
-    exchange_type = 'forex_cfd'
+    # Build user config — detect exchange type from broker_info
+    from qengine.info import broker_info
+    exchange_type = broker_info.get(exchange_name, {}).get('type', 'cfd')
     user_config = {
         'warm_up_candles': warm_up_candles,
         'exchanges': {

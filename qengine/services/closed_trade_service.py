@@ -74,6 +74,54 @@ def open_trade(position, p_orders: list = None) -> None:
             add_order_record_only(order)
 
 
+def record_ticket_close(position: Position, ticket, exit_price: float, pnl: float, meta: dict = None) -> None:
+    """Create a ClosedTrade record for an individual CFD ticket.
+
+    Args:
+        meta: Optional dict merged into trade.meta (e.g. session number, level, exit_reason).
+    """
+    trade = ClosedTrade({
+        'id': jh.generate_unique_id(),
+        'session_id': store.app.session_id,
+        'created_at': jh.now_to_timestamp(),
+        'updated_at': jh.now_to_timestamp(),
+        'session_mode': 'backtest' if jh.is_backtesting() else ('paper' if jh.is_paper_trading() else 'livetrade'),
+    })
+    trade.opened_at = ticket.opened_at
+    trade.closed_at = jh.now_to_timestamp()
+    trade.leverage = position.leverage
+    try:
+        trade.timeframe = position.strategy.timeframe
+        trade.strategy_name = position.strategy.name
+    except AttributeError:
+        trade.timeframe = None
+        trade.strategy_name = None
+    trade.exchange = position.exchange_name
+    trade.symbol = position.symbol
+    trade.type = ticket.type
+
+    entry_qty = ticket.qty
+    if ticket.type == 'long':
+        trade.buy_orders.append(np.array([entry_qty, ticket.entry_price]))
+        trade.sell_orders.append(np.array([entry_qty, exit_price]))
+    else:
+        trade.sell_orders.append(np.array([entry_qty, ticket.entry_price]))
+        trade.buy_orders.append(np.array([entry_qty, exit_price]))
+
+    trade.meta = {'cfd_ticket': True, 'ticket_id': ticket.id}
+    if meta:
+        trade.meta.update(meta)
+
+    # Note: trades_count is incremented by the caller (Strategy.close_all_tickets
+    # or Strategy.close_ticket), not here, to avoid double counting.
+
+    store.closed_trades.trades.append(trade)
+    logger.info(
+        f"CLOSED CFD ticket {ticket.type} for {position.exchange_name}-{position.symbol}: "
+        f"qty: {entry_qty}, entry: {ticket.entry_price}, exit: {exit_price}, PNL: {round(pnl, 2)}"
+    )
+
+
 def close_trade(position: Position) -> None:
     t: ClosedTrade = store.closed_trades._get_current_trade(position.exchange_name, position.symbol)
 

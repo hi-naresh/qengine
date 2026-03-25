@@ -170,7 +170,8 @@ def get_backtest_session(session: BacktestSession) -> dict:
         'state': session.state_json if session.state else None,
         'title': session.title,
         'description': session.description,
-        'strategy_codes': session.strategy_codes_json
+        'strategy_codes': session.strategy_codes_json,
+        'hyperparameters': json.loads(session.hyperparameters) if session.hyperparameters else None,
     }
 
     return jh.clean_nan_values(jh.clean_infinite_values(result))

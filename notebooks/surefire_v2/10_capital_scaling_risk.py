@@ -740,7 +740,7 @@ ax.axhline(y=100, color='gray', linestyle=':', alpha=0.5)
 ax.legend(fontsize=8)
 ax.grid(True, alpha=0.3)
 
-plt.suptitle('SurefireHedge V2: Capital Scaling with % Equity Sizing', fontsize=15, fontweight='bold')
+plt.suptitle('Surefire V2: Capital Scaling with % Equity Sizing', fontsize=15, fontweight='bold')
 plt.tight_layout()
 fig.savefig(f'{OUTPUT_DIR}/10_capital_scaling_equity.png', dpi=150, bbox_inches='tight')
 plt.close()

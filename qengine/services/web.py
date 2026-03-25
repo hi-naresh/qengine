@@ -84,6 +84,7 @@ class LiveRequestJson(BaseModel):
     data_routes: List[Dict[str, str]]
     debug_mode: bool
     paper_mode: Optional[bool] = None
+    hyperparameters: Optional[dict] = None
 
 
 class LiveCancelRequestJson(BaseModel):

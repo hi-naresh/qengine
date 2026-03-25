@@ -23,3 +23,8 @@ Dockerfile
 docker-compose.yml
 .idea
 venv
+frontend/node_modules
+.env
+storage
+*.sqlite
+notebooks

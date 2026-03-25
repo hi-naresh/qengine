@@ -21,7 +21,7 @@ def initialize_positions_state() -> None:
 def create_position(exchange_name: str, symbol: str, attributes: dict = None) -> Position:
     p = Position(attributes)
     if p.id is None:
-        p.id = jh.generate_unique_id()  
+        p.id = jh.generate_unique_id()
     p.exchange_name = exchange_name
     p.exchange = store.exchanges.get_exchange(exchange_name)
     p.symbol = symbol
@@ -35,7 +35,7 @@ def _mutating_close(position: Position, close_price: float) -> None:
     position.exit_price = close_price
     position.closed_at = jh.now_to_timestamp()
 
-    if position.exchange and position.exchange.type in ('futures', 'forex_cfd', 'cfd', 'multi_asset'):
+    if position.exchange and position.exchange.type in ('futures', 'cfd'):
         # just to prevent confusion
         close_qty = abs(position.qty)
         estimated_profit = jh.estimate_PNL(
@@ -70,7 +70,7 @@ def _mutating_reduce(position: Position, qty: float, price: float) -> None:
 
     estimated_profit = jh.estimate_PNL(qty, position.entry_price, price, position.type)
 
-    if position.exchange and position.exchange.type in ('futures', 'forex_cfd', 'cfd', 'multi_asset'):
+    if position.exchange and position.exchange.type in ('futures', 'cfd'):
         position.exchange.add_realized_pnl(estimated_profit)
         position.exchange.temp_reduced_amount[jh.base_asset(position.symbol)] += abs(qty * price)
 
@@ -122,11 +122,9 @@ def _update_qty(position: Position, qty: float, operation='set'):
         elif operation == 'add':
             position.qty = sum_floats(position.qty, qty * (1 - position.exchange.fee_rate))
         elif operation == 'subtract':
-            # fees are taken from the quote currency. in spot mode, sell orders cause
-            # the qty to reduce but fees are handled on the exchange balance stuff
             position.qty = subtract_floats(position.qty, qty)
 
-    elif position.exchange_type in ('futures', 'forex_cfd', 'cfd', 'multi_asset'):
+    elif position.exchange_type in ('futures', 'cfd'):
         if operation == 'set':
             position.qty = qty
         elif operation == 'add':
@@ -137,6 +135,49 @@ def _update_qty(position: Position, qty: float, operation='set'):
         raise NotImplementedError(f'exchange type not implemented: {position.exchange_type}')
 
 
+def _handle_cfd_order(position: Position, order: Order) -> None:
+    """Handle order execution in CFD mode (independent tickets)."""
+    qty = order.qty
+    price = order.price
+    ticket_type = 'long' if qty > 0 else 'short'
+
+    if order.reduce_only:
+        # reduce_only in CFD mode: close specific ticket or all tickets
+        if hasattr(order, 'ticket_id') and order.ticket_id:
+            result = position.close_ticket(order.ticket_id, price)
+            if result:
+                ticket = result['ticket']
+                pnl = result['pnl']
+                if position.exchange and position.exchange.type in ('cfd',):
+                    position.exchange.add_realized_pnl(pnl)
+                closed_trade_service.record_ticket_close(position, ticket, price, pnl)
+                logger.info(f'CFD: closed ticket {ticket.id[:8]} at {price}, PnL: {round(pnl, 2)}')
+        else:
+            # No ticket_id: close all tickets (forced close, e.g. end of backtest)
+            results = position.close_all_tickets(price)
+            total_pnl = sum(r['pnl'] for r in results)
+            if position.exchange and position.exchange.type in ('cfd',):
+                position.exchange.add_realized_pnl(total_pnl)
+            for r in results:
+                closed_trade_service.record_ticket_close(position, r['ticket'], price, r['pnl'])
+            logger.info(f'CFD: closed all {len(results)} tickets at {price}, total PnL: {round(total_pnl, 2)}')
+    else:
+        # Non-reduce_only: open a new ticket
+        ticket = position.open_ticket(ticket_type, qty, price, jh.now_to_timestamp())
+        if position.ticket_count == 1:
+            position.opened_at = jh.now_to_timestamp()
+        # Link the order to its ticket
+        order.ticket_id = ticket.id
+        # Store OANDA trade ID on ticket (for per-trade TP/SL management)
+        if order.vars.get('trade_id'):
+            ticket.exchange_trade_id = order.vars['trade_id']
+        logger.info(
+            f'CFD: opened {ticket_type} ticket {ticket.id[:8]}, qty: {abs(qty):.2f} at {price} '
+            f'(ticket #{position.ticket_count}, net qty: {position.qty:.2f}, '
+            f'trade_id: {ticket.exchange_trade_id})'
+        )
+
+
 def _open(position: Position, p_orders: list = None):
     closed_trade_service.open_trade(position, p_orders)
 
@@ -144,7 +185,6 @@ def _open(position: Position, p_orders: list = None):
 def on_executed_order(position: Position, order: Order) -> None:
     # futures (live)
     if jh.is_livetrading() and position.exchange_type == 'futures':
-        # if position got closed because of this order
         if order.is_partially_filled:
             before_qty = position.qty - order.filled_qty
         else:
@@ -154,7 +194,6 @@ def on_executed_order(position: Position, order: Order) -> None:
             _close(position)
     # spot (live)
     elif jh.is_livetrading() and position.exchange_type == 'spot':
-        # if position got closed because of this order
         before_qty = position.previous_qty
         after_qty = position.qty
         qty = order.qty
@@ -175,11 +214,17 @@ def on_executed_order(position: Position, order: Order) -> None:
         qty = order.qty
         price = order.price
 
-        if position.exchange and position.exchange.type in ('futures', 'forex_cfd', 'cfd', 'multi_asset'):
+        # For CFD, spread is already embedded in entry fill price
+        # (applied in order_service), so no separate fee charge needed.
+        if position.exchange and position.exchange.type == 'futures':
             position.exchange.charge_fee(qty * price)
 
+        # ── CFD mode: independent tickets ──
+        if position.is_cfd_mode:
+            _handle_cfd_order(position, order)
+        # ── Standard netting mode ──
         # order opens position
-        if position.qty == 0:
+        elif position.qty == 0:
             change_balance = order.type == order_types.MARKET
             _mutating_open(position, qty, price)
         # order closes position
@@ -193,8 +238,6 @@ def on_executed_order(position: Position, order: Order) -> None:
                 _mutating_increase(position, qty, price)
         # order reduces the size of the position
         elif position.qty * qty < 0:
-            # if size of the order is big enough to both close the
-            # position AND open it on the opposite side
             if abs(qty) > abs(position.qty):
                 if order.reduce_only:
                     logger.info(
@@ -220,14 +263,13 @@ def update_from_stream(position: Position, data: dict, is_initial: bool, open_tr
     before_qty = abs(position.qty)
     after_qty = abs(data['qty'])
 
-    if position.exchange_type in ('futures', 'forex_cfd', 'cfd', 'multi_asset'):
+    if position.exchange_type in ('futures', 'cfd'):
         position.entry_price = data['entry_price']
         position._liquidation_price = data.get('liquidation_price')
     else:  # spot
         if after_qty > position._min_qty and position.entry_price is None:
             position.entry_price = position.current_price
 
-    # if the new qty (data['qty']) is different than the current (self.qty) then update it:
     if position.qty != data['qty']:
         position.previous_qty = position.qty
         position.qty = data['qty']
@@ -235,12 +277,6 @@ def update_from_stream(position: Position, data: dict, is_initial: bool, open_tr
     opening_position = before_qty <= position._min_qty < after_qty
     closing_position = before_qty > position._min_qty >= after_qty
     if opening_position:
-        # if is_initial:
-        #     from qengine.store import store
-        #     store.closed_trades.add_order_record_only(
-        #         self.exchange_name, self.symbol, jh.type_to_side(self.type),
-        #         self.qty, self.entry_price
-        #     )
         position.opened_at = jh.now_to_timestamp()
         if not open_trade:
             _open(position, p_orders)

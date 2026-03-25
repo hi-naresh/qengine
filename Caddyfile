@@ -1,0 +1,19 @@
+{$DOMAIN:localhost} {
+    reverse_proxy app:9000
+
+    # WebSocket support
+    @ws {
+        path /ws*
+    }
+    reverse_proxy @ws app:9000
+
+    # Compression
+    encode gzip
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}

@@ -7549,3 +7549,5 @@ pyrightconfig.json
 /frontend/node_modules/vue-router/vue-router-auto-resolver.d.mts
 /frontend/node_modules/vue-router/vue-router-auto-routes.d.ts
 /frontend/node_modules/.package-lock.json
+/frontend/node_modules/.vue-global-types/vue_99_0_0_0.d.ts
+/frontend/node_modules/

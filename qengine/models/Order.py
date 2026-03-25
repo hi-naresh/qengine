@@ -37,6 +37,8 @@ class Order(Model):
     submitted_via = CharField(null=True)
     order_exist_in_exchange = BooleanField(default=True)
     fee = FloatField(null=True)
+    # CFD mode: links this order to a specific CFDTicket
+    ticket_id = CharField(null=True)
 
     class Meta:
         from qengine.services.db import database
@@ -127,6 +129,7 @@ class Order(Model):
             'order_exist_in_exchange': self.order_exist_in_exchange,
             'updated_at': self.updated_at,
             'session_mode': self.session_mode,
+            'ticket_id': self.ticket_id,
         }
 
     @property

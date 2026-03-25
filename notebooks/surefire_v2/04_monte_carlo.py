@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Step 8: Monte Carlo Stress Test for SurefireHedge V2
+Step 8: Monte Carlo Stress Test for Surefire V2
 =====================================================
 Simulates martingale-hedging cycles across different Level 0 win rates
 to quantify probability of ruin and required win rate for viability.

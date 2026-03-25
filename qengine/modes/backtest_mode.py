@@ -598,8 +598,8 @@ def _step_simulator(
         store.app.time = first_candles_set[i][0] + 60_000
         current_timestamp = first_candles_set[i][0]
 
-        # Check for overnight swap at rollover time (5pm NY)
-        if _market_hours.is_rollover_time(current_timestamp):
+        # Check for overnight swap at rollover time (5pm NY) — only if cost model is enabled
+        if config['app'].get('cost_model', True) and _market_hours.is_rollover_time(current_timestamp):
             for r in router.routes:
                 p = store.positions.get_position(r.exchange, r.symbol)
                 if p and p.is_open:
@@ -1312,6 +1312,9 @@ def _skip_simulator(
 
     begin_time_track = time.time()
 
+    key = f"{config['app']['considering_candles'][0][0]}-{config['app']['considering_candles'][0][1]}"
+    first_candles_set = candles[key]['candles']
+
     length = _simulation_minutes_length(candles)
     _prepare_times_before_simulation(candles)
     candles_pipelines = _prepare_routes(hyperparameters, with_candles_pipeline, candles_pipeline_class, candles_pipeline_kwargs)
@@ -1319,21 +1322,92 @@ def _skip_simulator(
     # add initial balance
     save_daily_portfolio_balance(is_initial=True)
 
+    # Log backtest start
+    route_info = ', '.join([f"{r.symbol} {r.timeframe} ({r.strategy_name})" for r in router.routes])
+    store.logs.add(f'Backtest started (fast mode): {route_info}', 'market')
+
+    cost_model_enabled = config['app'].get('cost_model', True)
+    skip_market_hours = config['app'].get('skip_market_hours', False)
+
     candles_step = _calculate_minimum_candle_step()
     progressbar = Progressbar(length, step=candles_step)
     last_update_time = None
+    margin_error_msg = None
+    _prev_market_open = {}
     for i in range(0, length, candles_step):
-        # update time moved to _simulate_price_change_effect__multiple_candles
-        # store.app.time = first_candles_set[i][0] + (60_000 * candles_step)
         _simulate_new_candles(candles, candles_pipelines, i, candles_step)
+
+        # Check overnight swap for each 1m candle in this batch
+        if cost_model_enabled:
+            for ci in range(i, min(i + candles_step, length)):
+                ts = first_candles_set[ci][0]
+                if _market_hours.is_rollover_time(ts):
+                    for r in router.routes:
+                        p = store.positions.get_position(r.exchange, r.symbol)
+                        if p and p.is_open:
+                            e = store.exchanges.get_exchange(r.exchange)
+                            if isinstance(e, ForexCFDExchange):
+                                e.charge_overnight_swap(r.symbol, p.qty, p.type)
 
         last_update_time = _update_progress_bar(progressbar, run_silently, i, candles_step,
                                                 last_update_time=last_update_time)
 
-        _execute_routes(i, candles_step)
+        # Determine current timestamp for market hours check (use last candle in batch)
+        current_timestamp = first_candles_set[min(i + candles_step - 1, length - 1)][0]
+
+        margin_error = None
+        for r in router.routes:
+            # Skip strategy execution if market is closed for this symbol
+            if not skip_market_hours:
+                e = store.exchanges.get_exchange(r.exchange)
+                if isinstance(e, ForexCFDExchange):
+                    is_open = _market_hours.is_market_open(r.symbol, current_timestamp)
+                    sym_key = f"{r.exchange}-{r.symbol}"
+                    was_open = _prev_market_open.get(sym_key)
+                    if was_open is not None and is_open != was_open:
+                        state_txt = 'OPENED' if is_open else 'CLOSED'
+                        store.logs.add(
+                            f'Market {state_txt} for {r.symbol} at {jh.timestamp_to_time(current_timestamp)[:19]}',
+                            'market'
+                        )
+                    _prev_market_open[sym_key] = is_open
+                    if not is_open:
+                        order_service.update_active_orders(r.exchange, r.symbol)
+                        continue
+
+            count = TIMEFRAME_TO_ONE_MINUTES[r.timeframe]
+            try:
+                if r.timeframe == timeframes.MINUTE_1:
+                    r.strategy._execute()
+                elif (i + candles_step) % count == 0:
+                    if jh.is_debuggable("trading_candles"):
+                        candle_service.print_candle(
+                            candle_service.get_current_candle(r.exchange, r.symbol, r.timeframe),
+                            False, r.symbol,
+                        )
+                    r.strategy._execute()
+
+                order_service.update_active_orders(r.exchange, r.symbol)
+            except exceptions.InsufficientMargin as e:
+                margin_error = e
+                break
+
+        if margin_error is not None:
+            margin_error_msg = str(margin_error)
+            store.logs.add(f'MARGIN CALL: Backtest stopped early — {margin_error_msg}', 'market')
+            logger.info(f'Backtest stopped early: {margin_error_msg}')
+            if not run_silently:
+                sync_publish('notification', {
+                    'message': f'Insufficient margin — backtest stopped early. {margin_error_msg}',
+                    'type': 'error'
+                })
+            break
 
         # now check to see if there's any MARKET orders waiting to be executed
         order_service.execute_simulated_market_orders()
+
+        # Track per-session stats
+        _update_session_stats(margin_error is not None)
 
         if i != 0 and i % 1440 == 0:
             save_daily_portfolio_balance()
@@ -1356,6 +1430,10 @@ def _skip_simulator(
     # set the ending time for the backtest session
     store.app.ending_time = store.app.time + 60_000
 
+    # Log backtest completion summary
+    total_trades = len(store.closed_trades.trades) if store.closed_trades.trades else 0
+    store.logs.add(f'Backtest completed (fast mode): {total_trades} trades in {execution_duration}s', 'market')
+
     result = _generate_outputs(
         candles,
         generate_tradingview=generate_tradingview,
@@ -1367,6 +1445,8 @@ def _skip_simulator(
         generate_logs=generate_logs,
     )
     result['execution_duration'] = execution_duration
+    if margin_error_msg:
+        result['alert'] = f'Insufficient margin — backtest stopped early. {margin_error_msg}'
     return result
 
 

@@ -1,3 +1,4 @@
+import math
 from typing import Optional
 from fastapi import APIRouter, Header, Query, Body
 from fastapi.responses import JSONResponse, FileResponse
@@ -342,7 +343,8 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
     # Extract hedging params (support multiple naming conventions)
     # This is ALWAYS % of equity (e.g. 1 = 1%, 2.5 = 2.5%)
     base_pct = float(hp.get('base_size', hp.get('initial_size', hp.get('lot_size', hp.get('qty', 1.0)))))
-    multiplier = float(hp.get('multiplier', hp.get('lot_multiplier', 1.0)))
+    sizing_operator = str(hp.get('sizing_operator', 'multiplier'))
+    sizing_factor = float(hp.get('sizing_factor', hp.get('multiplier', hp.get('lot_multiplier', 2.0))))
     max_levels = int(hp.get('max_levels', hp.get('max_orders', 1)))
 
     # TP and hedge distances in pips
@@ -356,9 +358,20 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
 
     has_tp_sl = tp_pips > 0 or hedge_pips > 0
 
+    _FIB = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+
+    def _sizing_multiplier(level: int) -> float:
+        if sizing_operator == 'sqrt':
+            return math.sqrt(sizing_factor) ** level
+        elif sizing_operator == 'linear':
+            return 1 + level
+        elif sizing_operator == 'fibonacci':
+            return _FIB[level] if level < len(_FIB) else _FIB[-1]
+        else:  # 'multiplier'
+            return sizing_factor ** level
+
     if max_levels <= 1:
         max_levels = 1
-        multiplier = 1.0
 
     price = _estimate_price(symbol)
 
@@ -381,8 +394,9 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
     cumulative_loss = 0.0
 
     for level in range(max_levels):
-        level_pct = base_pct * (multiplier ** level)
-        lot_size = base_lots * (multiplier ** level)
+        factor = _sizing_multiplier(level)
+        level_pct = base_pct * factor
+        lot_size = base_lots * factor
         units = lot_size * contract_size if contract_size > 0 else lot_size
         notional = lot_size * contract_size * price if contract_size > 0 else lot_size * price
         margin_required = notional / leverage if leverage > 0 else notional

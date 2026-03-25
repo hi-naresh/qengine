@@ -41,6 +41,27 @@
               Debug Mode
             </label>
           </div>
+          <!-- Hyperparameters (auto-loaded from strategy) -->
+          <div v-if="liveHyperParams.length" class="pt-1">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-xs font-semibold text-surface-400">Hyperparameters</h3>
+              <button @click="resetLiveHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
+            </div>
+            <div class="max-h-60 overflow-y-auto space-y-2 pr-1">
+              <div v-for="(hp, idx) in liveHyperParams" :key="idx" v-show="isLiveHpVisible(hp)">
+                <div class="flex gap-2 items-center">
+                  <span class="text-xs text-surface-400 w-28 truncate" :title="hp.name">{{ hp.name }}</span>
+                  <select v-if="hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
+                    <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
+                  </select>
+                  <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
+                  <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
+                    :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
+                  <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
           <div v-if="brokers.length === 0" class="p-3 bg-red-500/10 rounded-lg text-red-400 text-xs">
             No brokers connected. <a href="#/brokers" class="underline text-red-300">Connect a broker</a> first.
           </div>
@@ -164,6 +185,13 @@
           <div v-if="strat.has_position" class="flex gap-4 text-xs">
             <span class="text-surface-500">P&L: <span class="font-mono" :class="plColor(strat.position_pnl)">{{ fmtPl(strat.position_pnl) }}</span></span>
           </div>
+          <div v-if="strat.hyperparameters && Object.keys(strat.hyperparameters).length" class="mt-2 pt-2 border-t border-surface-700">
+            <div class="flex flex-wrap gap-x-3 gap-y-1">
+              <span v-for="(val, key) in strat.hyperparameters" :key="key" class="text-[10px] text-surface-500">
+                <span class="text-surface-600">{{ key }}:</span> <span class="font-mono text-surface-400">{{ val }}</span>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -174,6 +202,7 @@
           :class="detailTab === tab ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
           {{ tab }}
           <span v-if="tab === 'Orders' && liveState.orders_summary" class="ml-1 text-[10px] text-surface-500">({{ liveState.orders_summary.total }})</span>
+          <span v-if="tab === 'Closed Trades' && liveClosedTrades.length" class="ml-1 text-[10px] text-surface-500">({{ liveClosedTrades.length }})</span>
           <span v-if="tab === 'Report' && report.total_trades" class="ml-1 text-[10px] text-surface-500">({{ report.total_trades }})</span>
         </button>
       </div>
@@ -185,26 +214,67 @@
           <table class="w-full text-sm">
             <thead>
               <tr class="text-surface-500 text-[11px] uppercase tracking-wider border-b border-surface-700">
+                <th class="w-6"></th>
                 <th class="text-left py-2.5 px-3">Symbol</th><th class="text-left py-2.5 px-3">Side</th>
                 <th class="text-right py-2.5 px-3">Size</th><th class="text-right py-2.5 px-3">Entry</th>
                 <th class="text-right py-2.5 px-3">Current</th><th class="text-right py-2.5 px-3">P&L</th>
                 <th class="text-right py-2.5 px-3">P&L %</th><th class="text-right py-2.5 px-3">Value</th>
-                <th class="text-right py-2.5 px-3">Lev</th><th class="text-right py-2.5 px-3">Opened</th>
+                <th class="text-right py-2.5 px-3">Tickets</th><th class="text-right py-2.5 px-3">Opened</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="p in openPositions" :key="p.symbol" class="border-b border-surface-800/50 hover:bg-surface-800/30">
-                <td class="py-2.5 px-3 font-mono font-medium text-surface-100">{{ p.symbol }}</td>
-                <td class="py-2.5 px-3"><span class="badge text-[10px]" :class="p.type === 'long' ? 'badge-green' : 'badge-red'">{{ p.type?.toUpperCase() }}</span></td>
-                <td class="py-2.5 px-3 text-right font-mono text-surface-200">{{ p.qty }}</td>
-                <td class="py-2.5 px-3 text-right font-mono text-surface-300">{{ fmtPrice(p.entry_price) }}</td>
-                <td class="py-2.5 px-3 text-right font-mono text-surface-200">{{ fmtPrice(p.current_price) }}</td>
-                <td class="py-2.5 px-3 text-right font-mono font-medium" :class="plColor(p.pnl)">{{ fmtPl(p.pnl) }}</td>
-                <td class="py-2.5 px-3 text-right font-mono" :class="plColor(p.pnl_percentage)">{{ p.pnl_percentage ? p.pnl_percentage.toFixed(2) + '%' : '-' }}</td>
-                <td class="py-2.5 px-3 text-right font-mono text-surface-300">{{ fmtCcy(p.value) }}</td>
-                <td class="py-2.5 px-3 text-right text-surface-400">{{ p.leverage }}x</td>
-                <td class="py-2.5 px-3 text-right text-surface-500 text-xs">{{ formatTime(p.opened_at) }}</td>
-              </tr>
+              <template v-for="p in openPositions" :key="p.symbol">
+                <tr class="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer"
+                    @click="p.tickets?.length && togglePositionExpand(p.symbol)">
+                  <td class="py-2.5 pl-2">
+                    <svg v-if="p.tickets?.length" class="w-3 h-3 text-surface-500 transition-transform"
+                      :class="{ 'rotate-90': expandedPositions[p.symbol] }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+                  </td>
+                  <td class="py-2.5 px-3 font-mono font-medium text-surface-100">{{ p.symbol }}</td>
+                  <td class="py-2.5 px-3"><span class="badge text-[10px]" :class="p.type === 'long' ? 'badge-green' : 'badge-red'">{{ p.type?.toUpperCase() }}</span></td>
+                  <td class="py-2.5 px-3 text-right font-mono text-surface-200">{{ p.qty }}</td>
+                  <td class="py-2.5 px-3 text-right font-mono text-surface-300">{{ fmtPrice(p.entry_price) }}</td>
+                  <td class="py-2.5 px-3 text-right font-mono text-surface-200">{{ fmtPrice(p.current_price) }}</td>
+                  <td class="py-2.5 px-3 text-right font-mono font-medium" :class="plColor(p.pnl)">{{ fmtPl(p.pnl) }}</td>
+                  <td class="py-2.5 px-3 text-right font-mono" :class="plColor(p.pnl_percentage)">{{ p.pnl_percentage ? p.pnl_percentage.toFixed(2) + '%' : '-' }}</td>
+                  <td class="py-2.5 px-3 text-right font-mono text-surface-300">{{ fmtCcy(p.value) }}</td>
+                  <td class="py-2.5 px-3 text-right text-surface-400">{{ p.tickets?.length || 0 }}</td>
+                  <td class="py-2.5 px-3 text-right text-surface-500 text-xs">{{ formatTime(p.opened_at) }}</td>
+                </tr>
+                <!-- Expanded tickets sub-table -->
+                <tr v-if="expandedPositions[p.symbol] && p.tickets?.length">
+                  <td :colspan="11" class="p-0">
+                    <div class="bg-surface-850/80 border-l-2 border-brand-500/40 ml-4 mr-2 mb-2 rounded">
+                      <table class="w-full text-xs">
+                        <thead>
+                          <tr class="text-surface-500 text-[10px] uppercase tracking-wider border-b border-surface-700/50">
+                            <th class="text-left py-1.5 px-3">Ticket</th>
+                            <th class="text-left py-1.5 px-2">Side</th>
+                            <th class="text-right py-1.5 px-2">Qty</th>
+                            <th class="text-right py-1.5 px-2">Entry</th>
+                            <th class="text-right py-1.5 px-2">P&L</th>
+                            <th class="text-right py-1.5 px-2">Pips</th>
+                            <th class="text-left py-1.5 px-2">Trade ID</th>
+                            <th class="text-right py-1.5 px-2">Opened</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="tk in p.tickets" :key="tk.id" class="border-b border-surface-800/30 hover:bg-surface-700/20">
+                            <td class="py-1.5 px-3 font-mono text-brand-400">{{ tk.id?.slice(0, 8) }}</td>
+                            <td class="py-1.5 px-2"><span :class="tk.type === 'long' ? 'text-green-400' : 'text-red-400'">{{ tk.type?.toUpperCase() }}</span></td>
+                            <td class="py-1.5 px-2 text-right font-mono text-surface-200">{{ Math.abs(tk.qty) }}</td>
+                            <td class="py-1.5 px-2 text-right font-mono text-surface-300">{{ fmtPrice(tk.entry_price) }}</td>
+                            <td class="py-1.5 px-2 text-right font-mono" :class="plColor(tk.pnl)">{{ fmtPl(tk.pnl) }}</td>
+                            <td class="py-1.5 px-2 text-right font-mono" :class="plColor(tk.pips)">{{ tk.pips != null ? tk.pips.toFixed(1) : '-' }}</td>
+                            <td class="py-1.5 px-2 font-mono text-surface-500">{{ tk.trade_id || '-' }}</td>
+                            <td class="py-1.5 px-2 text-right text-surface-500">{{ formatTime(tk.opened_at) }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>
@@ -266,6 +336,132 @@
               :class="log.level === 'error' ? 'text-red-400' : 'text-yellow-400'">[{{ log.level }}]</span>
             <span :class="log.level === 'error' ? 'text-red-300' : log.level === 'warning' ? 'text-yellow-300' : 'text-surface-300'" class="break-all">{{ log.message }}</span>
           </div>
+        </div>
+      </div>
+
+      <!-- Session Tab (Live Surefire State) -->
+      <div v-if="detailTab === 'Session'" class="space-y-3">
+        <div v-if="!currentSession" class="card text-center py-8 text-surface-500 text-sm">No active strategy session data.</div>
+        <template v-else>
+          <!-- Session status card -->
+          <div class="card py-3">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <span class="text-sm font-semibold text-brand-400">Session #{{ currentSession.session_number || '-' }}</span>
+                <span class="badge text-[10px]" :class="currentSession.cycle_active ? 'badge-green' : 'badge-gray'">
+                  {{ currentSession.cycle_active ? 'ACTIVE' : 'IDLE' }}
+                </span>
+                <span v-if="currentSession.direction" class="badge text-[10px]"
+                  :class="currentSession.direction === 'long' ? 'badge-green' : 'badge-red'">
+                  {{ currentSession.direction?.toUpperCase() }}
+                </span>
+              </div>
+              <span class="text-xs text-surface-500">Level {{ currentSession.level || 0 }}</span>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+              <div>
+                <div class="text-[10px] text-surface-500 uppercase">TP Price</div>
+                <div class="text-sm font-mono text-green-400">{{ fmtPrice(currentSession.tp_price) }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] text-surface-500 uppercase">Hedge Price</div>
+                <div class="text-sm font-mono text-yellow-400">{{ fmtPrice(currentSession.hedge_price) }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] text-surface-500 uppercase">Net Qty</div>
+                <div class="text-sm font-mono text-surface-200">{{ currentSession.net_qty || 0 }}</div>
+              </div>
+              <div>
+                <div class="text-[10px] text-surface-500 uppercase">Open Tickets</div>
+                <div class="text-sm font-mono text-surface-200">{{ currentSession.ticket_count || 0 }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Legs table -->
+          <div v-if="currentSession.legs?.length" class="card">
+            <h3 class="text-xs font-semibold text-surface-400 uppercase tracking-wider mb-2">
+              Legs ({{ currentSession.legs.length }})
+            </h3>
+            <div class="overflow-auto">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="text-surface-500 text-[10px] uppercase tracking-wider border-b border-surface-700">
+                    <th class="text-left py-1.5 px-3">Level</th>
+                    <th class="text-left py-1.5 px-2">Side</th>
+                    <th class="text-right py-1.5 px-2">Qty</th>
+                    <th class="text-right py-1.5 px-2">Entry</th>
+                    <th class="text-right py-1.5 px-2">P&L</th>
+                    <th class="text-left py-1.5 px-2">Trade ID</th>
+                    <th class="text-left py-1.5 px-2">Ticket</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(leg, i) in currentSession.legs" :key="i" class="border-b border-surface-800/30 hover:bg-surface-800/30">
+                    <td class="py-1.5 px-3 font-mono font-bold text-brand-400">L{{ leg.level ?? i }}</td>
+                    <td class="py-1.5 px-2"><span :class="leg.side === 'buy' || leg.type === 'long' ? 'text-green-400' : 'text-red-400'">{{ (leg.side || leg.type)?.toUpperCase() }}</span></td>
+                    <td class="py-1.5 px-2 text-right font-mono text-surface-200">{{ Math.abs(leg.qty) }}</td>
+                    <td class="py-1.5 px-2 text-right font-mono text-surface-300">{{ fmtPrice(leg.entry_price) }}</td>
+                    <td class="py-1.5 px-2 text-right font-mono" :class="plColor(leg.pnl)">{{ leg.pnl != null ? fmtPl(leg.pnl) : '-' }}</td>
+                    <td class="py-1.5 px-2 font-mono text-surface-500">{{ leg.trade_id || '-' }}</td>
+                    <td class="py-1.5 px-2 font-mono text-surface-500">{{ leg.ticket_id ? leg.ticket_id.slice(0, 8) : '-' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Session history (past sessions in this run) -->
+          <div v-if="strategySessions.length > 1" class="card">
+            <h3 class="text-xs font-semibold text-surface-400 uppercase tracking-wider mb-2">
+              Past Sessions ({{ strategySessions.length - (currentSession.cycle_active ? 1 : 0) }})
+            </h3>
+            <div class="space-y-1 max-h-[300px] overflow-auto">
+              <div v-for="ss in strategySessions" :key="ss.session_number"
+                class="flex items-center justify-between px-3 py-1.5 rounded hover:bg-surface-800/30 text-xs"
+                :class="ss.session_number === currentSession.session_number ? 'bg-surface-800/50' : ''">
+                <div class="flex items-center gap-3">
+                  <span class="font-mono font-bold text-brand-400">S{{ ss.session_number }}</span>
+                  <span class="text-surface-400">L{{ ss.max_level || 0 }}</span>
+                  <span :class="sessionOutcomeClass(ss.outcome)">{{ sessionOutcomeLabel(ss.outcome) }}</span>
+                </div>
+                <span class="font-mono" :class="plColor(ss.pnl)">{{ ss.pnl != null ? fmtPl(ss.pnl) : '-' }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Closed Trades Tab (Real-time during session) -->
+      <div v-if="detailTab === 'Closed Trades'" class="card">
+        <div v-if="liveClosedTrades.length === 0" class="text-center py-8 text-surface-500 text-sm">No closed trades yet.</div>
+        <div v-else class="overflow-auto max-h-[500px]">
+          <table class="w-full text-sm">
+            <thead class="sticky top-0 bg-surface-850">
+              <tr class="text-surface-500 text-[11px] uppercase tracking-wider border-b border-surface-700">
+                <th class="text-left py-2 px-3">Symbol</th>
+                <th class="text-left py-2 px-3">Side</th>
+                <th class="text-right py-2 px-3">Qty</th>
+                <th class="text-right py-2 px-3">Entry</th>
+                <th class="text-right py-2 px-3">Exit</th>
+                <th class="text-right py-2 px-3">P&L</th>
+                <th class="text-left py-2 px-3">Label</th>
+                <th class="text-right py-2 px-3">Closed</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(t, i) in liveClosedTrades" :key="i" class="border-b border-surface-800/50 hover:bg-surface-800/30">
+                <td class="py-2 px-3 font-mono text-surface-200">{{ t.symbol }}</td>
+                <td class="py-2 px-3"><span :class="t.type === 'long' ? 'text-green-400' : 'text-red-400'">{{ t.type?.toUpperCase() }}</span></td>
+                <td class="py-2 px-3 text-right font-mono text-surface-200">{{ t.qty }}</td>
+                <td class="py-2 px-3 text-right font-mono text-surface-300">{{ fmtPrice(t.entry_price) }}</td>
+                <td class="py-2 px-3 text-right font-mono text-surface-300">{{ fmtPrice(t.exit_price) }}</td>
+                <td class="py-2 px-3 text-right font-mono font-medium" :class="plColor(t.pnl || t.PNL)">{{ fmtPl(t.pnl || t.PNL) }}</td>
+                <td class="py-2 px-3 text-xs"><span class="font-mono text-brand-400">{{ t.meta?.label || '-' }}</span></td>
+                <td class="py-2 px-3 text-right text-surface-500 text-xs">{{ formatTime(t.closed_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -685,6 +881,59 @@ const form = ref({
   exchange: '', symbol: 'EUR-USD', strategy: '', debug_mode: false,
 })
 
+// Hyperparameters (loaded from strategy code)
+const liveHyperParams = ref([])
+const liveHyperParamsDefaults = ref([])
+
+async function loadLiveHyperparams(name) {
+  if (!name) { liveHyperParams.value = []; liveHyperParamsDefaults.value = []; return }
+  try {
+    const res = await api.getStrategyHyperparams(name)
+    const hps = (res.hyperparameters || []).map(hp => ({
+      name: hp.name,
+      type: hp.type === 'categorical' ? 'categorical' : hp.type === 'int' ? 'int' : hp.type === 'float' ? 'float' : hp.type === 'str' ? 'str' : 'float',
+      value: hp.default !== undefined ? hp.default : '',
+      default: hp.default,
+      min: hp.min,
+      max: hp.max,
+      options: hp.options || undefined,
+      depends_on: hp.depends_on || undefined,
+    }))
+    liveHyperParams.value = hps
+    liveHyperParamsDefaults.value = JSON.parse(JSON.stringify(hps))
+  } catch {
+    liveHyperParams.value = []
+    liveHyperParamsDefaults.value = []
+  }
+}
+
+function isLiveHpVisible(hp) {
+  if (!hp.depends_on) return true
+  for (const [key, allowedValues] of Object.entries(hp.depends_on)) {
+    const parent = liveHyperParams.value.find(p => p.name === key)
+    if (parent && !allowedValues.includes(parent.value)) return false
+  }
+  return true
+}
+
+function resetLiveHyperParams() {
+  liveHyperParams.value = JSON.parse(JSON.stringify(liveHyperParamsDefaults.value))
+}
+
+function buildLiveHyperparamsPayload() {
+  const hp = {}
+  for (const p of liveHyperParams.value) {
+    if (p.name && p.value !== '' && p.value !== undefined) {
+      hp[p.name] = p.type === 'int' ? parseInt(p.value) : p.type === 'float' ? parseFloat(p.value) : String(p.value)
+    }
+  }
+  return Object.keys(hp).length ? hp : null
+}
+
+watch(() => form.value.strategy, (newStrat, oldStrat) => {
+  if (newStrat && newStrat !== oldStrat) loadLiveHyperparams(newStrat)
+})
+
 const selectedBrokerIsDemo = computed(() => {
   const b = brokers.value.find(x => x.id === form.value.exchange)
   return b ? b.is_demo : true
@@ -703,10 +952,14 @@ const marginPct = computed(() => {
   return (a.margin_used / a.balance) * 100
 })
 const availableTabs = computed(() => {
-  const tabs = ['Positions', 'Orders', 'Logs']
+  const tabs = ['Positions', 'Orders']
+  if (currentSession.value) tabs.push('Session')
+  tabs.push('Closed Trades')
+  tabs.push('Logs')
   if (activeMeta.value.status !== 'running' || report.value.total_trades) tabs.push('Report')
   return tabs
 })
+function togglePositionExpand(symbol) { expandedPositions.value[symbol] = !expandedPositions.value[symbol] }
 const filteredSessions = computed(() => {
   if (statusFilter.value === 'all') return sessions.value
   return sessions.value.filter(s => s.status === statusFilter.value)
@@ -722,6 +975,22 @@ const overviewAgg = computed(() => {
   return { balance, unrealized_pnl, open_positions }
 })
 const openPositions = computed(() => (liveState.value.positions || []).filter(p => p.type !== 'close'))
+const expandedPositions = ref({})
+const liveClosedTrades = computed(() => liveState.value.closed_trades || [])
+const currentSession = computed(() => {
+  const strats = liveState.value.strategies || []
+  for (const s of strats) {
+    if (s.current_session) return s.current_session
+  }
+  return null
+})
+const strategySessions = computed(() => {
+  const strats = liveState.value.strategies || []
+  for (const s of strats) {
+    if (s.sessions?.length) return s.sessions
+  }
+  return []
+})
 const sortedOrders = computed(() => [...allOrders.value].sort((a, b) => (b.created_at || 0) - (a.created_at || 0)))
 const filteredLogs = computed(() => {
   const arr = logFilter.value === 'all' ? logs.value : logs.value.filter(l => l.level === logFilter.value)
@@ -823,13 +1092,14 @@ function toggleReportSession(sessionNum) {
 }
 
 function sessionOutcomeClass(outcome) {
-  if (outcome === 'tp_hit') return 'text-green-400'
+  if (outcome === 'tp_hit' || outcome === 'bucket_hit') return 'text-green-400'
   if (outcome === 'max_levels') return 'text-red-400'
   return 'text-surface-400'
 }
 
 function sessionOutcomeLabel(outcome) {
   if (outcome === 'tp_hit') return 'TP Hit'
+  if (outcome === 'bucket_hit') return 'Bucket Hit'
   if (outcome === 'max_levels') return 'Max Levels'
   if (outcome === 'standalone') return 'Single'
   return outcome || '-'
@@ -853,6 +1123,7 @@ async function startSession() {
       },
       routes: [{ exchange: form.value.exchange, symbol: form.value.symbol, timeframe: '1m', strategy: form.value.strategy }],
       data_routes: [],
+      hyperparameters: buildLiveHyperparamsPayload(),
     })
     showStart.value = false
     setTimeout(async () => { await loadSessions(); const f = sessions.value.find(s => s.id === id); if (f) viewSession(f) }, 2000)

@@ -42,9 +42,10 @@ class OandaLiveDriverBase(ForexLiveDriver):
 
     # ── Order Submission ──
 
-    def _submit_market_order(self, symbol: str, qty: float, current_price: float, side: str, reduce_only: bool) -> str:
+    def _submit_market_order(self, symbol: str, qty: float, current_price: float, side: str, reduce_only: bool) -> dict:
         instrument = symbol_to_instrument(symbol)
-        units = abs(qty) if side == 'buy' else -abs(qty)
+        # OANDA requires integer units for standard FX pairs
+        units = int(round(abs(qty))) if side == 'buy' else -int(round(abs(qty)))
 
         payload = {
             'order': {
@@ -56,25 +57,58 @@ class OandaLiveDriverBase(ForexLiveDriver):
             }
         }
 
+        logger.info(f'OANDA submitting MARKET order: {instrument} {units} units, reduce_only={reduce_only}')
+
         resp = requests.post(
             f'{self._rest_url}/accounts/{self._account_id}/orders',
             headers=self._headers(),
             json=payload,
             timeout=30,
         )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            try:
+                err_data = resp.json()
+                logger.error(f'OANDA MARKET order HTTP {resp.status_code}: {err_data}')
+            except Exception:
+                logger.error(f'OANDA MARKET order HTTP {resp.status_code}: {resp.text}')
+            resp.raise_for_status()
         data = resp.json()
 
-        order_id = data.get('orderCreateTransaction', {}).get('id', '')
-        if 'orderFillTransaction' in data:
-            order_id = data['orderFillTransaction'].get('orderID', order_id)
+        # Check for rejection (OANDA may return 201 with orderRejectTransaction)
+        if 'orderRejectTransaction' in data:
+            reason = data['orderRejectTransaction'].get('rejectReason', 'unknown')
+            logger.error(f'OANDA MARKET order rejected: {reason} (full: {data["orderRejectTransaction"]})')
+            raise RuntimeError(f'OANDA MARKET order rejected: {reason}')
 
-        logger.info(f'OANDA market order submitted: {instrument} {units} units -> ID {order_id}')
-        return str(order_id)
+        # Also check for orderCancelTransaction (order created then immediately cancelled)
+        if 'orderCancelTransaction' in data and 'orderFillTransaction' not in data:
+            reason = data['orderCancelTransaction'].get('reason', 'unknown')
+            logger.error(f'OANDA MARKET order cancelled: {reason}')
+            raise RuntimeError(f'OANDA MARKET order cancelled: {reason}')
+
+        order_id = data.get('orderCreateTransaction', {}).get('id', '')
+        fill_price = None
+        if 'orderFillTransaction' in data:
+            fill_tx = data['orderFillTransaction']
+            order_id = fill_tx.get('orderID', order_id)
+            fill_price = float(fill_tx.get('price', 0)) or None
+
+        # Extract trade ID from fill (for per-trade TP/SL in hedging mode)
+        trade_id = None
+        if 'orderFillTransaction' in data:
+            fill_tx = data['orderFillTransaction']
+            if 'tradeOpened' in fill_tx:
+                trade_id = str(fill_tx['tradeOpened'].get('tradeID', ''))
+            elif 'tradesOpened' in fill_tx and fill_tx['tradesOpened']:
+                trade_id = str(fill_tx['tradesOpened'][0].get('tradeID', ''))
+
+        logger.info(f'OANDA market order filled: {instrument} {units} units @ {fill_price or current_price} -> ID {order_id}, trade {trade_id}')
+        return {'order_id': str(order_id), 'fill_price': fill_price, 'trade_id': trade_id}
 
     def _submit_limit_order(self, symbol: str, qty: float, price: float, side: str, reduce_only: bool) -> str:
         instrument = symbol_to_instrument(symbol)
-        units = abs(qty) if side == 'buy' else -abs(qty)
+        # OANDA requires integer units for standard FX pairs
+        units = int(round(abs(qty))) if side == 'buy' else -int(round(abs(qty)))
 
         payload = {
             'order': {
@@ -101,18 +135,21 @@ class OandaLiveDriverBase(ForexLiveDriver):
 
     def _submit_stop_order(self, symbol: str, qty: float, price: float, side: str, reduce_only: bool) -> str:
         instrument = symbol_to_instrument(symbol)
-        units = abs(qty) if side == 'buy' else -abs(qty)
+        # OANDA requires integer units for standard FX pairs
+        units = int(round(abs(qty))) if side == 'buy' else -int(round(abs(qty)))
 
         payload = {
             'order': {
                 'type': 'STOP',
                 'instrument': instrument,
                 'units': str(units),
-                'price': str(price),
+                'price': str(round(price, 5)),
                 'timeInForce': 'GTC',
                 'positionFill': 'REDUCE_ONLY' if reduce_only else 'DEFAULT',
             }
         }
+
+        logger.info(f'OANDA submitting STOP order: {instrument} {units} @ {round(price, 5)}, reduce_only={reduce_only}')
 
         resp = requests.post(
             f'{self._rest_url}/accounts/{self._account_id}/orders',
@@ -120,8 +157,21 @@ class OandaLiveDriverBase(ForexLiveDriver):
             json=payload,
             timeout=30,
         )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            try:
+                err_data = resp.json()
+                logger.error(f'OANDA STOP order HTTP {resp.status_code}: {err_data}')
+            except Exception:
+                logger.error(f'OANDA STOP order HTTP {resp.status_code}: {resp.text}')
+            resp.raise_for_status()
         data = resp.json()
+
+        # Check for rejection (OANDA may return 201 with orderRejectTransaction)
+        if 'orderRejectTransaction' in data:
+            reason = data['orderRejectTransaction'].get('rejectReason', 'unknown')
+            logger.error(f'OANDA STOP order rejected: {reason} (full: {data["orderRejectTransaction"]})')
+            raise RuntimeError(f'OANDA STOP order rejected: {reason}')
+
         order_id = data.get('orderCreateTransaction', {}).get('id', '')
         logger.info(f'OANDA stop order submitted: {instrument} {units}@{price} -> ID {order_id}')
         return str(order_id)
@@ -242,6 +292,103 @@ class OandaLiveDriverBase(ForexLiveDriver):
                 'time_in_force': o.get('timeInForce', ''),
             })
         return orders
+
+    # ── Per-Trade TP/SL Management (OANDA hedging mode) ──
+
+    def set_trade_tp_sl(self, trade_id: str, take_profit: float = None, stop_loss: float = None) -> None:
+        """Set or update take-profit and/or stop-loss on an individual OANDA trade."""
+        payload = {}
+        if take_profit is not None:
+            payload['takeProfit'] = {'price': str(take_profit), 'timeInForce': 'GTC'}
+        if stop_loss is not None:
+            payload['stopLoss'] = {'price': str(stop_loss), 'timeInForce': 'GTC'}
+
+        if not payload:
+            return
+
+        resp = requests.put(
+            f'{self._rest_url}/accounts/{self._account_id}/trades/{trade_id}/orders',
+            headers=self._headers(),
+            json=payload,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        logger.info(f'OANDA trade {trade_id}: set TP={take_profit}, SL={stop_loss}')
+
+    def cancel_trade_tp_sl(self, trade_id: str) -> None:
+        """Remove TP and SL from an OANDA trade."""
+        payload = {
+            'takeProfit': {'timeInForce': 'GTC', 'price': '0'},
+            'stopLoss': {'timeInForce': 'GTC', 'price': '0'},
+        }
+        # OANDA: to cancel, PUT with empty object or use the cancel endpoint
+        # Actually OANDA doesn't support price=0. Use the individual order cancel approach.
+        try:
+            # Get trade details to find dependent order IDs
+            resp = requests.get(
+                f'{self._rest_url}/accounts/{self._account_id}/trades/{trade_id}',
+                headers=self._headers(),
+                timeout=30,
+            )
+            resp.raise_for_status()
+            trade = resp.json().get('trade', {})
+
+            # Cancel TP order if exists
+            tp_order_id = trade.get('takeProfitOrder', {}).get('id')
+            if tp_order_id:
+                self._cancel_order_on_exchange('', tp_order_id)
+
+            # Cancel SL order if exists
+            sl_order_id = trade.get('stopLossOrder', {}).get('id')
+            if sl_order_id:
+                self._cancel_order_on_exchange('', sl_order_id)
+
+            logger.info(f'OANDA trade {trade_id}: cancelled TP/SL')
+        except Exception as e:
+            logger.info(f'OANDA: failed to cancel TP/SL on trade {trade_id}: {e}')
+
+    def get_open_trades(self) -> List[dict]:
+        """Get all open trades from OANDA (individual trade-level, not aggregated positions)."""
+        resp = requests.get(
+            f'{self._rest_url}/accounts/{self._account_id}/openTrades',
+            headers=self._headers(),
+            timeout=30,
+        )
+        resp.raise_for_status()
+        trades = []
+        for t in resp.json().get('trades', []):
+            trades.append({
+                'trade_id': t['id'],
+                'symbol': instrument_to_symbol(t['instrument']),
+                'units': float(t.get('currentUnits', t.get('initialUnits', 0))),
+                'price': float(t.get('price', 0)),
+                'unrealized_pnl': float(t.get('unrealizedPL', 0)),
+                'open_time': t.get('openTime'),
+                'take_profit': float(t['takeProfitOrder']['price']) if 'takeProfitOrder' in t else None,
+                'stop_loss': float(t['stopLossOrder']['price']) if 'stopLossOrder' in t else None,
+                'state': t.get('state', 'OPEN'),
+            })
+        return trades
+
+    def close_trade(self, trade_id: str, units: float = None) -> dict:
+        """Close an individual OANDA trade (fully or partially)."""
+        payload = {}
+        if units is not None:
+            payload['units'] = str(int(round(abs(units))))
+
+        resp = requests.put(
+            f'{self._rest_url}/accounts/{self._account_id}/trades/{trade_id}/close',
+            headers=self._headers(),
+            json=payload if payload else None,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        fill_price = None
+        if 'orderFillTransaction' in data:
+            fill_price = float(data['orderFillTransaction'].get('price', 0)) or None
+        logger.info(f'OANDA trade {trade_id} closed at {fill_price}')
+        return {'trade_id': trade_id, 'fill_price': fill_price}
 
     def _fetch_precisions(self) -> None:
         resp = requests.get(

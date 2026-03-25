@@ -36,7 +36,7 @@ def get_brokers(authorization: Optional[str] = Header(None)) -> JSONResponse:
 _BROKER_GROUPS = {
     brokers.OANDA: {
         'name': 'OANDA',
-        'type': 'forex_cfd',
+        'type': 'cfd',
         'live_id': brokers.OANDA,
         'demo_id': brokers.OANDA_DEMO,
         'demo_label': 'Demo',
@@ -50,7 +50,7 @@ _BROKER_GROUPS = {
     },
     brokers.IBKR: {
         'name': 'Interactive Brokers',
-        'type': 'multi_asset',
+        'type': 'cfd',
         'live_id': brokers.IBKR,
         'demo_id': brokers.IBKR_PAPER,
         'demo_label': 'Paper',
@@ -322,10 +322,8 @@ def get_exchange_types(authorization: Optional[str] = Header(None)) -> JSONRespo
 
     return JSONResponse({
         'data': [
-            {'id': 'forex_cfd', 'name': 'Forex/CFD', 'description': 'Foreign exchange and CFD trading'},
-            {'id': 'cfd', 'name': 'CFD', 'description': 'Contract for Difference'},
-            {'id': 'futures', 'name': 'Futures', 'description': 'Crypto/commodity futures'},
+            {'id': 'cfd', 'name': 'CFD', 'description': 'CFD trading with true hedging (forex, indices, commodities, stocks)'},
+            {'id': 'futures', 'name': 'Futures', 'description': 'Crypto/commodity futures (netting mode)'},
             {'id': 'spot', 'name': 'Spot', 'description': 'Spot trading (crypto)'},
-            {'id': 'multi_asset', 'name': 'Multi-Asset', 'description': 'Stocks, forex, commodities, crypto'},
         ]
     }, status_code=200)

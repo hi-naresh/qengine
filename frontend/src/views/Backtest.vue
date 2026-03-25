@@ -148,15 +148,17 @@
                 <input v-model="form.exportJson" type="checkbox" class="rounded bg-surface-700 border-surface-500" />
                 <span>Export JSON</span>
               </label>
-              <label class="flex items-center gap-2 text-sm text-surface-400 cursor-pointer">
-                <input v-model="form.fastMode" type="checkbox" class="rounded bg-surface-700 border-surface-500" />
-                <span>Fast Mode</span>
-                <span class="text-xs text-surface-600 ml-1">— faster with improved algorithm</span>
-              </label>
-              <label class="flex items-center gap-2 text-sm text-surface-400 cursor-pointer">
-                <input v-model="form.benchmark" type="checkbox" class="rounded bg-surface-700 border-surface-500" />
-                <span>Benchmark</span>
-              </label>
+<!-- for future use when we have a faster backtesting algorithm that can sacrifice some accuracy for speed -->
+<!--              <label class="flex items-center gap-2 text-sm text-surface-400 cursor-pointer">-->
+<!--                <input v-model="form.fastMode" type="checkbox" class="rounded bg-surface-700 border-surface-500" />-->
+<!--                <span>Fast Mode</span>-->
+<!--                <span class="text-xs text-surface-600 ml-1">— faster with improved algorithm</span>-->
+<!--              </label>-->
+              <!-- benchmark is for cryptos, where we can compare against actual price movements to see how slippage/spread would affect the strategy performance -->
+<!--              <label class="flex items-center gap-2 text-sm text-surface-400 cursor-pointer">-->
+<!--                <input v-model="form.benchmark" type="checkbox" class="rounded bg-surface-700 border-surface-500" />-->
+<!--                <span>Benchmark</span>-->
+<!--              </label>-->
               <label class="flex items-center gap-2 text-sm text-surface-400 cursor-pointer">
                 <input v-model="form.costModel" type="checkbox" class="rounded bg-surface-700 border-surface-500" />
                 <span>Cost Model</span>
@@ -170,7 +172,7 @@
                 <h3 class="text-xs font-semibold text-surface-400">Hyperparameters</h3>
                 <button @click="resetBtHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
               </div>
-              <div v-for="(hp, idx) in btHyperParams" :key="idx" class="mb-2">
+              <div v-for="(hp, idx) in btHyperParams" :key="idx" v-show="isHpVisible(hp)" class="mb-2">
                 <div class="flex gap-2 items-center">
                   <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
                   <select v-if="hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
@@ -369,13 +371,13 @@
               </div>
             </div>
 
-            <!-- Trade Stats -->
-            <div class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Trade Statistics</h3>
+            <!-- Hedge Session Stats -->
+            <div v-if="hedgeSessionMetrics.length" class="mb-4">
+              <h3 class="text-xs font-semibold text-surface-500 mb-2">Hedge Session Stats</h3>
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in tradeStatsMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
+                <div v-for="m in hedgeSessionMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
                   <div class="text-surface-500 text-xs">{{ m.label }}</div>
-                  <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+                  <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
             </div>
@@ -391,6 +393,17 @@
               </div>
             </div>
 
+            <!-- Trade Stats -->
+            <div class="mb-4">
+              <h3 class="text-xs font-semibold text-surface-500 mb-2">Trade Statistics</h3>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <div v-for="m in tradeStatsMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
+                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+                </div>
+              </div>
+            </div>
+
             <!-- Forex/CFD Costs -->
             <div v-if="forexMetrics.length" class="mb-4">
               <h3 class="text-xs font-semibold text-surface-500 mb-2">Forex / CFD Costs</h3>
@@ -401,25 +414,14 @@
                 </div>
               </div>
             </div>
-
-            <!-- Hedge Session Stats -->
-            <div v-if="hedgeSessionMetrics.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Hedge Session Stats</h3>
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in hedgeSessionMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
-                  <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
-                </div>
-              </div>
-            </div>
-
+            
             <!-- Hyperparameters -->
             <div v-if="hyperparameters && hyperparameters.length" class="mt-4">
               <h3 class="text-xs font-semibold text-surface-500 mb-2">Hyperparameters</h3>
               <div class="flex flex-wrap gap-2">
-                <div v-for="hp in hyperparameters" :key="hp.name" class="px-3 py-1.5 bg-surface-800 rounded-lg text-xs">
-                  <span class="text-surface-500">{{ hp.name }}:</span>
-                  <span class="text-surface-200 font-mono ml-1">{{ hp.value }}</span>
+                <div v-for="(hp, idx) in hyperparameters" :key="idx" class="px-3 py-1.5 bg-surface-800 rounded-lg text-xs">
+                  <span class="text-surface-500">{{ Array.isArray(hp) ? hp[0] : hp.name }}:</span>
+                  <span class="text-surface-200 font-mono ml-1">{{ Array.isArray(hp) ? hp[1] : hp.value }}</span>
                 </div>
               </div>
             </div>
@@ -446,91 +448,32 @@
           </div>
 
           <!-- Exposure Tab -->
-          <div v-if="activeTab === 'exposure'">
-            <div v-if="!exposureTable.length" class="text-surface-500 text-sm py-8 text-center">
-              No exposure data. Add a position size parameter (base_size, initial_size, qty) to your strategy hyperparameters.
-            </div>
-            <div v-else>
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-xs font-semibold text-surface-500">Theoretical Per-Level Exposure</h3>
-                <div class="flex items-center gap-3">
-                  <span v-if="exposureMeta.contract_size" class="text-[10px] text-surface-600">
-                    1 lot = {{ Number(exposureMeta.contract_size).toLocaleString() }} units &middot;
-                    Leverage {{ exposureMeta.leverage }}:1 &middot;
-                    Price ~{{ exposureMeta.price }}
-                  </span>
-                  <div class="flex items-center bg-surface-800 rounded text-[10px]">
-                    <button @click="exposureSizeDisplay = 'lots'"
-                      class="px-2 py-1 rounded-l transition-colors"
-                      :class="exposureSizeDisplay === 'lots' ? 'bg-brand-600 text-white' : 'text-surface-400 hover:text-surface-200'">Lots</button>
-                    <button @click="exposureSizeDisplay = 'units'"
-                      class="px-2 py-1 rounded-r transition-colors"
-                      :class="exposureSizeDisplay === 'units' ? 'bg-brand-600 text-white' : 'text-surface-400 hover:text-surface-200'">Units</button>
-                  </div>
-                </div>
-              </div>
-              <div class="overflow-x-auto">
-                <table class="w-full text-xs">
-                  <thead>
-                    <tr class="text-surface-500 border-b border-surface-700">
-                      <th class="text-left py-2 px-2">Level</th>
-                      <th class="text-left py-2 px-2">Dir</th>
-                      <th class="text-right py-2 px-2">% Equity</th>
-                      <th class="text-right py-2 px-2">{{ exposureSizeDisplay === 'lots' ? 'Lots' : 'Units' }}</th>
-                      <th class="text-right py-2 px-2">Margin</th>
-                      <th class="text-right py-2 px-2">Cumul. Margin</th>
-                      <th class="text-right py-2 px-2">Margin %</th>
-                      <th v-if="exposureHasTpSl" class="text-right py-2 px-2">Leg Loss</th>
-                      <th v-if="exposureHasTpSl" class="text-right py-2 px-2">Worst Float</th>
-                      <th v-if="exposureHasTpSl" class="text-right py-2 px-2">TP Profit</th>
-                      <th v-if="exposureHasTpSl" class="text-right py-2 px-2">Net if TP</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in exposureTable" :key="row.level"
-                        class="border-b border-surface-800 hover:bg-surface-800/50"
-                        :class="row.margin_pct > 80 ? 'bg-red-900/10' : ''">
-                      <td class="py-1.5 px-2 font-mono font-bold text-brand-400">L{{ row.level }}</td>
-                      <td class="py-1.5 px-2 font-mono" :class="row.direction === 'LONG' ? 'text-green-400' : 'text-red-400'">{{ row.direction }}</td>
-                      <td class="py-1.5 px-2 text-right font-mono text-surface-300">{{ row.equity_pct }}%</td>
-                      <td class="py-1.5 px-2 text-right font-mono text-surface-300">{{ exposureSizeDisplay === 'lots' ? row.lots : Number(row.units).toLocaleString() }}</td>
-                      <td class="py-1.5 px-2 text-right font-mono text-surface-300">{{ formatMetric(row.margin) }}</td>
-                      <td class="py-1.5 px-2 text-right font-mono text-amber-400">{{ formatMetric(row.cumul_margin) }}</td>
-                      <td class="py-1.5 px-2 text-right font-mono" :class="row.margin_pct > 80 ? 'text-red-400 font-bold' : row.margin_pct > 50 ? 'text-amber-400' : 'text-surface-300'">{{ row.margin_pct }}%</td>
-                      <td v-if="exposureHasTpSl" class="py-1.5 px-2 text-right font-mono text-red-400">{{ formatMetric(row.leg_loss) }}</td>
-                      <td v-if="exposureHasTpSl" class="py-1.5 px-2 text-right font-mono text-red-400 font-bold">{{ formatMetric(row.worst_float) }}</td>
-                      <td v-if="exposureHasTpSl" class="py-1.5 px-2 text-right font-mono text-green-400">{{ formatMetric(row.tp_profit) }}</td>
-                      <td v-if="exposureHasTpSl" class="py-1.5 px-2 text-right font-mono" :class="row.net_if_tp >= 0 ? 'text-green-400' : 'text-red-400'">{{ formatMetric(row.net_if_tp) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- Chart Tab (Interactive TradingView) -->
-          <div v-if="activeTab === 'chart'">
-            <div v-if="!btChartVisible && !btChartCandles.length" class="text-surface-500 text-sm py-8 text-center">
-              <span v-if="!form.exportChart">Enable "Generate Charts" option to see interactive charts.</span>
-              <span v-else>No chart data available. Run a backtest first.</span>
-            </div>
-            <TradeChart
-              v-show="btChartVisible"
-              ref="btTradeChartRef"
-              :candles="btChartCandles"
-              :raw-candles="btChartRawCandles"
-              :route-timeframe="form.routes[0]?.timeframe || '1h'"
-              :orders="btChartOrders"
-              :trades="trades"
-              :equity-curve="equityCurve"
-              :balance="form.balance"
-            />
-          </div>
-
-          <!-- Charts Tab (Equity, Floating PnL, Margin Usage - synced) -->
+          <!-- Charts Tab (Trade Chart + Equity, Floating PnL, Margin Usage) -->
           <div v-if="activeTab === 'charts'">
-            <div v-if="!equityCurve.length || !extractEquityValues(equityCurve).length" class="text-surface-500 text-sm py-8 text-center">No chart data available.</div>
-            <div v-else class="space-y-1">
+            <!-- Interactive Trade Chart -->
+            <div v-if="btChartVisible || btChartCandles.length" class="mb-6">
+              <h3 class="text-xs font-semibold text-surface-500 mb-2">Price Chart &amp; Orders</h3>
+              <TradeChart
+                v-show="btChartVisible"
+                ref="btTradeChartRef"
+                :candles="btChartCandles"
+                :raw-candles="btChartRawCandles"
+                :route-timeframe="form.routes[0]?.timeframe || '1h'"
+                :orders="btChartOrders"
+                :trades="trades"
+                :equity-curve="equityCurve"
+                :balance="form.balance"
+              />
+            </div>
+            <div v-else-if="form.exportChart" class="text-surface-500 text-sm py-4 text-center mb-4">
+              No trade chart data available yet.
+            </div>
+            <div v-else class="text-surface-500 text-sm py-4 text-center mb-4">
+              Enable "Generate Charts" option to see interactive price charts.
+            </div>
+
+            <!-- Equity / Floating PnL / Margin Usage -->
+            <div v-if="equityCurve.length && extractEquityValues(equityCurve).length" class="space-y-1">
               <div class="flex items-center justify-between mb-2">
                 <span class="text-xs text-surface-500">Synced charts — scroll to zoom, drag to pan</span>
                 <button @click="fitAllCharts" class="text-xs text-brand-400 hover:text-brand-300">Fit All</button>
@@ -561,8 +504,8 @@
                   <div class="font-mono text-surface-100">{{ hedgeSessions.length }}</div>
                 </div>
                 <div class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">TP Hit</div>
-                  <div class="font-mono text-green-400">{{ hedgeSessions.filter(s => s.outcome === 'tp_hit').length }}</div>
+                  <div class="text-surface-500 text-xs">Wins</div>
+                  <div class="font-mono text-green-400">{{ hedgeSessions.filter(s => s.outcome === 'tp_hit' || s.outcome === 'bucket_hit').length }}</div>
                 </div>
                 <div class="p-2 bg-surface-800 rounded">
                   <div class="text-surface-500 text-xs">Max Levels</div>
@@ -675,8 +618,8 @@
                       </thead>
                       <tbody>
                         <tr v-for="(t, i) in s.trades" :key="i" class="border-b border-surface-800/50 hover:bg-surface-700/30">
-                          <td class="py-1.5 px-3 font-mono font-bold" :class="t.meta?.exit_reason === 'tp_hit' ? 'text-green-400' : 'text-surface-300'">
-                            {{ t.meta?.label || `O${i + 1}` }}
+                          <td class="py-1.5 px-3 font-mono font-bold" :class="t.meta?.exit_reason === 'tp_hit' || t.meta?.exit_reason === 'bucket_hit' ? 'text-green-400' : 'text-surface-300'">
+                            {{ t.meta?.label || (t.meta?.session != null ? `S${t.meta.session}.L${t.meta.leg_index ?? i}` : `O${i + 1}`) }}
                           </td>
                           <td class="py-1.5 px-2" :class="t.type === 'long' ? 'text-green-400' : 'text-red-400'">{{ t.type }}</td>
                           <td class="py-1.5 px-2 text-right font-mono text-surface-200">{{ formatPrice(t.entry_price) }}</td>
@@ -686,7 +629,7 @@
                             {{ formatMetric(t.pnl || t.PNL) }}
                           </td>
                           <td class="py-1.5 px-2" :class="sessionOutcomeClass(t.meta?.exit_reason)">
-                            {{ t.meta?.exit_reason === 'tp_hit' ? 'TP' : t.meta?.exit_reason === 'sl_hit' ? 'SL (Hedge)' : '-' }}
+                            {{ t.meta?.exit_reason === 'tp_hit' ? 'TP' : t.meta?.exit_reason === 'bucket_hit' ? 'Bucket' : t.meta?.exit_reason === 'max_levels' ? 'Bust' : t.meta?.exit_reason === 'sl_hit' ? 'SL (Hedge)' : '-' }}
                           </td>
                           <td class="py-1.5 px-2 text-surface-500">{{ t.holding_period || '-' }}</td>
                         </tr>
@@ -732,7 +675,7 @@
                 <tbody>
                   <tr v-for="(t, i) in paginatedTrades" :key="i" class="border-b border-surface-800 hover:bg-surface-800/50">
                     <td class="py-1.5 px-2 text-surface-500">{{ (tradesPage - 1) * tradesPerPage + i + 1 }}</td>
-                    <td v-if="hedgeSessions.length" class="py-1.5 px-2 font-mono text-brand-400 text-xs">{{ t.meta?.label || '-' }}</td>
+                    <td v-if="hedgeSessions.length" class="py-1.5 px-2 font-mono text-brand-400 text-xs">{{ t.meta?.label || (t.meta?.session != null ? `S${t.meta.session}.L${t.meta.leg_index ?? '?'}` : '-') }}</td>
                     <td class="py-1.5 px-2 text-surface-300">{{ t.symbol || '-' }}</td>
                     <td class="py-1.5 px-2" :class="t.type === 'long' ? 'text-green-400' : 'text-red-400'">{{ t.type }}</td>
                     <td class="py-1.5 px-2 text-right font-mono text-surface-200">{{ formatPrice(t.entry_price) }}</td>
@@ -1015,7 +958,7 @@
                 <div class="flex items-center gap-2">
                   <span class="text-xs px-2 py-0.5 rounded-full font-medium"
                     :class="statusBadgeClass(s.status)">{{ s.status }}</span>
-                  <span class="text-sm text-surface-200">{{ s.title || s.id?.slice(0, 8) }}</span>
+                  <span class="text-sm text-surface-200">{{ s.title || sessionLabel(s) }}</span>
                   <span v-if="s.net_profit_percentage != null" class="text-xs font-mono" :class="s.net_profit_percentage >= 0 ? 'text-green-400' : 'text-red-400'">
                     {{ s.net_profit_percentage >= 0 ? '+' : '' }}{{ s.net_profit_percentage.toFixed(2) }}%
                   </span>
@@ -1027,6 +970,11 @@
               </div>
               <div v-if="s.state" class="text-xs text-surface-500 mt-1">
                 {{ formatSessionRoutes(s.state) }}
+              </div>
+              <div v-if="s.hyperparameters && s.hyperparameters.length" class="flex flex-wrap gap-1 mt-1">
+                <span v-for="(hp, idx) in s.hyperparameters" :key="idx" class="text-[10px] px-1.5 py-0.5 bg-surface-700 rounded text-surface-400 font-mono">
+                  {{ Array.isArray(hp) ? hp[0] : hp.name }}={{ Array.isArray(hp) ? hp[1] : hp.value }}
+                </span>
               </div>
             </div>
           </div>
@@ -1063,6 +1011,17 @@
             <div v-for="(val, key) in selectedSession.metrics" :key="key" class="p-2 bg-surface-800 rounded">
               <div class="text-surface-500 text-xs capitalize">{{ formatKey(key) }}</div>
               <div class="font-mono" :class="metricColor(key, val)">{{ formatMetric(val) }}</div>
+            </div>
+          </div>
+
+          <!-- Session hyperparameters -->
+          <div v-if="selectedSession.hyperparameters && selectedSession.hyperparameters.length" class="mt-4">
+            <h3 class="text-xs font-semibold text-surface-500 mb-2">Hyperparameters</h3>
+            <div class="flex flex-wrap gap-2">
+              <div v-for="(hp, idx) in selectedSession.hyperparameters" :key="idx" class="px-3 py-1.5 bg-surface-800 rounded-lg text-xs">
+                <span class="text-surface-500">{{ Array.isArray(hp) ? hp[0] : hp.name }}:</span>
+                <span class="text-surface-200 font-mono ml-1">{{ Array.isArray(hp) ? hp[1] : hp.value }}</span>
+              </div>
             </div>
           </div>
 
@@ -1356,6 +1315,7 @@ async function loadBacktestHyperparams(name) {
       max: hp.max,
       description: hp.description || '',
       options: hp.options || undefined,
+      depends_on: hp.depends_on || undefined,
     }))
     btHyperParams.value = hps
     btHyperParamsDefaults.value = JSON.parse(JSON.stringify(hps))
@@ -1363,6 +1323,15 @@ async function loadBacktestHyperparams(name) {
     btHyperParams.value = []
     btHyperParamsDefaults.value = []
   }
+}
+
+function isHpVisible(hp) {
+  if (!hp.depends_on) return true
+  for (const [key, allowedValues] of Object.entries(hp.depends_on)) {
+    const parent = btHyperParams.value.find(p => p.name === key)
+    if (parent && !allowedValues.includes(parent.value)) return false
+  }
+  return true
 }
 
 function resetBtHyperParams() {
@@ -1427,8 +1396,6 @@ const hasResults = computed(() => metrics.value && Object.keys(metrics.value).le
 const resultTabs = computed(() => {
   const tabs = [
     { id: 'summary', label: 'Summary' },
-    { id: 'exposure', label: 'Exposure' },
-    { id: 'chart', label: 'Chart' },
     { id: 'charts', label: 'Charts' },
   ]
   if (hedgeSessions.value.length) {
@@ -1580,13 +1547,14 @@ function toggleSession(sessionNum) {
 }
 
 function sessionOutcomeClass(outcome) {
-  if (outcome === 'tp_hit') return 'text-green-400'
+  if (outcome === 'tp_hit' || outcome === 'bucket_hit') return 'text-green-400'
   if (outcome === 'max_levels') return 'text-red-400'
   return 'text-surface-400'
 }
 
 function sessionOutcomeLabel(outcome) {
   if (outcome === 'tp_hit') return 'TP Hit'
+  if (outcome === 'bucket_hit') return 'Bucket Hit'
   if (outcome === 'max_levels') return 'Max Levels'
   if (outcome === 'standalone') return 'Single'
   return outcome || '-'
@@ -1806,6 +1774,9 @@ async function loadSessionResults() {
           hedgeSessions.value = buildSessionsFromTrades(s.trades)
         }
       }
+      if (s.hyperparameters && s.hyperparameters.length && !hyperparameters.value?.length) {
+        hyperparameters.value = s.hyperparameters
+      }
       await nextTick()
       if (activeTab.value === 'charts') {
         renderSyncedCharts()
@@ -1824,6 +1795,21 @@ function statusBadgeClass(status) {
   if (status === 'running') return 'bg-yellow-500/20 text-yellow-400'
   if (status === 'cancelled' || status === 'failed') return 'bg-red-500/20 text-red-400'
   return 'bg-surface-700 text-surface-400'
+}
+
+function sessionLabel(s) {
+  let state = s.state
+  if (state) {
+    if (typeof state === 'string') {
+      try { state = JSON.parse(state) } catch { state = null }
+    }
+    const routes = state?.routes || []
+    if (Array.isArray(routes) && routes.length) {
+      const r = routes[0]
+      return `${r.strategy || ''} ${r.symbol || ''}`.trim() || s.id?.slice(0, 8)
+    }
+  }
+  return s.id?.slice(0, 8)
 }
 
 function formatSessionRoutes(state) {
@@ -2766,16 +2752,15 @@ async function loadBtChartData() {
 
 // Chart re-render on tab switch
 watch(activeTab, async (tab) => {
-  if (tab === 'chart' && btChartVisible.value) {
+  if (tab === 'charts') {
     await nextTick()
-    if (btTradeChartRef.value) {
+    if (btChartVisible.value && btTradeChartRef.value) {
       btTradeChartRef.value.renderCandles()
       btTradeChartRef.value.renderEquity()
     }
-  }
-  if (tab === 'charts' && equityCurve.value.length) {
-    await nextTick()
-    renderSyncedCharts()
+    if (equityCurve.value.length) {
+      renderSyncedCharts()
+    }
   }
 })
 

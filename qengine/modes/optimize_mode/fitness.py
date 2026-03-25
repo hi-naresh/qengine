@@ -15,7 +15,7 @@ def _formatted_inputs_for_isolated_backtest(user_config, routes):
     return {
         'starting_balance': exc.get('balance', 10000),
         'fee': exc.get('fee', 0),
-        'type': exc.get('type', 'forex_cfd'),
+        'type': exc.get('type', 'cfd'),
         'futures_leverage': exc.get('futures_leverage', 30),
         'futures_leverage_mode': exc.get('futures_leverage_mode', 'cross'),
         'exchange': routes[0]['exchange'],

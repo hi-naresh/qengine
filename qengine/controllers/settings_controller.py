@@ -321,6 +321,7 @@ class TestBrokerConnectionRequest(BaseModel):
     api_key: str = ''
     api_secret: str = ''
     account_id: str = ''
+    additional_fields: Optional[dict] = None
 
 
 @router.post("/test-broker")
@@ -336,6 +337,7 @@ def test_broker_connection(
     api_key = request_json.api_key
     account_id = request_json.account_id
     api_secret = request_json.api_secret
+    additional_fields = request_json.additional_fields or {}
 
     # If no credentials provided, use stored ones for retest
     if not api_key:
@@ -344,9 +346,11 @@ def test_broker_connection(
         api_key = stored.get('api_key', '')
         api_secret = api_secret or stored.get('api_secret', '')
         account_id = account_id or stored.get('account_id', '')
+        if not additional_fields:
+            additional_fields = stored.get('additional_fields', {})
 
     try:
-        result = _test_broker(broker, api_key, api_secret, account_id)
+        result = _test_broker(broker, api_key, api_secret, account_id, additional_fields)
         return JSONResponse({'data': result}, status_code=200)
     except Exception as e:
         return JSONResponse({
@@ -376,11 +380,12 @@ def test_llm_connection(
         }, status_code=200)
 
 
-def _test_broker(broker: str, api_key: str, api_secret: str, account_id: str) -> dict:
+def _test_broker(broker: str, api_key: str, api_secret: str, account_id: str, additional_fields: dict = None) -> dict:
     """Test broker connection. Returns {connected, error, details}."""
     import requests
     import socket
 
+    additional_fields = additional_fields or {}
     broker_lower = broker.lower()
 
     # OANDA
@@ -427,10 +432,22 @@ def _test_broker(broker: str, api_key: str, api_secret: str, account_id: str) ->
         is_demo = 'demo' in broker_lower
         base = 'https://demo-api.ig.com/gateway/deal' if is_demo else 'https://api.ig.com/gateway/deal'
 
-        # IG uses api_key as X-IG-API-KEY, api_secret as password, account_id unused directly
         # The settings form uses: api_key=IG API key, api_secret=password, account_id=username
-        username = account_id  # username stored in account_id field
-        password = api_secret  # password stored in api_secret field
+        username = account_id
+        password = api_secret
+        ig_account_id = additional_fields.get('ig_account_id', '')
+
+        # Also check .env and DB-stored settings as fallback
+        if not ig_account_id:
+            import os
+            from qengine.services.env import ENV_VALUES
+            ig_account_id = os.environ.get('IG_ACCOUNT_ID', ENV_VALUES.get('IG_ACCOUNT_ID', ''))
+        if not ig_account_id:
+            try:
+                stored = _get_settings_from_db().get('brokers', {}).get(broker, {})
+                ig_account_id = stored.get('additional_fields', {}).get('ig_account_id', '')
+            except Exception:
+                pass
 
         resp = requests.post(
             f'{base}/session',
@@ -443,27 +460,59 @@ def _test_broker(broker: str, api_key: str, api_secret: str, account_id: str) ->
 
         cst = resp.headers.get('CST', '')
         sec_token = resp.headers.get('X-SECURITY-TOKEN', '')
+        auth_headers = {'X-IG-API-KEY': api_key, 'CST': cst, 'X-SECURITY-TOKEN': sec_token, 'Content-Type': 'application/json'}
 
         # Get accounts
-        resp2 = requests.get(
-            f'{base}/accounts',
-            headers={'X-IG-API-KEY': api_key, 'CST': cst, 'X-SECURITY-TOKEN': sec_token, 'Content-Type': 'application/json'},
-            timeout=10,
-        )
+        resp2 = requests.get(f'{base}/accounts', headers=auth_headers, timeout=10)
         if resp2.status_code == 200:
             accounts = resp2.json().get('accounts', [])
+            all_accounts = [{'id': a.get('accountId'), 'type': a.get('accountType'), 'name': a.get('accountName')} for a in accounts]
+
             if accounts:
-                acct = accounts[0]
+                # Find the target account: explicit ID first, then CFD type, then first
+                acct = None
+                if ig_account_id:
+                    for a in accounts:
+                        if a.get('accountId') == ig_account_id:
+                            acct = a
+                            break
+                if acct is None:
+                    for a in accounts:
+                        if a.get('accountType', '').upper() == 'CFD':
+                            acct = a
+                            break
+                if acct is None:
+                    acct = accounts[0]
+
+                # Switch to the selected account
+                target_id = acct.get('accountId', '')
+                current_id = resp.json().get('currentAccountId', '')
+                if target_id and target_id != current_id:
+                    switch_resp = requests.put(
+                        f'{base}/session',
+                        headers={**auth_headers, 'Version': '1'},
+                        json={'accountId': target_id},
+                        timeout=10,
+                    )
+                    if switch_resp.status_code != 200:
+                        return {
+                            'connected': True,
+                            'error': f'Authenticated but failed to switch to account {target_id} ({switch_resp.status_code})',
+                            'details': {'current_account': current_id, 'target_account': target_id, 'all_accounts': all_accounts},
+                        }
+
                 balance = acct.get('balance', {})
                 return {
                     'connected': True,
                     'error': None,
                     'details': {
-                        'account_id': acct.get('accountId', ''),
+                        'account_id': target_id,
+                        'account_type': acct.get('accountType', ''),
                         'account_name': acct.get('accountName', ''),
                         'balance': balance.get('balance', 0),
                         'currency': acct.get('currency', 'GBP'),
                         'available': balance.get('available', 0),
+                        'all_accounts': all_accounts,
                     },
                 }
 

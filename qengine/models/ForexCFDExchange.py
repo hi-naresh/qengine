@@ -30,7 +30,7 @@ class ForexCFDExchange(Exchange):
             fee_rate: float,
             default_leverage: int = 30
     ):
-        super().__init__(name, starting_balance, fee_rate, 'forex_cfd')
+        super().__init__(name, starting_balance, fee_rate, 'cfd')
 
         self.default_leverage = default_leverage
 

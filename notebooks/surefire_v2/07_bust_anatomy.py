@@ -760,7 +760,7 @@ ax.set_xticklabels(level_labels, rotation=15, fontsize=9)
 ax.set_ylabel('Total P&L ($)')
 ax.set_title('P&L Contribution by Resolution Level', fontsize=12, fontweight='bold')
 
-plt.suptitle('SurefireHedge V2: Deep Bust Anatomy — EUR-USD 5m (2024-2026)',
+plt.suptitle('Surefire V2: Deep Bust Anatomy — EUR-USD 5m (2024-2026)',
              fontsize=15, fontweight='bold', y=1.01)
 fig.savefig(f'{OUTPUT_DIR}/07_bust_anatomy.png', dpi=150, bbox_inches='tight')
 plt.close()

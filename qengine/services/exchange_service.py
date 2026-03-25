@@ -21,7 +21,7 @@ def initialize_exchanges_state() -> None:
                 futures_leverage_mode=config['env']['exchanges'][name]['futures_leverage_mode'],
                 futures_leverage=config['env']['exchanges'][name]['futures_leverage'],
             )
-        elif exchange_type in ('forex_cfd', 'cfd', 'multi_asset'):
+        elif exchange_type == 'cfd':
             store.exchanges.storage[name] = ForexCFDExchange(
                 name, starting_assets, fee,
                 default_leverage=config['env']['exchanges'][name].get('futures_leverage', 30),
@@ -32,7 +32,7 @@ def initialize_exchanges_state() -> None:
         else:
             raise InvalidConfig(
                 f'Value for exchange type in your config file is not valid. '
-                f'Supported values are "spot", "futures", "forex_cfd", "cfd", "multi_asset". '
+                f'Supported values are "spot", "futures", "cfd". '
                 f'Your value is "{exchange_type}"'
             )
 

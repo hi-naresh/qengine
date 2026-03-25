@@ -25,7 +25,7 @@ exchange_info = {}
 broker_info = {
     brokers.OANDA: {
         'name': 'OANDA',
-        'type': 'forex_cfd',
+        'type': 'cfd',
         'url': 'https://www.oanda.com',
         'asset_classes': ['forex', 'commodity', 'index'],
         'fee_model': 'spread',
@@ -41,7 +41,7 @@ broker_info = {
     },
     brokers.OANDA_DEMO: {
         'name': 'OANDA Demo',
-        'type': 'forex_cfd',
+        'type': 'cfd',
         'url': 'https://www.oanda.com',
         'asset_classes': ['forex', 'commodity', 'index'],
         'fee_model': 'spread',
@@ -89,7 +89,7 @@ broker_info = {
     },
     brokers.IBKR: {
         'name': 'Interactive Brokers',
-        'type': 'multi_asset',
+        'type': 'cfd',
         'url': 'https://www.interactivebrokers.com',
         'asset_classes': ['forex', 'commodity', 'stock', 'index'],
         'fee_model': 'commission',
@@ -105,7 +105,7 @@ broker_info = {
     },
     brokers.IBKR_PAPER: {
         'name': 'Interactive Brokers Paper',
-        'type': 'multi_asset',
+        'type': 'cfd',
         'url': 'https://www.interactivebrokers.com',
         'asset_classes': ['forex', 'commodity', 'stock', 'index'],
         'fee_model': 'commission',

@@ -824,7 +824,7 @@ for idx, name in enumerate(['5 lvl / 2x / 0.5%', '12 lvl / sqrt / 0.5%', 'auto /
     ax.set_ylabel('Equity ($)')
     ax.axhline(y=10000, color='gray', linestyle=':', alpha=0.3)
 
-plt.suptitle('SurefireHedge V2: Tail Risk Deep Dive — The Real Investigation',
+plt.suptitle('Surefire V2: Tail Risk Deep Dive — The Real Investigation',
              fontsize=16, fontweight='bold', y=1.01)
 fig.savefig(f'{OUTPUT_DIR}/11_tail_risk_deep_dive.png', dpi=150, bbox_inches='tight')
 plt.close()

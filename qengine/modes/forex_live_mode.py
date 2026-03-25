@@ -47,6 +47,7 @@ def run(
     routes: List[Dict[str, str]],
     data_routes: List[Dict[str, str]],
     trading_mode: str,
+    hyperparameters: dict = None,
 ) -> None:
     """Main entry point for forex live/paper trading."""
     # Demo brokers route orders to the broker's practice API, so they must
@@ -127,7 +128,16 @@ def run(
             r.strategy.exchange = r.exchange
             r.strategy.symbol = r.symbol
             r.strategy.timeframe = r.timeframe
+
+            # Inject hyperparameters from DNA or explicit override (like backtest does)
+            if len(r.strategy.dna()) > 0 and hyperparameters is None:
+                hp = jh.dna_to_hp(r.strategy.hyperparameters(), r.strategy.dna())
+                r.strategy.hp = hp
+            elif hyperparameters is not None:
+                r.strategy.hp = hyperparameters
+
             # Critical: initialize broker and position references
+            # (also sets hp from defaults if not already set above)
             r.strategy._init_objects()
 
             # Link position back to strategy (needed by closed_trade_service)
@@ -135,6 +145,10 @@ def run(
             if p:
                 p.strategy = r.strategy
             _log(client_id, f'Strategy {r.strategy_name} initialized (broker={r.strategy.broker is not None}, position={p is not None})')
+
+            # Log hyperparameters so we know what config the strategy is running with
+            if r.strategy.hp:
+                _log(client_id, f'Strategy {r.strategy_name} hyperparameters: {r.strategy.hp}')
 
         live_session_repository.update_live_session_status(client_id, live_session_statuses.RUNNING)
 
@@ -212,20 +226,263 @@ def _get_live_driver(exchange_name: str, api_key_id: str):
     broker_key_map = {
         'OANDA': {'api_key': 'OANDA_API_KEY', 'account_id': 'OANDA_ACCOUNT_ID'},
         'OANDA Demo': {'api_key': 'OANDA_API_KEY', 'account_id': 'OANDA_ACCOUNT_ID'},
-        'IG Markets': {'api_key': 'IG_API_KEY', 'account_id': 'IG_IDENTIFIER'},
-        'IG Markets Demo': {'api_key': 'IG_API_KEY', 'account_id': 'IG_IDENTIFIER'},
+        'IG Markets': {'api_key': 'IG_API_KEY', 'username': 'IG_USERNAME', 'password': 'IG_PASSWORD', 'account_id': 'IG_ACCOUNT_ID'},
+        'IG Markets Demo': {'api_key': 'IG_API_KEY', 'username': 'IG_USERNAME', 'password': 'IG_PASSWORD', 'account_id': 'IG_ACCOUNT_ID'},
         'Interactive Brokers': {'api_key': None, 'account_id': 'IBKR_ACCOUNT_ID'},
         'Interactive Brokers Paper': {'api_key': None, 'account_id': 'IBKR_ACCOUNT_ID'},
     }
 
     creds = broker_key_map.get(exchange_name, {})
-    api_key = os.environ.get(creds.get('api_key', ''), ENV_VALUES.get(creds.get('api_key', ''), ''))
-    account_id = os.environ.get(creds.get('account_id', ''), ENV_VALUES.get(creds.get('account_id', ''), ''))
+    def _env(key): return os.environ.get(key, ENV_VALUES.get(key, '')) if key else ''
+
+    api_key = _env(creds.get('api_key', ''))
+    account_id = _env(creds.get('account_id', ''))
+
+    # Also try loading from DB-stored broker settings (set via UI)
+    db_settings = {}
+    try:
+        from qengine.controllers.settings_controller import _get_settings_from_db
+        from qengine.enums import brokers as broker_enums
+        # Map exchange name to broker enum ID
+        _name_to_id = {
+            'OANDA': broker_enums.OANDA, 'OANDA Demo': broker_enums.OANDA_DEMO,
+            'IG Markets': broker_enums.IG_MARKETS, 'IG Markets Demo': broker_enums.IG_MARKETS_DEMO,
+            'Interactive Brokers': broker_enums.IBKR, 'Interactive Brokers Paper': broker_enums.IBKR_PAPER,
+        }
+        broker_id = _name_to_id.get(exchange_name)
+        if broker_id:
+            db_settings = _get_settings_from_db().get('brokers', {}).get(broker_id, {})
+            if db_settings.get('api_key'):
+                api_key = api_key or db_settings['api_key']
+                account_id = account_id or db_settings.get('account_id', '')
+    except Exception:
+        db_settings = {}
+
+    extra_kwargs = {}
+    if 'IG' in exchange_name:
+        extra_kwargs['username'] = _env(creds.get('username', '')) or db_settings.get('account_id', '')
+        extra_kwargs['password'] = _env(creds.get('password', '')) or db_settings.get('api_secret', '')
+        # IG account_id is the actual sub-account ID (CFD vs spread bet)
+        ig_acct = _env(creds.get('account_id', '')) or db_settings.get('additional_fields', {}).get('ig_account_id', '')
+        account_id = ig_acct  # override: account_id = IG sub-account, not username
 
     if hasattr(driver, 'configure'):
-        driver.configure(api_key=api_key, account_id=account_id)
+        driver.configure(api_key=api_key, account_id=account_id, **extra_kwargs)
 
     return driver
+
+
+def _enrich_order_from_broker(driver, order, client_id: str):
+    """Try to get fill details for a filled order from the broker.
+
+    For OANDA, queries the transaction history to get fill price and trade ID.
+    This allows us to link the internal ticket to the OANDA trade for TP/SL management.
+    """
+    if not hasattr(driver, '_rest_url'):
+        return
+
+    try:
+        import requests
+        # Query OANDA for the order's fill transaction
+        resp = requests.get(
+            f'{driver._rest_url}/accounts/{driver._account_id}/orders/{order.exchange_id}',
+            headers=driver._headers(),
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json().get('order', {})
+            # If order has a fillingTransactionID, get the fill details
+            fill_tx_id = data.get('fillingTransactionID')
+            if fill_tx_id:
+                tx_resp = requests.get(
+                    f'{driver._rest_url}/accounts/{driver._account_id}/transactions/{fill_tx_id}',
+                    headers=driver._headers(),
+                    timeout=10,
+                )
+                if tx_resp.status_code == 200:
+                    tx = tx_resp.json().get('transaction', {})
+                    fill_price = float(tx.get('price', 0))
+                    if fill_price:
+                        order.price = fill_price
+                    # Get trade ID from fill
+                    if 'tradeOpened' in tx:
+                        order.vars['trade_id'] = str(tx['tradeOpened'].get('tradeID', ''))
+                    elif 'tradesOpened' in tx and tx['tradesOpened']:
+                        order.vars['trade_id'] = str(tx['tradesOpened'][0].get('tradeID', ''))
+                    _log(client_id,
+                         f'Enriched order {order.exchange_id}: '
+                         f'fill_price={fill_price}, trade_id={order.vars.get("trade_id")}')
+    except Exception as e:
+        _log(client_id, f'Could not enrich order {order.exchange_id}: {e}', 'warning')
+
+
+def _sync_orders_with_broker(driver, exchange_name: str, client_id: str) -> int:
+    """Poll broker for pending orders and detect fills.
+
+    Compares qengine's internal active orders with the broker's pending orders.
+    If an internal active order's exchange_id is no longer in the broker's pending
+    list, it was filled — so we execute it internally to trigger position updates
+    and strategy callbacks (on_close_position, etc.).
+
+    Returns the number of orders that were detected as filled.
+    """
+    try:
+        broker_pending = driver.get_open_orders()
+    except Exception as e:
+        _log(client_id, f'Order sync failed (will retry): {e}', 'warning')
+        return 0
+
+    # Build set of exchange order IDs that are still pending on the broker
+    broker_pending_ids = {str(o['id']) for o in broker_pending}
+
+    filled_count = 0
+
+    for r in router.routes:
+        active_orders = store.orders.get_active_orders(r.exchange, r.symbol)
+        for order in active_orders:
+            if not order.is_active:
+                continue
+            # Only check orders that were actually submitted to the broker
+            if not getattr(order, 'exchange_id', None):
+                continue
+            # If the order's exchange_id is no longer pending on the broker, it was filled
+            if str(order.exchange_id) not in broker_pending_ids:
+                _log(client_id,
+                     f'Order filled on broker: {order.symbol} {order.side} {order.type} '
+                     f'qty={order.qty} price={order.price} (exchange_id={order.exchange_id})')
+                try:
+                    # Try to get fill details from broker (price, trade_id)
+                    _enrich_order_from_broker(driver, order, client_id)
+                    order_service.execute_order(order)
+                    filled_count += 1
+                except Exception as e:
+                    _log(client_id, f'Error processing filled order {order.id}: {e}', 'error')
+
+    return filled_count
+
+
+def _sync_trades_with_broker(driver, exchange_name: str, client_id: str) -> int:
+    """Detect per-trade TP/SL closures in OANDA hedging mode.
+
+    Compares internal tickets (with exchange_trade_ids) against broker's open trades.
+    If a ticket's trade_id is no longer open on the broker, the trade was closed
+    (e.g., by per-trade TP/SL). Updates internal state accordingly.
+
+    Returns count of trades detected as closed.
+    """
+    if not hasattr(driver, 'get_open_trades'):
+        return 0
+
+    try:
+        broker_trades = driver.get_open_trades()
+    except Exception as e:
+        _log(client_id, f'Trade sync failed (will retry): {e}', 'warning')
+        return 0
+
+    broker_trade_ids = {str(t['trade_id']) for t in broker_trades}
+    closed_count = 0
+
+    for r in router.routes:
+        p = store.positions.get_position(r.exchange, r.symbol)
+        if not p or not p.is_open or not p.is_cfd_mode:
+            continue
+
+        tickets_to_close = []
+        for ticket in p.tickets:
+            if ticket.exchange_trade_id and str(ticket.exchange_trade_id) not in broker_trade_ids:
+                tickets_to_close.append(ticket)
+
+        if not tickets_to_close:
+            continue
+
+        # Some trades were closed by OANDA (per-trade TP/SL)
+        for ticket in tickets_to_close:
+            _log(client_id,
+                 f'[Trade sync] Trade {ticket.exchange_trade_id} closed on broker '
+                 f'(ticket {ticket.id[:8]}, {ticket.type} {ticket.qty:.0f})')
+
+            # Find the fill price from broker trades (estimate from last known price)
+            fill_price = p.current_price
+
+            # Close the internal ticket
+            result = p.close_ticket(ticket.id, fill_price)
+            if result:
+                pnl = result['pnl']
+                if p.exchange and p.exchange.type in ('cfd',):
+                    p.exchange.add_realized_pnl(pnl)
+                from qengine.services import closed_trade_service
+                closed_trade_service.record_ticket_close(p, result['ticket'], fill_price, pnl)
+                closed_count += 1
+
+    if closed_count > 0:
+        _log(client_id, f'Trade sync: {closed_count} trade(s) closed by broker TP/SL')
+
+    return closed_count
+
+
+def _sync_positions_with_broker(driver, exchange_name: str, client_id: str):
+    """Fallback safety: compare broker positions with internal state.
+
+    If the broker shows flat but qengine thinks there's an open position,
+    force-close the internal position to prevent stale state.
+    """
+    try:
+        broker_positions = driver.get_open_positions()
+    except Exception as e:
+        _log(client_id, f'Position sync failed (will retry): {e}', 'warning')
+        return
+
+    # Build map of broker positions by symbol
+    broker_pos_map = {}
+    for bp in broker_positions:
+        sym = bp['symbol']
+        net_units = bp.get('long_units', 0) + bp.get('short_units', 0)
+        broker_pos_map[sym] = net_units
+
+    for r in router.routes:
+        p = store.positions.get_position(r.exchange, r.symbol)
+        if not p or not p.is_open:
+            continue
+
+        broker_qty = broker_pos_map.get(r.symbol, 0)
+        if broker_qty == 0:
+            # Broker is flat but we think we have a position — stale state
+            _log(client_id,
+                 f'[POSITION SYNC] Broker is FLAT for {r.symbol} but internal state shows '
+                 f'{p.type} qty={p.qty}. Force-closing internal position.',
+                 'warning')
+            # Cancel any remaining active orders internally
+            active_orders = store.orders.get_active_orders(r.exchange, r.symbol)
+            for order in active_orders:
+                if order.is_active:
+                    try:
+                        order_service.cancel_order(order, silent=True)
+                    except Exception:
+                        pass
+            # Force-close the internal position
+            try:
+                from qengine.services.broker import Broker
+                broker_svc = Broker(p, r.exchange, r.symbol, r.timeframe)
+                # Create a synthetic close order at current price
+                close_qty = abs(p.qty)
+                close_side = 'sell' if p.qty > 0 else 'buy'
+                close_order = order_service.create_order({
+                    'id': jh.generate_unique_id(),
+                    'exchange_id': '',
+                    'symbol': r.symbol,
+                    'exchange': r.exchange,
+                    'side': close_side,
+                    'type': 'MARKET',
+                    'reduce_only': True,
+                    'qty': jh.prepare_qty(close_qty, close_side),
+                    'price': p.current_price,
+                }, should_silent=True)
+                order_service.execute_order(close_order)
+                _log(client_id,
+                     f'[POSITION SYNC] Internal position force-closed for {r.symbol}')
+            except Exception as e:
+                _log(client_id,
+                     f'[POSITION SYNC] Failed to force-close {r.symbol}: {e}', 'error')
 
 
 def _run_live_mode(client_id: str, driver, exchange_name: str):
@@ -268,8 +525,20 @@ def _run_live_mode(client_id: str, driver, exchange_name: str):
 
     _seed_candles(symbols, exchange_name, candle_builders, client_id)
 
+    # IG has strict rate limits (~60 req/min) so use longer intervals
+    _is_ig = 'ig' in exchange_name.lower()
+
     # Account sync interval (every 30 seconds, with backoff on failure)
     last_account_sync = 0
+    # Order sync interval — OANDA: 3s (low latency), IG: 10s (rate limit)
+    last_order_sync = 0
+    _ORDER_SYNC_INTERVAL_MS = 10_000 if _is_ig else 3_000
+    # Trade sync interval — OANDA: 3s, IG: 10s
+    last_trade_sync = 0
+    _TRADE_SYNC_INTERVAL_MS = 10_000 if _is_ig else 3_000
+    # Position sync interval (every 30 seconds — fallback safety net)
+    last_position_sync = 0
+    _POSITION_SYNC_INTERVAL_MS = 60_000 if _is_ig else 30_000
 
     last_execution = {}
     execution_count = [0]
@@ -288,6 +557,28 @@ def _run_live_mode(client_id: str, driver, exchange_name: str):
         if now - last_account_sync >= sync_interval:
             last_account_sync = now
             _sync_account_balance(exchange_name, driver, client_id)
+
+        # Sync order fills from broker (detect TP/SL fills)
+        force_execute = False
+        if now - last_order_sync >= _ORDER_SYNC_INTERVAL_MS:
+            last_order_sync = now
+            filled = _sync_orders_with_broker(driver, exchange_name, client_id)
+            if filled > 0:
+                _log(client_id, f'Order sync: {filled} order(s) filled on broker')
+                # Force immediate strategy execution so hedge orders are placed ASAP
+                force_execute = True
+
+        # Trade-level sync (detect per-trade TP/SL closures in hedging mode)
+        if now - last_trade_sync >= _TRADE_SYNC_INTERVAL_MS:
+            last_trade_sync = now
+            trades_closed = _sync_trades_with_broker(driver, exchange_name, client_id)
+            if trades_closed > 0:
+                force_execute = True
+
+        # Position sync fallback (detect stale internal state)
+        if now - last_position_sync >= _POSITION_SYNC_INTERVAL_MS:
+            last_position_sync = now
+            _sync_positions_with_broker(driver, exchange_name, client_id)
 
         for r in router.routes:
             key = f'{r.exchange}-{r.symbol}'
@@ -310,7 +601,22 @@ def _run_live_mode(client_id: str, driver, exchange_name: str):
             minutes = TIMEFRAME_TO_ONE_MINUTES.get(r.timeframe, 1)
             interval_ms = minutes * 60 * 1000
 
-            if now - last_execution[key] >= interval_ms:
+            # Between full strategy executions, run lightweight checks every tick (1s):
+            # - before(): detect broker-side fills (TP/SL closures, hedge fills)
+            # - update_position(): fallback price checks for strategies without broker orders
+            if now - last_execution[key] < interval_ms and not force_execute:
+                try:
+                    r.strategy._cached_price = current_price
+                    r.strategy.before()
+                    if p and p.is_open and hasattr(r.strategy, 'update_position'):
+                        r.strategy.update_position()
+                    r.strategy._cached_price = None
+                except Exception as e:
+                    r.strategy._cached_price = None
+                    _log(client_id, f'Tick check error: {e}', 'error')
+
+            # Execute strategy on timeframe interval OR immediately after a fill is detected
+            if now - last_execution[key] >= interval_ms or force_execute:
                 last_execution[key] = now
                 store.app.time = now
 
@@ -321,7 +627,7 @@ def _run_live_mode(client_id: str, driver, exchange_name: str):
                 try:
                     r.strategy._execute()
                     # Log first few ticks and then periodically
-                    if execution_count[0] <= 3 or execution_count[0] % 60 == 0:
+                    if execution_count[0] <= 3 or execution_count[0] % 60 == 0 or force_execute:
                         orders = store.orders.get_orders(r.exchange, r.symbol)
                         active = [o for o in orders if o.status == 'ACTIVE']
                         executed = [o for o in orders if o.status == 'EXECUTED']
@@ -378,6 +684,24 @@ def _publish_state(client_id: str):
             if pos.is_open:
                 total_unrealized_pnl += pnl
 
+            # Per-ticket details (CFD mode)
+            tickets = []
+            if pos.is_cfd_mode and pos._tickets:
+                for t in pos._tickets:
+                    t_pnl = t.pnl(pos.current_price) if pos.current_price else 0
+                    pip_size = jh.get_pip_size(pos.symbol) if hasattr(jh, 'get_pip_size') else 0.0001
+                    t_pips = (t_pnl / t.qty / pip_size) if t.qty and pip_size else 0
+                    tickets.append({
+                        'id': t.id[:8],
+                        'type': t.type,
+                        'qty': t.qty,
+                        'entry_price': t.entry_price,
+                        'pnl': round(t_pnl, 4),
+                        'pips': round(t_pips, 1),
+                        'trade_id': t.exchange_trade_id,
+                        'opened_at': t.opened_at,
+                    })
+
             positions.append({
                 'symbol': pos.symbol,
                 'exchange': pos.exchange_name,
@@ -390,6 +714,7 @@ def _publish_state(client_id: str):
                 'value': value,
                 'leverage': leverage,
                 'opened_at': pos.opened_at,
+                'tickets': tickets,
             })
 
         pos_key = f'{_REDIS_POSITIONS_KEY}{client_id}'
@@ -475,14 +800,34 @@ def _publish_state(client_id: str):
             except Exception:
                 pass
 
-        # ── Strategy info ──
+        # ── Closed Trades History ──
+        closed_trades_list = []
+        for ct in closed_trades:
+            ct_dict = {
+                'id': str(ct.id) if hasattr(ct, 'id') else '',
+                'symbol': ct.symbol,
+                'type': ct.type,
+                'entry_price': ct.entry_price,
+                'exit_price': ct.exit_price,
+                'qty': ct.qty,
+                'pnl': round(ct.pnl, 4),
+                'pnl_percentage': round(ct.pnl_percentage, 2) if ct.pnl_percentage else 0,
+                'opened_at': ct.opened_at,
+                'closed_at': ct.closed_at,
+            }
+            # Include meta if available (session, level, exit_reason for surefire)
+            if hasattr(ct, 'meta') and ct.meta:
+                ct_dict['meta'] = ct.meta
+            closed_trades_list.append(ct_dict)
+
+        # ── Strategy info + session tracking ──
         strategies = []
         for r in router.routes:
             s = r.strategy
             if not s:
                 continue
             p = store.positions.get_position(r.exchange, r.symbol)
-            strategies.append({
+            strat_info = {
                 'name': r.strategy_name,
                 'symbol': r.symbol,
                 'timeframe': r.timeframe,
@@ -491,7 +836,35 @@ def _publish_state(client_id: str):
                 'position_type': p.type if p and p.is_open else None,
                 'position_qty': p.qty if p else 0,
                 'position_pnl': round(p.pnl, 4) if p and p.is_open else 0,
-            })
+                'hyperparameters': s.hp if s.hp else {},
+            }
+            # Include surefire session tracking if available
+            if hasattr(s, 'vars') and 'sessions' in s.vars:
+                strat_info['sessions'] = s.vars['sessions']
+                # Derive direction from first leg or position
+                direction = None
+                legs = s.vars.get('legs', [])
+                if legs:
+                    first_side = legs[0].get('side') or legs[0].get('type')
+                    direction = 'long' if first_side in ('buy', 'long') else 'short' if first_side in ('sell', 'short') else None
+                strat_info['current_session'] = {
+                    'session_number': s.vars.get('session_number', 0),
+                    'level': s.vars.get('level', 0),
+                    'cycle_active': s.vars.get('cycle_active', False),
+                    'tp_price': s.vars.get('tp_price'),
+                    'hedge_price': s.vars.get('hedge_trigger_price'),
+                    'legs': legs,
+                    'direction': direction,
+                    'net_qty': round(p.qty, 2) if p else 0,
+                    'ticket_count': p.ticket_count if p and hasattr(p, 'ticket_count') else 0,
+                }
+            # Include watch_list if available
+            if hasattr(s, 'watch_list'):
+                try:
+                    strat_info['watch_list'] = s.watch_list()
+                except Exception:
+                    pass
+            strategies.append(strat_info)
 
         # ── Aggregate state object ──
         total_orders = len(all_orders)
@@ -516,6 +889,8 @@ def _publish_state(client_id: str):
                 'executed': executed_orders,
                 'canceled': canceled_orders,
             },
+            'orders': all_orders,
+            'closed_trades': closed_trades_list,
             'strategies': strategies,
             'total_trades': total_trades,
             'winning_trades': winning_trades,
@@ -657,7 +1032,17 @@ def _graceful_shutdown(client_id: str, exchange_name: str, is_paper: bool) -> No
 
     _log(client_id, 'Shutting down gracefully...')
 
-    # 1. Cancel all active orders
+    # 1. Cancel all active orders (on broker AND internally)
+    for r in router.routes:
+        try:
+            # Cancel on the broker side first
+            if r.exchange in api.drivers:
+                api.drivers[r.exchange].cancel_all_orders(r.symbol)
+                _log(client_id, f'Cancelled all broker orders for {r.symbol}')
+        except Exception as e:
+            _log(client_id, f'Failed to cancel broker orders for {r.symbol}: {e}', 'warning')
+
+    # Then cancel internally
     for okey, order_list in store.orders.storage.items():
         for order in order_list:
             if order.status == order_statuses.ACTIVE:

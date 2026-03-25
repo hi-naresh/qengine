@@ -51,7 +51,18 @@ class ForexLiveDriver(ExchangeDriver):
     # ── Exchange ABC Implementation ──
 
     def market_order(self, symbol: str, qty: float, current_price: float, side: str, reduce_only: bool) -> Order:
-        exchange_order_id = self._submit_market_order(symbol, qty, current_price, side, reduce_only)
+        result = self._submit_market_order(symbol, qty, current_price, side, reduce_only)
+
+        # _submit_market_order returns a dict with order_id, fill_price, and trade_id
+        if isinstance(result, dict):
+            exchange_order_id = result['order_id']
+            fill_price = result.get('fill_price') or current_price
+            trade_id = result.get('trade_id')
+        else:
+            # Backwards compatibility if subclass still returns a string
+            exchange_order_id = result
+            fill_price = current_price
+            trade_id = None
 
         order = order_service.create_order({
             'id': jh.generate_unique_id(),
@@ -62,8 +73,12 @@ class ForexLiveDriver(ExchangeDriver):
             'type': order_types.MARKET,
             'reduce_only': reduce_only,
             'qty': jh.prepare_qty(qty, side),
-            'price': current_price,
+            'price': fill_price,
         })
+
+        # Store trade_id on the order for CFDTicket linking
+        if trade_id:
+            order.vars['trade_id'] = trade_id
 
         # OANDA/broker market orders are FOK — filled immediately on submission.
         # Mark as executed internally so position state updates.
@@ -121,8 +136,8 @@ class ForexLiveDriver(ExchangeDriver):
     # ── Abstract methods for subclasses ──
 
     @abstractmethod
-    def _submit_market_order(self, symbol: str, qty: float, current_price: float, side: str, reduce_only: bool) -> str:
-        """Submit market order to exchange. Returns exchange order ID."""
+    def _submit_market_order(self, symbol: str, qty: float, current_price: float, side: str, reduce_only: bool):
+        """Submit market order to exchange. Returns dict with 'order_id' and 'fill_price', or a string order ID for backwards compatibility."""
         pass
 
     @abstractmethod
@@ -164,3 +179,19 @@ class ForexLiveDriver(ExchangeDriver):
     def get_open_orders(self) -> List[dict]:
         """Get currently open/pending orders from exchange."""
         pass
+
+    def get_open_trades(self) -> List[dict]:
+        """Get individual open trades (for per-trade TP/SL in hedging mode). Optional."""
+        return []
+
+    def set_trade_tp_sl(self, trade_id: str, take_profit: float = None, stop_loss: float = None) -> None:
+        """Set TP/SL on an individual trade. Optional — only for hedging-mode brokers."""
+        pass
+
+    def cancel_trade_tp_sl(self, trade_id: str) -> None:
+        """Remove TP/SL from a trade. Optional."""
+        pass
+
+    def close_trade(self, trade_id: str, units: float = None) -> dict:
+        """Close an individual trade. Optional."""
+        return {}

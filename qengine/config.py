@@ -157,9 +157,9 @@ def set_config(conf: dict) -> None:
                 'type': exchange_type,
                 'balance': float(e.get('balance', 10000))
             }
-            if config['env']['exchanges'][e['name']]['type'] in ('futures', 'forex_cfd', 'cfd', 'multi_asset'):
+            if config['env']['exchanges'][e['name']]['type'] in ('futures', 'cfd'):
                 default_lev = 1
-                if exchange_type in ('forex_cfd', 'cfd', 'multi_asset'):
+                if exchange_type in ('cfd',):
                     from qengine.info import broker_info
                     default_lev = broker_info.get(e['name'], {}).get('default_leverage', 30)
                 config['env']['exchanges'][e['name']]['futures_leverage'] = int(e.get('futures_leverage', default_lev))
@@ -184,10 +184,10 @@ def set_config(conf: dict) -> None:
                 'type': exchange_type,
                 'balance': float(e['balance'])
             }
-            if config['env']['exchanges'][e['name']]['type'] in ('futures', 'forex_cfd', 'cfd', 'multi_asset'):
+            if config['env']['exchanges'][e['name']]['type'] in ('futures', 'cfd'):
                 # For forex/CFD brokers, use broker's default leverage if frontend didn't send it
                 default_lev = 1
-                if exchange_type in ('forex_cfd', 'cfd', 'multi_asset'):
+                if exchange_type in ('cfd',):
                     from qengine.info import broker_info
                     default_lev = broker_info.get(e['name'], {}).get('default_leverage', 30)
                 config['env']['exchanges'][e['name']]['futures_leverage'] = int(e.get('futures_leverage', default_lev))

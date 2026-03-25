@@ -132,7 +132,7 @@ class Optimizer:
             user_config['exchange'] = {
                 'balance': exchange_config.get('balance', 10000),
                 'fee': exchange_config.get('fee', 0),
-                'type': exchange_config.get('type', 'forex_cfd'),
+                'type': exchange_config.get('type', 'cfd'),
                 'futures_leverage': exchange_config.get('futures_leverage', 30),
                 'futures_leverage_mode': exchange_config.get('futures_leverage_mode', 'cross'),
             }
@@ -358,7 +358,7 @@ class Optimizer:
             'started_at': jh.timestamp_to_arrow(self.start_time).humanize(),
             'trial': f'{self.completed_trials}/{self.n_trials}',
             'objective_function': jh.get_config('env.optimization.objective_function', 'sharpe'),
-            'exchange_type': config['env']['exchanges'][router.routes[0].exchange].get('type', 'forex_cfd'),
+            'exchange_type': config['env']['exchanges'][router.routes[0].exchange].get('type', 'cfd'),
             'leverage_mode': config['env']['exchanges'][router.routes[0].exchange].get('futures_leverage_mode', 'cross'),
             'leverage': config['env']['exchanges'][router.routes[0].exchange].get('futures_leverage', 30),
             'cpu_cores': self.cpu_cores,

@@ -129,13 +129,13 @@
               <input v-model.number="form.cpuCores" type="number" class="input" :max="maxCpuCores" min="1" />
               <div class="text-xs text-surface-500 mt-1">Available: {{ maxCpuCores }}</div>
             </div>
-
-            <div class="pt-2">
-              <label class="flex items-center gap-2 text-sm text-surface-400 cursor-pointer">
-                <input v-model="form.fastMode" type="checkbox" class="rounded bg-surface-700 border-surface-500" />
-                Fast Mode
-              </label>
-            </div>
+<!-- for future use when we add fastMode option in backend -->
+<!--            <div class="pt-2">-->
+<!--              <label class="flex items-center gap-2 text-sm text-surface-400 cursor-pointer">-->
+<!--                <input v-model="form.fastMode" type="checkbox" class="rounded bg-surface-700 border-surface-500" />-->
+<!--                Fast Mode-->
+<!--              </label>-->
+<!--            </div>-->
 
             <div v-if="!dataRange && form.exchange" class="p-2 bg-amber-500/10 rounded text-xs text-amber-400">
               No candle data found for {{ form.exchange }} / {{ form.symbol }}.

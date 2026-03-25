@@ -89,28 +89,56 @@ def execute_order(order: Order, silent: bool = False) -> None:
             except (KeyError, TypeError, AttributeError):
                 pass
 
-    closed_trade_service.add_executed_order(order)
+    # In CFD mode, trade records are managed per-ticket by record_ticket_close(),
+    # so skip the normal single-trade tracking for non-reduce_only orders.
+    p = store.positions.get_position(order.exchange, order.symbol)
+    if not (p and p.is_cfd_mode and not order.reduce_only):
+        closed_trade_service.add_executed_order(order)
 
     e = store.exchanges.get_exchange(order.exchange)
 
-    # Charge spread and apply slippage for forex/CFD exchanges
+    # Apply spread and slippage for forex/CFD exchanges (only when cost model is enabled)
+    cost_model_enabled = config.get('app', {}).get('cost_model', True)
     if isinstance(e, ForexCFDExchange) and not jh.is_livetrading():
-        e.charge_spread(order.symbol, order.filled_qty or order.qty)
-
-        # Remove from pending order tracking BEFORE slippage changes the price
+        # Remove from pending order tracking BEFORE price changes
         e.on_order_execution(order)
 
-        # Apply slippage: shift execution price against the trader
-        slippage = e.get_slippage(order.symbol)
-        if slippage > 0:
-            if order.side == 'buy':
-                order.price += slippage
+        if cost_model_enabled:
+            # Spread: shift entry fill price against the trader.
+            # In real forex, spread is the bid-ask gap embedded in fill prices.
+            # Entry orders cross the spread; exit orders (TP/SL) fill at their
+            # trigger price and the PnL naturally captures the spread cost.
+            p = store.positions.get_position(order.exchange, order.symbol)
+            if p and p.is_cfd_mode:
+                # In CFD mode, all non-reduce_only orders are entries (new tickets)
+                is_entry = not order.reduce_only
             else:
-                order.price -= slippage
-            logger.info(
-                f'Applied slippage of {round(slippage, 6)} to {order.symbol} {order.side} order. '
-                f'Adjusted price: {order.price}'
-            )
+                is_entry = (p is None or p.is_close or
+                            (p.is_open and not order.reduce_only and p.qty * order.qty > 0))
+            if is_entry:
+                spread = e.get_spread(order.symbol)
+                if spread > 0:
+                    if order.side == 'buy':
+                        order.price += spread
+                    else:
+                        order.price -= spread
+                    e._total_spread_cost += spread * abs(order.filled_qty or order.qty)
+                    logger.info(
+                        f'Applied spread of {round(spread, 6)} to {order.symbol} {order.side} entry. '
+                        f'Adjusted price: {order.price}'
+                    )
+
+            # Apply slippage: shift execution price against the trader
+            slippage = e.get_slippage(order.symbol)
+            if slippage > 0:
+                if order.side == 'buy':
+                    order.price += slippage
+                else:
+                    order.price -= slippage
+                logger.info(
+                    f'Applied slippage of {round(slippage, 6)} to {order.symbol} {order.side} order. '
+                    f'Adjusted price: {order.price}'
+                )
     else:
         e.on_order_execution(order)
     

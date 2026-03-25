@@ -1,5 +1,5 @@
 """
-Tests for the SurefireHedge strategy.
+Tests for the Surefire strategy.
 Validates hedge cycling, level tracking, direction reversal, session grouping,
 chart labels, and reset on TP.
 """
@@ -19,7 +19,7 @@ def _setup_forex_backtest(balance=10_000, leverage=30, fee=0):
     config['env']['exchanges'][exchanges.SANDBOX]['futures_leverage_mode'] = 'cross'
 
 
-def _run(candles_dict, strategy_name='SurefireHedge'):
+def _run(candles_dict, strategy_name='Surefire'):
     """Run a backtest and return closed trades."""
     from qengine.enums import exchanges
     from qengine.modes import backtest_mode

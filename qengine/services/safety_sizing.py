@@ -39,23 +39,28 @@ class SafetySizing:
 
     def worst_case_loss(self, initial_size: float, multiplier: float,
                         max_levels: int, hedge_pips: float,
-                        pip_value: float) -> float:
+                        pip_value: float,
+                        level_factors: list = None) -> float:
         """
         Dollar loss if all levels fire and final level also loses.
 
         Each level loses: size_at_level * hedge_pips * pip_value
         Total = sum over all levels.
+
+        If level_factors is provided, uses those instead of multiplier**level.
         """
         total_loss = 0.0
         for level in range(max_levels):
-            size = initial_size * (multiplier ** level)
+            factor = level_factors[level] if level_factors else multiplier ** level
+            size = initial_size * factor
             total_loss += size * hedge_pips * pip_value
         return total_loss
 
     def max_safe_initial_size(self, balance: float, multiplier: float,
                                max_levels: int, hedge_pips: float,
                                pip_value: float,
-                               max_risk_pct: float = None) -> float:
+                               max_risk_pct: float = None,
+                               level_factors: list = None) -> float:
         """
         Largest initial_size where worst-case loss < max_risk_pct of balance.
 
@@ -67,7 +72,8 @@ class SafetySizing:
             max_risk_pct = self.max_risk_per_cycle_pct
 
         unit_loss = self.worst_case_loss(1.0, multiplier, max_levels,
-                                          hedge_pips, pip_value)
+                                          hedge_pips, pip_value,
+                                          level_factors=level_factors)
         if unit_loss <= 0:
             return 0.0
         return (balance * max_risk_pct) / unit_loss
@@ -75,22 +81,26 @@ class SafetySizing:
     def can_afford_cycle(self, balance: float, initial_size: float,
                           multiplier: float, max_levels: int,
                           hedge_pips: float, pip_value: float,
-                          max_risk_pct: float = None) -> bool:
+                          max_risk_pct: float = None,
+                          level_factors: list = None) -> bool:
         """Binary check: is this cycle safe to start?"""
         if max_risk_pct is None:
             max_risk_pct = self.max_risk_per_cycle_pct
 
         worst = self.worst_case_loss(initial_size, multiplier, max_levels,
-                                      hedge_pips, pip_value)
+                                      hedge_pips, pip_value,
+                                      level_factors=level_factors)
         return worst <= balance * max_risk_pct
 
     def dynamic_size(self, balance: float, base_size: float,
                       multiplier: float, max_levels: int,
                       hedge_pips: float, pip_value: float,
-                      max_risk_pct: float = None) -> float:
+                      max_risk_pct: float = None,
+                      level_factors: list = None) -> float:
         """Scale base_size down if it exceeds safety limit. Never scales up."""
         max_safe = self.max_safe_initial_size(
-            balance, multiplier, max_levels, hedge_pips, pip_value, max_risk_pct
+            balance, multiplier, max_levels, hedge_pips, pip_value, max_risk_pct,
+            level_factors=level_factors
         )
         return min(base_size, max_safe)
 
@@ -107,7 +117,8 @@ class SafetySizing:
     def levels_affordable(self, balance: float, initial_size: float,
                            multiplier: float, hedge_pips: float,
                            pip_value: float,
-                           max_risk_pct: float = None) -> int:
+                           max_risk_pct: float = None,
+                           level_factors: list = None) -> int:
         """How many hedge levels can the balance actually support?"""
         if max_risk_pct is None:
             max_risk_pct = self.max_risk_per_cycle_pct
@@ -115,7 +126,8 @@ class SafetySizing:
         max_loss = balance * max_risk_pct
         cumulative = 0.0
         for level in range(50):  # hard cap
-            size = initial_size * (multiplier ** level)
+            factor = level_factors[level] if level_factors and level < len(level_factors) else multiplier ** level
+            size = initial_size * factor
             cumulative += size * hedge_pips * pip_value
             if cumulative > max_loss:
                 return level

@@ -29,7 +29,7 @@ def save_daily_portfolio_balance(is_initial=False) -> None:
     except ValueError:
         raise ValueError('Multiple exchange support is not supported at the moment')
 
-    if e.type in ('futures', 'forex_cfd', 'cfd', 'multi_asset'):
+    if e.type in ('futures', 'cfd'):
         # For futures/forex/CFD, add wallet balance and sum of all unrealized PNLs
         total_balances = e.assets[jh.app_currency()]
         for key, pos in store.positions.storage.items():
