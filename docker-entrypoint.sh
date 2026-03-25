@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Parse Railway/Fly connection URLs into individual vars qengine expects
+# ── Start embedded Redis if no external Redis configured ──
+if [ -z "${REDIS_URL:-}" ] && [ -z "${REDIS_HOST:-}" ]; then
+  echo "[entrypoint] No REDIS_URL or REDIS_HOST set — starting embedded Redis..."
+  redis-server --daemonize yes --port 6379 --save "" --appendonly no
+  export REDIS_HOST=127.0.0.1
+  export REDIS_PORT=6379
+  export REDIS_PASSWORD=""
+  echo "[entrypoint] Embedded Redis started on 127.0.0.1:6379"
+fi
+
+# ── Parse Railway/Fly connection URLs ──
 # REDIS_URL=redis://default:password@host:port
 if [ -n "${REDIS_URL:-}" ] && [ -z "${REDIS_HOST:-}" ]; then
-  # Strip protocol
   stripped="${REDIS_URL#*://}"
-  # Extract password (between : and @)
   if [[ "$stripped" == *"@"* ]]; then
     userpass="${stripped%%@*}"
     hostport="${stripped#*@}"
@@ -36,7 +44,23 @@ if [ -n "${DATABASE_URL:-}" ] && [ -z "${POSTGRES_HOST:-}" ]; then
   echo "[entrypoint] Parsed DATABASE_URL -> ${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_NAME}"
 fi
 
-# Write .env file (qengine reads from file, not env vars)
+# ── Defaults for required vars ──
+export POSTGRES_HOST="${POSTGRES_HOST:-127.0.0.1}"
+export POSTGRES_NAME="${POSTGRES_NAME:-qengine_db}"
+export POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+export POSTGRES_USERNAME="${POSTGRES_USERNAME:-qengine_user}"
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-password}"
+export REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
+export REDIS_PORT="${REDIS_PORT:-6379}"
+export REDIS_DB="${REDIS_DB:-0}"
+export REDIS_PASSWORD="${REDIS_PASSWORD:-}"
+export APP_PORT="${APP_PORT:-9000}"
+export APP_HOST="${APP_HOST:-0.0.0.0}"
+export PASSWORD="${PASSWORD:-test}"
+export APP_PASSWORD="${APP_PASSWORD:-test}"
+export IS_DEV_ENV="${IS_DEV_ENV:-FALSE}"
+
+# ── Write .env file (qengine reads from file, not env vars) ──
 ENV_KEYS=(
   POSTGRES_HOST POSTGRES_NAME POSTGRES_PORT POSTGRES_USERNAME POSTGRES_PASSWORD
   REDIS_HOST REDIS_PORT REDIS_DB REDIS_PASSWORD
@@ -56,14 +80,14 @@ echo "[entrypoint] .env generated:"
 cat /qengine/.env | grep -v -E '(PASSWORD|API_KEY|SECRET)' || true
 echo "[entrypoint] Starting: $*"
 
-# Try qengine CLI first, fallback to uvicorn directly
+# ── Run ──
 if [ "$1" = "qengine" ]; then
   "$@" || {
     echo "[entrypoint] 'qengine run' failed, falling back to uvicorn..."
     exec python -c "
 from qengine.services.web import fastapi_app
 import uvicorn
-uvicorn.run(fastapi_app, host='${APP_HOST:-0.0.0.0}', port=int('${APP_PORT:-9000}'), log_level='info')
+uvicorn.run(fastapi_app, host='${APP_HOST}', port=int('${APP_PORT}'), log_level='info')
 "
   }
 else
