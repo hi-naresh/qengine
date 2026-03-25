@@ -47,7 +47,7 @@ QEngine is a Python-based algorithmic trading engine with a modern web dashboard
 ## Quick Start
 
 ### Prerequisites
-- Python 3.10-3.12
+- Python 3.12
 - PostgreSQL 12+
 - Redis 6+
 
