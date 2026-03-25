@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Generate .env from system environment variables
-# (Fly.io sets secrets as env vars, but qengine reads from .env file)
+# (Railway/Fly set secrets as env vars, but qengine reads from .env file)
 ENV_KEYS=(
   POSTGRES_HOST POSTGRES_NAME POSTGRES_PORT POSTGRES_USERNAME POSTGRES_PASSWORD
   REDIS_HOST REDIS_PORT REDIS_DB REDIS_PASSWORD
@@ -21,4 +21,19 @@ for key in "${ENV_KEYS[@]}"; do
   fi
 done
 
-exec "$@"
+echo "[entrypoint] .env generated with $(wc -l < /qengine/.env) vars"
+echo "[entrypoint] Starting: $*"
+
+# Try qengine CLI first, fallback to uvicorn directly
+if [ "$1" = "qengine" ]; then
+  "$@" || {
+    echo "[entrypoint] 'qengine run' failed, falling back to uvicorn..."
+    exec python -c "
+from qengine.services.web import fastapi_app
+import uvicorn
+uvicorn.run(fastapi_app, host='${APP_HOST:-0.0.0.0}', port=int('${APP_PORT:-9000}'), log_level='info')
+"
+  }
+else
+  exec "$@"
+fi
