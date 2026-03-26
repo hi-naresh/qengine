@@ -1,0 +1,467 @@
+{
+  "0": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.4,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.0879827766599597,
+      "p_bust": 0.034205231388329975,
+      "pm": 0.841542705322268,
+      "bust_severity": 4.080959999999999,
+      "reward": 81.55243138832998,
+      "max_affordable": 15.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 10,
+      "n_positive_folds": 10,
+      "required": 8,
+      "passed": true
+    }
+  },
+  "1": {
+    "action": "TRADE",
+    "config": {
+      "N": 7,
+      "m": 1.5,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.471791294642857,
+      "p_bust": 0.021428571428571425,
+      "pm": 0.8735570820157288,
+      "bust_severity": 8.04296875,
+      "reward": 102.20742978825683,
+      "max_affordable": 13.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 7,
+      "n_positive_folds": 7,
+      "required": 5,
+      "passed": true
+    }
+  },
+  "2": {
+    "action": "TRADE",
+    "config": {
+      "N": 5,
+      "m": 1.6,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.373302057613169,
+      "p_bust": 0.032921810699588466,
+      "pm": 0.8668507556059769,
+      "bust_severity": 3.9524000000000004,
+      "reward": 110.64682850927969,
+      "max_affordable": 11.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 6,
+      "n_positive_folds": 6,
+      "required": 4,
+      "passed": true
+    }
+  },
+  "3": {
+    "action": "TRADE",
+    "config": {
+      "N": 7,
+      "m": 1.5,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.4174909212538225,
+      "p_bust": 0.02140672782874618,
+      "pm": 0.8950438761215691,
+      "bust_severity": 8.04296875,
+      "reward": 96.35202528720163,
+      "max_affordable": 13.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 7,
+      "n_positive_folds": 7,
+      "required": 5,
+      "passed": true
+    }
+  },
+  "4": {
+    "action": "TRADE",
+    "config": {
+      "N": 4,
+      "m": 2.2,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.6218730949838107,
+      "p_bust": 0.02185153164149248,
+      "pm": 0.8492961964660078,
+      "bust_severity": 4.672000000000001,
+      "reward": 134.45700317008257,
+      "max_affordable": 7.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 1,
+      "n_positive_folds": 1,
+      "required": 1,
+      "passed": true
+    }
+  },
+  "5": {
+    "action": "TRADE",
+    "config": {
+      "N": 7,
+      "m": 1.5,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.2972005208333335,
+      "p_bust": 0.02333333333333333,
+      "pm": 0.8909602006223749,
+      "bust_severity": 8.04296875,
+      "reward": 84.01933765421917,
+      "max_affordable": 13.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 9,
+      "n_positive_folds": 9,
+      "required": 7,
+      "passed": true
+    }
+  },
+  "6": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.5,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.2647669797687862,
+      "p_bust": 0.03468208092485549,
+      "pm": 0.8681361335774558,
+      "bust_severity": 5.1953125,
+      "reward": 93.2009966203584,
+      "max_affordable": 13.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 9,
+      "n_positive_folds": 9,
+      "required": 7,
+      "passed": true
+    }
+  },
+  "7": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.6,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.5094714136125658,
+      "p_bust": 0.02094240837696335,
+      "pm": 0.8665912601859715,
+      "bust_severity": 6.5738400000000015,
+      "reward": 113.55763448214446,
+      "max_affordable": 11.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 9,
+      "n_positive_folds": 9,
+      "required": 7,
+      "passed": true
+    }
+  },
+  "8": {
+    "action": "SKIP",
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 0,
+      "n_positive_folds": 0,
+      "required": 1,
+      "passed": false
+    },
+    "reason": "walk_forward_fail (0/0 folds)"
+  },
+  "9": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.6,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.4277827906976748,
+      "p_bust": 0.02906976744186046,
+      "pm": 0.8986176599634987,
+      "bust_severity": 6.5738400000000015,
+      "reward": 103.12277238212542,
+      "max_affordable": 11.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 8,
+      "n_positive_folds": 8,
+      "required": 6,
+      "passed": true
+    }
+  },
+  "10": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.4,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.0515118644067796,
+      "p_bust": 0.042372881355932215,
+      "pm": 0.8459432754202267,
+      "bust_severity": 4.080959999999999,
+      "reward": 76.27181016949152,
+      "max_affordable": 15.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 10,
+      "n_positive_folds": 10,
+      "required": 8,
+      "passed": true
+    }
+  },
+  "11": {
+    "action": "TRADE",
+    "config": {
+      "N": 7,
+      "m": 1.6,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.7284547903780076,
+      "p_bust": 0.013745704467353955,
+      "pm": 0.8633382372269612,
+      "bust_severity": 10.768144000000003,
+      "reward": 115.98885339979076,
+      "max_affordable": 11.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 10,
+      "n_positive_folds": 10,
+      "required": 8,
+      "passed": true
+    }
+  },
+  "12": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.6,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.567429581395349,
+      "p_bust": 0.02325581395348838,
+      "pm": 0.862132168742252,
+      "bust_severity": 6.5738400000000015,
+      "reward": 118.97995197399217,
+      "max_affordable": 11.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 3,
+      "n_positive_folds": 3,
+      "required": 2,
+      "passed": true
+    }
+  },
+  "13": {
+    "action": "TRADE",
+    "config": {
+      "N": 5,
+      "m": 1.5,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.2218150811209443,
+      "p_bust": 0.033923303834808266,
+      "pm": 0.8591428958547911,
+      "bust_severity": 3.296875,
+      "reward": 98.72961442803697,
+      "max_affordable": 13.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 10,
+      "n_positive_folds": 10,
+      "required": 8,
+      "passed": true
+    }
+  },
+  "14": {
+    "action": "SKIP",
+    "reason": "insufficient_data"
+  },
+  "15": {
+    "action": "TRADE",
+    "config": {
+      "N": 5,
+      "m": 1.7,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.4196231515643445,
+      "p_bust": 0.0279634002361275,
+      "pm": 0.8715259740259739,
+      "bust_severity": 4.713775,
+      "reward": 112.37024062868949,
+      "max_affordable": 10.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 4,
+      "n_positive_folds": 4,
+      "required": 3,
+      "passed": true
+    }
+  },
+  "16": {
+    "action": "TRADE",
+    "config": {
+      "N": 7,
+      "m": 1.5,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.3716917752442999,
+      "p_bust": 0.019543973941368076,
+      "pm": 0.8760478454402858,
+      "bust_severity": 8.04296875,
+      "reward": 92.52458207735066,
+      "max_affordable": 13.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 5,
+      "n_positive_folds": 5,
+      "required": 4,
+      "passed": true
+    }
+  },
+  "17": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.7,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.755709598748902,
+      "p_bust": 0.01846637730335606,
+      "pm": 0.8852781279228895,
+      "bust_severity": 8.2634175,
+      "reward": 129.85503435576123,
+      "max_affordable": 10.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 3,
+      "n_positive_folds": 3,
+      "required": 2,
+      "passed": true
+    }
+  },
+  "18": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.6,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.4580248869752424,
+      "p_bust": 0.03229278794402583,
+      "pm": 0.8990463740158436,
+      "bust_severity": 6.5738400000000015,
+      "reward": 105.49380362840219,
+      "max_affordable": 11.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 10,
+      "n_positive_folds": 10,
+      "required": 8,
+      "passed": true
+    }
+  },
+  "19": {
+    "action": "TRADE",
+    "config": {
+      "N": 6,
+      "m": 1.4,
+      "base_pct": 0.002,
+      "tp_mult": 0.5,
+      "k": 4.0
+    },
+    "metrics": {
+      "ev": 1.075074962962963,
+      "p_bust": 0.037037037037037035,
+      "pm": 0.8840127474605607,
+      "bust_severity": 4.080959999999999,
+      "reward": 79.01503393967768,
+      "max_affordable": 15.0
+    },
+    "walk_forward": {
+      "n_folds": 10,
+      "n_valid_folds": 8,
+      "n_positive_folds": 8,
+      "required": 6,
+      "passed": true
+    }
+  }
+}

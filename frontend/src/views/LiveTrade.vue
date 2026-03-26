@@ -1,7 +1,10 @@
 <template>
   <div>
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
-      <h1 class="text-2xl font-bold text-center sm:text-left">Trading</h1>
+      <div>
+        <h1 class="text-2xl font-bold text-center sm:text-left">Live Trading</h1>
+        <p class="text-xs text-surface-500 mt-0.5">Run strategies live or in paper mode -- monitor positions, orders, and session performance</p>
+      </div>
       <button @click="openStartModal" class="btn-primary btn-sm">New Session</button>
     </div>
 
@@ -10,6 +13,7 @@
       <div class="card w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-base font-semibold">Start Trading Session</h2>
+          <p class="text-[11px] text-surface-500 mt-0.5">Choose a broker, strategy, and mode to begin live or paper trading</p>
           <button @click="showStart = false" class="text-surface-500 hover:text-surface-200 text-xl">&times;</button>
         </div>
         <div class="space-y-3">

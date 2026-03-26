@@ -1,7 +1,10 @@
 <template>
   <div>
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
-      <h1 class="text-2xl font-bold text-center sm:text-left">Strategies</h1>
+      <div>
+        <h1 class="text-2xl font-bold text-center sm:text-left">Strategies</h1>
+        <p class="text-xs text-surface-500 mt-0.5">Create, edit, and test trading strategies -- use AI Generate or write Python directly</p>
+      </div>
       <div class="flex items-center gap-3 overflow-x-auto">
         <!-- Editor Tabs in header -->
         <div v-if="openEditorTabs.length" class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg shrink-0">
@@ -92,19 +95,481 @@
     <div v-else-if="strategies.length === 0 && !playgroundActive && !editingStrat" class="card text-center py-12">
       <p class="text-surface-500">No strategies found. Create one or use AI to generate.</p>
     </div>
-    <div v-else-if="!playgroundActive && !editingStrat" class="space-y-2">
-      <p v-if="openEditorTabs.length" class="text-xs text-surface-500 mb-1">Select a strategy to open in a new tab:</p>
+    <div v-else-if="!playgroundActive && !editingStrat && !showGuide" class="space-y-3">
+      <div class="flex items-center justify-between">
+        <p v-if="openEditorTabs.length" class="text-xs text-surface-500">Select a strategy to open in a new tab:</p>
+        <p v-else class="text-xs text-surface-500">{{ strategies.length }} strateg{{ strategies.length === 1 ? 'y' : 'ies' }} available</p>
+        <button @click="showGuide = true" class="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+          Strategy Guide
+        </button>
+      </div>
       <div v-for="strat in strategies" :key="strat"
-        class="card flex items-center justify-between py-3 hover:border-surface-600 transition-colors cursor-pointer"
+        class="card hover:border-surface-600 transition-colors cursor-pointer"
         @click="selectStrategy(strat)">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-lg bg-surface-800 flex items-center justify-center text-brand-400 text-xs font-mono font-bold">{{ strat.slice(0, 2) }}</div>
-          <div class="text-sm font-medium text-surface-100">{{ strat }}</div>
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex items-start gap-3 min-w-0">
+            <div class="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-mono font-bold"
+              :class="getStratMeta(strat).iconClass || 'bg-surface-800 text-brand-400'">{{ strat.slice(0, 2) }}</div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-sm font-medium text-surface-100">{{ strat }}</span>
+                <span v-for="label in getStratMeta(strat).labels" :key="label.text"
+                  class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  :class="label.class">{{ label.text }}</span>
+              </div>
+              <p class="text-xs text-surface-500 mt-1 line-clamp-2">{{ getStratMeta(strat).description }}</p>
+              <div v-if="getStratMeta(strat).params.length" class="flex flex-wrap gap-1.5 mt-2">
+                <span v-for="p in getStratMeta(strat).params.slice(0, 6)" :key="p"
+                  class="px-1.5 py-0.5 bg-surface-800/80 rounded text-[10px] text-surface-500 font-mono">{{ p }}</span>
+                <span v-if="getStratMeta(strat).params.length > 6" class="text-[10px] text-surface-600">+{{ getStratMeta(strat).params.length - 6 }} more</span>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
+            <button @click.stop="openPlayground(strat)" class="px-2.5 py-1.5 rounded-md bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors flex items-center gap-1.5 text-xs font-medium" title="Playground">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 00.659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-1.47 4.41a2.25 2.25 0 01-2.133 1.59H8.603a2.25 2.25 0 01-2.133-1.59L5 14.5m14 0H5" /></svg>
+              Playground
+            </button>
+            <button @click.stop="editStrategy(strat)" class="w-7 h-7 rounded-md bg-surface-800 text-surface-400 hover:text-brand-400 hover:bg-surface-700 transition-colors flex items-center justify-center" title="Edit">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" /></svg>
+            </button>
+            <button @click.stop="confirmDelete(strat)" class="w-7 h-7 rounded-md bg-surface-800 text-surface-400 hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center justify-center" title="Delete">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+            </button>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
-          <button @click.stop="openPlayground(strat)" class="text-xs text-emerald-400 hover:text-emerald-300">Playground</button>
-          <button @click.stop="editStrategy(strat)" class="text-xs text-brand-400 hover:text-brand-300">Edit</button>
-          <button @click.stop="confirmDelete(strat)" class="text-xs text-red-400 hover:text-red-300">Delete</button>
+      </div>
+
+      <!-- High-level process -->
+      <div class="mt-6 card bg-surface-800/30 border-surface-700/50">
+        <h3 class="text-xs font-semibold text-surface-400 mb-3">How It Works</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">1</span>
+            <div>
+              <p class="text-xs font-medium text-surface-300">Create</p>
+              <p class="text-[11px] text-surface-500">Write a strategy class or use AI Generate. Define entry/exit logic and hyperparameters.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
+            <div>
+              <p class="text-xs font-medium text-surface-300">Test</p>
+              <p class="text-[11px] text-surface-500">Use Playground with synthetic data or run a full Backtest against historical candles.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">3</span>
+            <div>
+              <p class="text-xs font-medium text-surface-300">Optimize</p>
+              <p class="text-[11px] text-surface-500">Tune hyperparameters via the optimizer. Analyze Sharpe, drawdown, and win rate.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-brand-600/20 text-brand-400 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">4</span>
+            <div>
+              <p class="text-xs font-medium text-surface-300">Deploy</p>
+              <p class="text-[11px] text-surface-500">Paper trade first, then go live. Monitor via the Live Trade dashboard.</p>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-2 pt-2 border-t border-surface-700/50">
+          <button @click="showGuide = true" class="text-[11px] text-brand-400 hover:text-brand-300 flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+            Read the full Strategy Guide
+          </button>
+          <span class="text-[10px] text-surface-600">for methods, properties, indicators, and examples</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ STRATEGY GUIDE ═══════════════ -->
+    <div v-if="showGuide && !playgroundActive && !editingStrat">
+      <div class="flex items-center gap-3 mb-4">
+        <button @click="showGuide = false" class="btn-sm bg-surface-800 text-surface-400 hover:text-surface-200">
+          <svg class="w-4 h-4 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
+          Back
+        </button>
+        <h2 class="text-lg font-semibold text-surface-100">Strategy Development Guide</h2>
+      </div>
+
+      <!-- Sub-tabs -->
+      <div class="flex items-center gap-1 border-b border-surface-700 mb-4 overflow-x-auto">
+        <button v-for="tab in guideTabs" :key="tab.id" @click="guideTab = tab.id"
+          class="px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors"
+          :class="guideTab === tab.id ? 'border-brand-500 text-brand-400' : 'border-transparent text-surface-500 hover:text-surface-300'">
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <!-- TAB: Quick Start -->
+      <div v-if="guideTab === 'quickstart'" class="space-y-4">
+        <div class="card">
+          <p class="text-xs text-surface-400 mb-3">Every strategy is a Python class that extends <code class="text-brand-400">Strategy</code>. Create one via the <span class="text-brand-400">New Strategy</span> button or <span class="text-brand-400">AI Generate</span>. Each strategy lives in <code class="text-surface-300">strategies/YourName/__init__.py</code>.</p>
+          <div class="bg-surface-900 rounded-lg p-4 overflow-x-auto">
+            <pre class="text-xs font-mono text-surface-300 whitespace-pre"><span class="text-surface-500"># strategies/ExampleStrategy/__init__.py</span>
+<span class="text-purple-400">import</span> qengine.indicators <span class="text-purple-400">as</span> ta
+<span class="text-purple-400">from</span> qengine.strategies <span class="text-purple-400">import</span> Strategy
+
+<span class="text-purple-400">class</span> <span class="text-yellow-300">ExampleStrategy</span>(Strategy):
+    <span class="text-surface-500">"""EMA crossover strategy with session filtering and ATR-based stops."""</span>
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">hyperparameters</span>(self):
+        <span class="text-purple-400">return</span> [
+            {<span class="text-green-400">'name'</span>: <span class="text-green-400">'fast_ema'</span>,  <span class="text-green-400">'type'</span>: int,   <span class="text-green-400">'min'</span>: 5,   <span class="text-green-400">'max'</span>: 20,  <span class="text-green-400">'default'</span>: 8},
+            {<span class="text-green-400">'name'</span>: <span class="text-green-400">'slow_ema'</span>,  <span class="text-green-400">'type'</span>: int,   <span class="text-green-400">'min'</span>: 15,  <span class="text-green-400">'max'</span>: 50,  <span class="text-green-400">'default'</span>: 21},
+            {<span class="text-green-400">'name'</span>: <span class="text-green-400">'risk_pct'</span>,  <span class="text-green-400">'type'</span>: float, <span class="text-green-400">'min'</span>: 0.5, <span class="text-green-400">'max'</span>: 3.0, <span class="text-green-400">'default'</span>: 1.0},
+            {<span class="text-green-400">'name'</span>: <span class="text-green-400">'stop_pips'</span>, <span class="text-green-400">'type'</span>: int,   <span class="text-green-400">'min'</span>: 20,  <span class="text-green-400">'max'</span>: 80,  <span class="text-green-400">'default'</span>: 40},
+            {<span class="text-green-400">'name'</span>: <span class="text-green-400">'rr_ratio'</span>,  <span class="text-green-400">'type'</span>: float, <span class="text-green-400">'min'</span>: 1.0, <span class="text-green-400">'max'</span>: 4.0, <span class="text-green-400">'default'</span>: 2.0},
+        ]
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">before</span>(self):
+        <span class="text-surface-500"># Runs before each candle's logic - compute indicators here</span>
+        self.fast = ta.ema(self.candles, self.hp.get(<span class="text-green-400">'fast_ema'</span>, 8))
+        self.slow = ta.ema(self.candles, self.hp.get(<span class="text-green-400">'slow_ema'</span>, 21))
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">should_long</span>(self) -> bool:
+        <span class="text-surface-500"># Only trade during active sessions</span>
+        <span class="text-purple-400">if</span> self.session <span class="text-purple-400">not in</span> (<span class="text-green-400">'london'</span>, <span class="text-green-400">'new_york'</span>, <span class="text-green-400">'overlap'</span>):
+            <span class="text-purple-400">return</span> False
+        <span class="text-purple-400">return</span> self.fast > self.slow <span class="text-purple-400">and</span> self.price > self.fast
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">go_long</span>(self):
+        stop_pips = self.hp.get(<span class="text-green-400">'stop_pips'</span>, 40)
+        rr = self.hp.get(<span class="text-green-400">'rr_ratio'</span>, 2.0)
+        qty = self.lot_size_for_risk(self.hp.get(<span class="text-green-400">'risk_pct'</span>, 1.0), stop_pips)
+
+        self.buy = qty, self.price
+        self.stop_loss = qty, self.price - self.pips_to_price(stop_pips)
+        self.take_profit = qty, self.price + self.pips_to_price(stop_pips * rr)
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">should_short</span>(self) -> bool:
+        <span class="text-purple-400">if</span> self.session <span class="text-purple-400">not in</span> (<span class="text-green-400">'london'</span>, <span class="text-green-400">'new_york'</span>, <span class="text-green-400">'overlap'</span>):
+            <span class="text-purple-400">return</span> False
+        <span class="text-purple-400">return</span> self.fast < self.slow <span class="text-purple-400">and</span> self.price < self.fast
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">go_short</span>(self):
+        stop_pips = self.hp.get(<span class="text-green-400">'stop_pips'</span>, 40)
+        rr = self.hp.get(<span class="text-green-400">'rr_ratio'</span>, 2.0)
+        qty = self.lot_size_for_risk(self.hp.get(<span class="text-green-400">'risk_pct'</span>, 1.0), stop_pips)
+
+        self.sell = qty, self.price
+        self.stop_loss = qty, self.price + self.pips_to_price(stop_pips)
+        self.take_profit = qty, self.price - self.pips_to_price(stop_pips * rr)
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">should_cancel_entry</span>(self) -> bool:
+        <span class="text-surface-500"># Cancel pending entries before weekend</span>
+        <span class="text-purple-400">if</span> self.minutes_to_close <span class="text-purple-400">is not</span> None <span class="text-purple-400">and</span> self.minutes_to_close < 60:
+            <span class="text-purple-400">return</span> True
+        <span class="text-purple-400">return</span> False
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">filters</span>(self):
+        <span class="text-surface-500"># Additional entry conditions (all must pass)</span>
+        <span class="text-purple-400">return</span> [self.filter_atr_above_minimum]
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">filter_atr_above_minimum</span>(self):
+        <span class="text-purple-400">return</span> ta.atr(self.candles, 14) > self.pips_to_price(5)</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Methods -->
+      <div v-if="guideTab === 'methods'" class="space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="card">
+            <h3 class="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
+              <span class="w-5 h-5 rounded bg-red-600 flex items-center justify-center text-[10px] font-bold text-white">!</span>
+              Required Methods
+            </h3>
+            <div class="space-y-2">
+              <div class="p-2 bg-surface-800/50 rounded">
+                <code class="text-xs text-red-400 font-mono">should_long(self) -> bool</code>
+                <p class="text-[11px] text-surface-500 mt-0.5">Return True when conditions are met to open a long position</p>
+              </div>
+              <div class="p-2 bg-surface-800/50 rounded">
+                <code class="text-xs text-red-400 font-mono">go_long(self)</code>
+                <p class="text-[11px] text-surface-500 mt-0.5">Set <code class="text-surface-400">self.buy</code>, <code class="text-surface-400">self.stop_loss</code>, <code class="text-surface-400">self.take_profit</code> as <code class="text-surface-400">(qty, price)</code> tuples</p>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
+              <span class="w-5 h-5 rounded bg-surface-600 flex items-center justify-center text-[10px] font-bold text-white">~</span>
+              Optional Methods
+            </h3>
+            <div class="space-y-1.5">
+              <div v-for="m in guideMethods" :key="m.name" class="p-1.5 bg-surface-800/50 rounded">
+                <code class="text-[11px] text-blue-400 font-mono">{{ m.name }}</code>
+                <p class="text-[10px] text-surface-500 mt-0.5">{{ m.desc }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Order Formats -->
+        <div class="card">
+          <h3 class="text-sm font-semibold text-surface-200 mb-3">Order Submission Format</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="p-3 bg-surface-800/50 rounded">
+              <h4 class="text-xs font-semibold text-surface-300 mb-1.5">Market Order</h4>
+              <pre class="text-[11px] font-mono text-surface-400">self.buy = qty, self.price
+self.stop_loss = qty, stop_price
+self.take_profit = qty, tp_price</pre>
+            </div>
+            <div class="p-3 bg-surface-800/50 rounded">
+              <h4 class="text-xs font-semibold text-surface-300 mb-1.5">Limit / Stop Order</h4>
+              <pre class="text-[11px] font-mono text-surface-400"><span class="text-surface-500"># Limit buy below current price</span>
+self.buy = qty, limit_price
+<span class="text-surface-500"># Stop buy above current price</span>
+self.buy = qty, stop_price</pre>
+            </div>
+            <div class="p-3 bg-surface-800/50 rounded">
+              <h4 class="text-xs font-semibold text-surface-300 mb-1.5">Multiple Orders</h4>
+              <pre class="text-[11px] font-mono text-surface-400"><span class="text-surface-500"># Scale in at multiple levels</span>
+self.buy = [
+  (qty1, price1),
+  (qty2, price2),
+]</pre>
+            </div>
+          </div>
+        </div>
+        <!-- Filters -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="card">
+            <h3 class="text-sm font-semibold text-surface-200 mb-3">Entry Filters</h3>
+            <p class="text-xs text-surface-400 mb-2">Additional conditions that must <em>all</em> pass before an entry is taken.</p>
+            <div class="bg-surface-900 rounded-lg p-3">
+              <pre class="text-[11px] font-mono text-surface-300 whitespace-pre"><span class="text-purple-400">def</span> <span class="text-blue-300">filters</span>(self):
+    <span class="text-purple-400">return</span> [
+        self.is_volatile_enough,
+        self.not_near_weekend,
+    ]
+
+<span class="text-purple-400">def</span> <span class="text-blue-300">is_volatile_enough</span>(self):
+    <span class="text-purple-400">return</span> ta.atr(self.candles, 14) > 0.001
+
+<span class="text-purple-400">def</span> <span class="text-blue-300">not_near_weekend</span>(self):
+    <span class="text-purple-400">return</span> self.minutes_to_close <span class="text-purple-400">is</span> None \
+        <span class="text-purple-400">or</span> self.minutes_to_close > 120</pre>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="text-sm font-semibold text-surface-200 mb-3">Chart Annotations</h3>
+            <p class="text-xs text-surface-400 mb-2">Add custom lines and labels to backtest charts.</p>
+            <div class="bg-surface-900 rounded-lg p-3">
+              <pre class="text-[11px] font-mono text-surface-300 whitespace-pre"><span class="text-surface-500"># Label on order markers</span>
+self.chart_label = <span class="text-green-400">"L0"</span>
+
+<span class="text-surface-500"># Indicator line on candle chart</span>
+self._add_line_to_candle_chart_values[
+    <span class="text-green-400">'ema21'</span>] = ta.ema(self.candles, 21)
+
+<span class="text-surface-500"># Horizontal line</span>
+self._add_horizontal_line_to_candle_chart_values[
+    <span class="text-green-400">'tp_line'</span>] = tp_price
+
+<span class="text-surface-500"># Separate indicator pane</span>
+self._add_extra_line_chart_values[
+    <span class="text-green-400">'rsi'</span>] = ta.rsi(self.candles, 14)</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Properties -->
+      <div v-if="guideTab === 'properties'" class="space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="card">
+            <h3 class="text-sm font-semibold text-surface-200 mb-3">Price & Candle</h3>
+            <div class="grid grid-cols-2 gap-1.5">
+              <div v-for="p in guidePropsPrice" :key="p.name" class="p-1.5 bg-surface-800/50 rounded">
+                <code class="text-[11px] text-emerald-400 font-mono">self.{{ p.name }}</code>
+                <p class="text-[10px] text-surface-500">{{ p.desc }}</p>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <h3 class="text-sm font-semibold text-surface-200 mb-3">Position & Balance</h3>
+            <div class="grid grid-cols-2 gap-1.5">
+              <div v-for="p in guidePropsPosition" :key="p.name" class="p-1.5 bg-surface-800/50 rounded">
+                <code class="text-[11px] text-emerald-400 font-mono">self.{{ p.name }}</code>
+                <p class="text-[10px] text-surface-500">{{ p.desc }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="text-sm font-semibold text-surface-200 mb-3">Forex / CFD Helpers</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+            <div v-for="p in guidePropsForex" :key="p.name" class="p-1.5 bg-surface-800/50 rounded">
+              <code class="text-[11px] text-amber-400 font-mono">{{ p.name }}</code>
+              <p class="text-[10px] text-surface-500">{{ p.desc }}</p>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="text-sm font-semibold text-surface-200 mb-3">Hyperparameters</h3>
+          <p class="text-xs text-surface-400 mb-3">Define tunable parameters for optimization. Access via <code class="text-brand-400">self.hp['name']</code> or <code class="text-brand-400">self.hp.get('name', default)</code>.</p>
+          <div class="bg-surface-900 rounded-lg p-3 overflow-x-auto">
+            <pre class="text-[11px] font-mono text-surface-300 whitespace-pre"><span class="text-purple-400">def</span> <span class="text-blue-300">hyperparameters</span>(self):
+    <span class="text-purple-400">return</span> [
+        {<span class="text-green-400">'name'</span>: <span class="text-green-400">'period'</span>,     <span class="text-green-400">'type'</span>: int,   <span class="text-green-400">'min'</span>: 5,   <span class="text-green-400">'max'</span>: 50,  <span class="text-green-400">'default'</span>: 14},
+        {<span class="text-green-400">'name'</span>: <span class="text-green-400">'threshold'</span>,  <span class="text-green-400">'type'</span>: float, <span class="text-green-400">'min'</span>: 0.1, <span class="text-green-400">'max'</span>: 1.0, <span class="text-green-400">'default'</span>: 0.5},
+        {<span class="text-green-400">'name'</span>: <span class="text-green-400">'mode'</span>,       <span class="text-green-400">'type'</span>: str,   <span class="text-green-400">'options'</span>: [<span class="text-green-400">'fast'</span>, <span class="text-green-400">'slow'</span>], <span class="text-green-400">'default'</span>: <span class="text-green-400">'fast'</span>},
+    ]</pre>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-3">
+            <div class="p-2 bg-surface-800/50 rounded text-center">
+              <div class="text-[10px] text-surface-500 mb-0.5">Supported Types</div>
+              <code class="text-[11px] text-surface-300">int, float, str</code>
+            </div>
+            <div class="p-2 bg-surface-800/50 rounded text-center">
+              <div class="text-[10px] text-surface-500 mb-0.5">For Strings</div>
+              <code class="text-[11px] text-surface-300">options: [...]</code>
+            </div>
+            <div class="p-2 bg-surface-800/50 rounded text-center">
+              <div class="text-[10px] text-surface-500 mb-0.5">Auto-loaded</div>
+              <span class="text-[11px] text-surface-300">Playground reads these</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Modes -->
+      <div v-if="guideTab === 'modes'" class="space-y-4">
+        <div class="card">
+          <h3 class="text-sm font-semibold text-surface-200 mb-3">Exchange Types</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="p-3 bg-surface-800/50 rounded border border-surface-700">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[10px] font-bold">CFD</span>
+                <span class="text-xs text-surface-300 font-medium">Forex / CFD</span>
+              </div>
+              <p class="text-[11px] text-surface-500">OANDA, IG Markets, IBKR. True hedging with independent tickets. Multiple positions in same symbol simultaneously.</p>
+              <div class="mt-2 space-y-1">
+                <code class="block text-[10px] text-surface-400 font-mono">self.hedge_mode = True</code>
+                <code class="block text-[10px] text-surface-400 font-mono">self.close_all_tickets(price)</code>
+                <code class="block text-[10px] text-surface-400 font-mono">self.close_ticket(id, price)</code>
+              </div>
+            </div>
+            <div class="p-3 bg-surface-800/50 rounded border border-surface-700">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-[10px] font-bold">FUTURES</span>
+                <span class="text-xs text-surface-300 font-medium">Crypto Futures</span>
+              </div>
+              <p class="text-[11px] text-surface-500">Netting mode. One position per symbol. Supports leverage and funding rates.</p>
+              <div class="mt-2 space-y-1">
+                <code class="block text-[10px] text-surface-400 font-mono">self.leverage</code>
+                <code class="block text-[10px] text-surface-400 font-mono">self.mark_price</code>
+                <code class="block text-[10px] text-surface-400 font-mono">self.funding_rate</code>
+              </div>
+            </div>
+            <div class="p-3 bg-surface-800/50 rounded border border-surface-700">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="px-2 py-0.5 bg-green-500/20 text-green-400 rounded text-[10px] font-bold">SPOT</span>
+                <span class="text-xs text-surface-300 font-medium">Crypto Spot</span>
+              </div>
+              <p class="text-[11px] text-surface-500">No leverage, no shorting. Buy and sell actual assets. Simplest exchange type.</p>
+              <div class="mt-2 space-y-1">
+                <code class="block text-[10px] text-surface-400 font-mono">self.is_spot_trading</code>
+                <code class="block text-[10px] text-surface-400 font-mono">self.balance</code>
+                <code class="block text-[10px] text-surface-400 font-mono">self.portfolio_value</code>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 p-2 bg-surface-800/50 rounded">
+            <p class="text-[11px] text-surface-500"><span class="text-surface-300 font-medium">Detection:</span> Auto-detected from broker. Check with <code class="text-emerald-400">self.exchange_type</code> (<code class="text-surface-400">'cfd'</code>/<code class="text-surface-400">'futures'</code>/<code class="text-surface-400">'spot'</code>) or <code class="text-emerald-400">self.is_cfd_trading</code>, <code class="text-emerald-400">self.is_futures_trading</code>, <code class="text-emerald-400">self.is_spot_trading</code>.</p>
+          </div>
+        </div>
+        <!-- @cached -->
+        <div class="card">
+          <h3 class="text-sm font-semibold text-surface-200 mb-3">Performance: @cached Decorator</h3>
+          <p class="text-xs text-surface-400 mb-2">Cache expensive computations per candle. Resets automatically on new candle.</p>
+          <div class="bg-surface-900 rounded-lg p-3">
+            <pre class="text-[11px] font-mono text-surface-300 whitespace-pre"><span class="text-purple-400">from</span> qengine.services.cache <span class="text-purple-400">import</span> cached
+
+<span class="text-purple-400">class</span> <span class="text-yellow-300">MyStrategy</span>(Strategy):
+    @cached
+    <span class="text-purple-400">def</span> <span class="text-blue-300">atr_value</span>(self):
+        <span class="text-purple-400">return</span> ta.atr(self.candles, 14)
+
+    <span class="text-purple-400">def</span> <span class="text-blue-300">should_long</span>(self):
+        <span class="text-surface-500"># computed only once per candle thanks to @cached</span>
+        <span class="text-purple-400">return</span> self.price > self.atr_value * 100</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Indicators -->
+      <div v-if="guideTab === 'indicators'" class="space-y-4">
+        <div class="card">
+          <p class="text-xs text-surface-400 mb-1">Import: <code class="text-brand-400">import qengine.indicators as ta</code></p>
+          <p class="text-xs text-surface-500 mb-3">All indicators take <code class="text-surface-400">candles</code> as first arg. Returns <span class="text-amber-400">scalar by default</span>. Pass <code class="text-surface-400">sequential=True</code> to get full array.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div v-for="cat in guideIndicators" :key="cat.name">
+              <h4 class="text-[11px] font-semibold text-surface-400 mb-1.5">{{ cat.name }}</h4>
+              <div class="flex flex-wrap gap-1">
+                <code v-for="ind in cat.items" :key="ind" class="px-1.5 py-0.5 bg-surface-800 rounded text-[10px] text-surface-400 font-mono hover:text-surface-200 transition-colors">{{ ind }}</code>
+              </div>
+            </div>
+          </div>
+          <div class="mt-4 p-3 bg-surface-900 rounded-lg">
+            <h4 class="text-[11px] font-semibold text-surface-300 mb-1.5">Usage Examples</h4>
+            <pre class="text-[11px] font-mono text-surface-400 whitespace-pre">ta.ema(self.candles, 21)                    <span class="text-surface-600"># scalar (latest value)</span>
+ta.ema(self.candles, 21, sequential=True)   <span class="text-surface-600"># full array</span>
+ta.rsi(self.candles, 14)                    <span class="text-surface-600"># RSI scalar</span>
+ta.atr(self.candles, 14)                    <span class="text-surface-600"># ATR scalar</span>
+ta.macd(self.candles, 12, 26, 9)            <span class="text-surface-600"># returns (macd, signal, hist)</span>
+ta.bollinger_bands(self.candles, 20)        <span class="text-surface-600"># returns (upper, middle, lower)</span>
+ta.supertrend(self.candles, 10, 3.0)        <span class="text-surface-600"># returns (trend, direction)</span></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Imports -->
+      <div v-if="guideTab === 'imports'" class="space-y-4">
+        <div class="card">
+          <h3 class="text-sm font-semibold text-surface-200 mb-3">Common Imports & Utilities</h3>
+          <div class="bg-surface-900 rounded-lg p-3 overflow-x-auto">
+            <pre class="text-[11px] font-mono text-surface-300 whitespace-pre"><span class="text-surface-500"># Core imports</span>
+<span class="text-purple-400">import</span> qengine.indicators <span class="text-purple-400">as</span> ta        <span class="text-surface-500"># 170+ indicators</span>
+<span class="text-purple-400">from</span> qengine.strategies <span class="text-purple-400">import</span> Strategy  <span class="text-surface-500"># base class</span>
+<span class="text-purple-400">import</span> qengine.helpers <span class="text-purple-400">as</span> jh            <span class="text-surface-500"># utility helpers</span>
+<span class="text-purple-400">import</span> numpy <span class="text-purple-400">as</span> np                      <span class="text-surface-500"># arrays</span>
+
+<span class="text-surface-500"># Caching (recompute once per candle, not per call)</span>
+<span class="text-purple-400">from</span> qengine.services.cache <span class="text-purple-400">import</span> cached
+
+<span class="text-surface-500"># Logging in strategies</span>
+self.log(<span class="text-green-400">"Entry signal fired"</span>, <span class="text-green-400">"info"</span>)
+
+<span class="text-surface-500"># Environment checks</span>
+jh.is_live()         <span class="text-surface-500"># True in livetrade AND papertrade</span>
+jh.is_livetrading()  <span class="text-surface-500"># True ONLY in livetrade mode</span>
+jh.is_backtesting()  <span class="text-surface-500"># True in backtest mode</span></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Installed -->
+      <div v-if="guideTab === 'installed'" class="space-y-3">
+        <div v-for="strat in strategies" :key="'guide-' + strat" class="card">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] font-mono font-bold"
+              :class="getStratMeta(strat).iconClass || 'bg-surface-800 text-brand-400'">{{ strat.slice(0, 2) }}</div>
+            <span class="text-sm font-semibold text-surface-100">{{ strat }}</span>
+            <span v-for="label in getStratMeta(strat).labels" :key="label.text"
+              class="px-1.5 py-0.5 rounded text-[10px] font-medium" :class="label.class">{{ label.text }}</span>
+          </div>
+          <p class="text-xs text-surface-400 mb-3">{{ getStratMeta(strat).longDescription || getStratMeta(strat).description }}</p>
+          <div v-if="getStratMeta(strat).params.length">
+            <h4 class="text-[11px] font-semibold text-surface-500 mb-1.5">Parameters</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-1">
+              <div v-for="p in getStratMeta(strat).params" :key="p" class="px-2 py-1 bg-surface-800/50 rounded">
+                <code class="text-[10px] text-brand-400 font-mono">{{ p }}</code>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -475,6 +940,17 @@ const editErr = ref(false)
 const refineInput = ref('')
 const aiRefining = ref(false)
 const deletingStrat = ref(null)
+const showGuide = ref(false)
+const guideTab = ref('quickstart')
+const guideTabs = [
+  { id: 'quickstart', label: 'Quick Start' },
+  { id: 'methods', label: 'Methods & Orders' },
+  { id: 'properties', label: 'Properties' },
+  { id: 'modes', label: 'Modes & Caching' },
+  { id: 'indicators', label: 'Indicators' },
+  { id: 'imports', label: 'Imports' },
+  { id: 'installed', label: 'Installed Strategies' },
+]
 
 // Editor tabs
 const openEditorTabs = ref([])
@@ -531,6 +1007,144 @@ const pgTimeframes = [
   { value: '1m', label: '1m' }, { value: '3m', label: '3m' }, { value: '5m', label: '5m' },
   { value: '15m', label: '15m' }, { value: '30m', label: '30m' }, { value: '45m', label: '45m' },
   { value: '1h', label: '1h' }, { value: '2h', label: '2h' }, { value: '3h', label: '3h' }, { value: '4h', label: '4h' },
+]
+
+// ── Strategy metadata for descriptions & labels ──
+const strategyMeta = {
+  Surefire: {
+    description: 'Recovery/martingale hedging strategy for CFD trading using broker-side orders (OANDA).',
+    longDescription: 'Opens an initial ticket in a configurable direction with TP and hedge trigger. When price moves against, opens opposite-direction ticket with larger size. Continues adding hedged tickets until TP hit or max_levels reached. Uses broker orders for sub-second execution.',
+    labels: [
+      { text: 'CFD', class: 'bg-blue-500/20 text-blue-400' },
+      { text: 'Hedging', class: 'bg-amber-500/20 text-amber-400' },
+      { text: 'Live Ready', class: 'bg-green-500/20 text-green-400' },
+    ],
+    iconClass: 'bg-amber-900/50 text-amber-400',
+    params: ['direction', 'initial_size', 'sizing_operator', 'sizing_factor', 'tp_distance', 'hedge_distance', 'max_levels'],
+  },
+  SurefireV2: {
+    description: 'Enhanced hedging with indicator-based entries, bucket PnL exits, and circuit breakers.',
+    longDescription: 'Indicator-driven entry signals (EMA, RSI, MACD, Supertrend, or combinations) with ATR-based hedge distances. Session closes when floating PnL reaches bucket_threshold. Circuit breakers for daily loss limits and consecutive bust protection. Supports London/NY/overlap session filtering.',
+    labels: [
+      { text: 'CFD', class: 'bg-blue-500/20 text-blue-400' },
+      { text: 'Hedging', class: 'bg-amber-500/20 text-amber-400' },
+      { text: 'Multi-Indicator', class: 'bg-purple-500/20 text-purple-400' },
+    ],
+    iconClass: 'bg-purple-900/50 text-purple-400',
+    params: ['initial_size', 'sizing_operator', 'sizing_factor', 'max_levels', 'bucket_pct', 'signal_mode', 'atr_period', 'hedge_atr_mult', 'session_filter', 'cooldown_bars', 'max_daily_loss_pct', 'max_consec_busts', 'ema_fast', 'ema_slow', 'rsi_period', 'rsi_ob', 'rsi_os'],
+  },
+  ForexMA: {
+    description: 'Simple SMA crossover strategy with session filtering and pip-based risk management.',
+    longDescription: 'Educational example demonstrating forex-specific features. Enters long when fast SMA > slow SMA during London/NY/overlap sessions. Uses lot_size_for_risk() for pip-based position sizing and pips_to_price() for stop/TP calculation. Cancels entries before weekend close.',
+    labels: [
+      { text: 'Forex', class: 'bg-blue-500/20 text-blue-400' },
+      { text: 'Trend', class: 'bg-emerald-500/20 text-emerald-400' },
+      { text: 'Example', class: 'bg-surface-600/50 text-surface-400' },
+    ],
+    iconClass: 'bg-blue-900/50 text-blue-400',
+    params: ['fast_period', 'slow_period', 'risk_pct', 'stop_pips', 'rr_ratio'],
+  },
+  ForexRSIReversal: {
+    description: 'RSI mean-reversion strategy for GBP-JPY with session filtering and fixed risk/reward.',
+    longDescription: 'Buys when RSI drops below oversold threshold during active sessions, sells when RSI exceeds overbought. Uses 2:1 risk-reward ratio with pip-based position sizing. Designed for volatile pairs like GBP-JPY where mean reversion signals work well.',
+    labels: [
+      { text: 'Forex', class: 'bg-blue-500/20 text-blue-400' },
+      { text: 'Mean Reversion', class: 'bg-cyan-500/20 text-cyan-400' },
+      { text: 'Example', class: 'bg-surface-600/50 text-surface-400' },
+    ],
+    iconClass: 'bg-cyan-900/50 text-cyan-400',
+    params: ['rsi_period', 'oversold', 'overbought', 'risk_pct', 'stop_pips'],
+  },
+  GoldBreakout: {
+    description: 'Donchian channel breakout strategy for XAU-USD with ATR-based volatility stops.',
+    longDescription: 'Enters when price breaks above/below the Donchian channel (highest/lowest price over N periods). Uses ATR-multiplied stop-loss distances suitable for the wider volatility of commodities like gold. Position sized by risk percentage relative to stop distance.',
+    labels: [
+      { text: 'Commodity', class: 'bg-yellow-500/20 text-yellow-400' },
+      { text: 'Breakout', class: 'bg-orange-500/20 text-orange-400' },
+      { text: 'Example', class: 'bg-surface-600/50 text-surface-400' },
+    ],
+    iconClass: 'bg-yellow-900/50 text-yellow-400',
+    params: ['channel_period', 'atr_period', 'atr_multiplier', 'risk_pct'],
+  },
+}
+const defaultStratMeta = {
+  description: 'Custom strategy',
+  longDescription: 'Custom strategy - edit to view implementation details.',
+  labels: [],
+  iconClass: 'bg-surface-800 text-brand-400',
+  params: [],
+}
+function getStratMeta(name) {
+  return strategyMeta[name] || defaultStratMeta
+}
+
+// ── Guide reference data ──
+const guideMethods = [
+  { name: 'should_short(self) -> bool', desc: 'Return True to enter short (default: False)' },
+  { name: 'go_short(self)', desc: 'Set self.sell, self.stop_loss, self.take_profit for short entry' },
+  { name: 'before(self)', desc: 'Runs BEFORE each candle logic - precompute indicators here' },
+  { name: 'after(self)', desc: 'Runs AFTER each candle logic' },
+  { name: 'update_position(self)', desc: 'Called when position is open - update TP/SL dynamically' },
+  { name: 'should_cancel_entry(self) -> bool', desc: 'Cancel pending orders on new candle (default: True)' },
+  { name: 'on_open_position(self, order)', desc: 'Called when position opens' },
+  { name: 'on_close_position(self, order, trade)', desc: 'Called when position closes with ClosedTrade' },
+  { name: 'on_increased_position(self, order)', desc: 'Called when position size increases' },
+  { name: 'on_reduced_position(self, order)', desc: 'Called when position size decreases' },
+  { name: 'on_ticket_opened(self, order)', desc: 'CFD mode: called when a new ticket opens' },
+  { name: 'on_ticket_closed(self, order)', desc: 'CFD mode: called when a ticket closes' },
+  { name: 'on_cancel(self)', desc: 'Called after all orders are cancelled' },
+  { name: 'filters(self) -> list', desc: 'Return list of filter methods for entry validation' },
+  { name: 'hyperparameters(self) -> list', desc: 'Return list of HP dicts for optimization' },
+  { name: 'watch_list(self) -> list', desc: 'Return [{key, value}] dicts for live monitoring' },
+  { name: 'terminate(self)', desc: 'Called at backtest end / strategy termination' },
+  { name: 'before_terminate(self)', desc: 'Called before termination' },
+  { name: 'dna(self) -> str', desc: 'Return DNA string for strategy identification' },
+]
+const guidePropsPrice = [
+  { name: 'price', desc: 'Current price (close)' },
+  { name: 'open', desc: 'Current candle open' },
+  { name: 'close', desc: 'Current candle close' },
+  { name: 'high', desc: 'Current candle high' },
+  { name: 'low', desc: 'Current candle low' },
+  { name: 'volume', desc: 'Current candle volume' },
+  { name: 'candles', desc: 'All historical candles' },
+  { name: 'current_candle', desc: 'Current candle array' },
+  { name: 'index', desc: 'Current candle index' },
+  { name: 'timeframe', desc: 'Strategy timeframe' },
+]
+const guidePropsPosition = [
+  { name: 'is_long', desc: 'Position is long' },
+  { name: 'is_short', desc: 'Position is short' },
+  { name: 'is_open', desc: 'Position is open' },
+  { name: 'is_close', desc: 'Position is closed' },
+  { name: 'balance', desc: 'Current wallet balance' },
+  { name: 'available_margin', desc: 'Available margin' },
+  { name: 'leverage', desc: 'Current leverage' },
+  { name: 'fee_rate', desc: 'Exchange fee rate' },
+  { name: 'portfolio_value', desc: 'Total portfolio value' },
+  { name: 'position', desc: 'Position object' },
+]
+const guidePropsForex = [
+  { name: 'self.session', desc: "tokyo, london, new_york, overlap, off" },
+  { name: 'self.spread', desc: 'Bid-ask spread' },
+  { name: 'self.pip_size', desc: 'e.g. 0.0001 for EUR-USD' },
+  { name: 'self.market_is_open', desc: 'Is market open?' },
+  { name: 'self.minutes_to_close', desc: 'Minutes until close' },
+  { name: 'self.swap_long', desc: 'Overnight swap (long)' },
+  { name: 'self.swap_short', desc: 'Overnight swap (short)' },
+  { name: 'self.contract_size', desc: 'e.g. 100000 for forex' },
+  { name: 'self.pips_to_price(n)', desc: 'Convert pips to price' },
+  { name: 'self.price_to_pips(d)', desc: 'Convert price to pips' },
+  { name: 'self.lot_size_for_risk(%, pips)', desc: 'Qty for risk %' },
+  { name: 'self.asset_class', desc: 'forex, commodity, index' },
+]
+const guideIndicators = [
+  { name: 'Moving Averages', items: ['sma', 'ema', 'dema', 'tema', 'wma', 'vwma', 'kama', 'alma', 'jma', 't3'] },
+  { name: 'Momentum', items: ['rsi', 'macd', 'mom', 'apo', 'ppo', 'kst', 'tsi', 'stochastic', 'cci', 'rvi', 'williams'] },
+  { name: 'Volatility', items: ['atr', 'natr', 'stddev', 'bollinger_bands', 'keltner', 'donchian'] },
+  { name: 'Trend', items: ['adx', 'aroon', 'supertrend', 'ichimoku_cloud', 'trendline'] },
+  { name: 'Volume', items: ['obv', 'adosc', 'mfi', 'kvo', 'vwap'] },
+  { name: 'Utility', items: ['highestprice', 'lowestprice', 'correl', 'beta', 'heikin_ashi_candles'] },
 ]
 
 // ── Computed ──

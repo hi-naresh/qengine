@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-center mb-8">Brokers</h1>
+    <div class="text-center mb-6">
+      <h1 class="text-2xl font-bold">Brokers</h1>
+      <p class="text-sm text-surface-500 mt-1">Connected exchanges and brokers -- manage API keys, view supported assets and fee structures</p>
+    </div>
 
     <!-- Filter tabs -->
     <div class="flex gap-2 mb-5">
