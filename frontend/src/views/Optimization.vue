@@ -62,7 +62,7 @@
               <input v-else v-model="form.strategy" class="input" placeholder="ForexMA" />
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="label">Training Start</label>
                 <input v-model="form.trainingStartDate" type="date" class="input" />
@@ -73,7 +73,7 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="label">Testing Start</label>
                 <input v-model="form.testingStartDate" type="date" class="input" />
@@ -102,7 +102,7 @@
               </select>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="label">Warm-up Candles</label>
                 <input v-model.number="form.warmUpCandles" type="number" class="input" min="0" />
@@ -113,7 +113,7 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="label">Optimal Trades</label>
                 <input v-model.number="form.optimalTotal" type="number" class="input" />

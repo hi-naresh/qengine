@@ -20,7 +20,7 @@
             <input v-model="form.symbol" class="input" placeholder="EUR-USD" />
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="label">Start Date</label>
               <input v-model="form.start_date" type="date" class="input" />

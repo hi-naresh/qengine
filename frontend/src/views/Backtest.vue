@@ -92,7 +92,7 @@
             </div>
 
             <!-- Date range -->
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="label">Start Date</label>
                 <input v-model="form.startDate" type="date" class="input" />
