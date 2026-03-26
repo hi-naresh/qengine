@@ -90,7 +90,7 @@ qengine run
 # Open http://localhost:9000
 ```
 
-See [PRE-SETUP.md](./new-docs/PRE-SETUP.md) for detailed setup instructions.
+See [PRE-SETUP.md](./docs/PRE-SETUP.md) for detailed setup instructions.
 
 ---
 
@@ -98,14 +98,14 @@ See [PRE-SETUP.md](./new-docs/PRE-SETUP.md) for detailed setup instructions.
 
 | Document | Description |
 |----------|-------------|
-| [PRE-SETUP.md](./new-docs/PRE-SETUP.md) | System requirements, database setup, environment configuration |
-| [RUN.md](./new-docs/RUN.md) | Starting the backend, frontend dev, Docker, CLI commands |
-| [ARCHITECTURE.md](./new-docs/ARCHITECTURE.md) | System architecture, directory structure, data flow |
-| [HIGH-LEVEL-LOGIC.md](./new-docs/HIGH-LEVEL-LOGIC.md) | How backtesting, optimization, Monte Carlo, and strategy execution work |
-| [STRATEGY.md](./new-docs/STRATEGY.md) | Complete strategy writing guide (basic to advanced) |
-| [PROGRESS.md](./new-docs/PROGRESS.md) | Development phases and roadmap |
-| [CHANGELOG.md](./new-docs/CHANGELOG.md) | Version history |
-| [CONTRIBUTIONS.md](./new-docs/CONTRIBUTIONS.md) | How to contribute |
+| [PRE-SETUP.md](./docs/PRE-SETUP.md) | System requirements, database setup, environment configuration |
+| [RUN.md](./docs/RUN.md) | Starting the backend, frontend dev, Docker, CLI commands |
+| [ARCHITECTURE.md](./docs/ARCHITECTURE.md) | System architecture, directory structure, data flow |
+| [HIGH-LEVEL-LOGIC.md](./docs/HIGH-LEVEL-LOGIC.md) | How backtesting, optimization, Monte Carlo, and strategy execution work |
+| [STRATEGY.md](./docs/STRATEGY.md) | Complete strategy writing guide (basic to advanced) |
+| [PROGRESS.md](./docs/PROGRESS.md) | Development phases and roadmap |
+| [CHANGELOG.md](./docs/CHANGELOG.md) | Version history |
+| [CONTRIBUTIONS.md](./docs/CONTRIBUTIONS.md) | How to contribute |
 
 ---
 
@@ -139,7 +139,7 @@ class SimpleRSI(Strategy):
 
 Save as `strategies/SimpleRSI/__init__.py`, then backtest from the dashboard.
 
-See [STRATEGY.md](./new-docs/STRATEGY.md) for the complete guide.
+See [STRATEGY.md](./docs/STRATEGY.md) for the complete guide.
 
 ---
 

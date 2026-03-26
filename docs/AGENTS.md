@@ -192,7 +192,7 @@ strategies/                       # User strategies directory
 
 tests/                            # Test suite
 storage/                          # Runtime data (logs, temp files)
-new-docs/                         # Documentation
+docs/                             # Documentation
 ```
 
 ## Backtesting Engine

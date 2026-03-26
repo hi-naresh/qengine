@@ -17,6 +17,7 @@ coverage.xml
 .git
 *.md
 !README*.md
+!docs/CHANGELOG.md
 README-secret.md
 .travis.yml
 Dockerfile
