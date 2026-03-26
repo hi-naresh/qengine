@@ -60,7 +60,7 @@ PIP_VALUE = 10.0
 MAX_BARS_PER_LEVEL = 500
 EMA_FAST = 8
 EMA_SLOW = 21
-LEVERAGE = 50
+LEVERAGE = 30  # 30:1 (change to 20 for conservative analysis)
 CONTRACT_SIZE = 100_000
 AVG_PRICE = 1.11
 

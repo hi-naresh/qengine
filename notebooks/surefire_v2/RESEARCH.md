@@ -1,35 +1,47 @@
 # Grid-Hedged Martingale Tail-Risk Assessment — Research
 
+> **Leverage: 30:1** (all analysis). Scripts accept leverage as a parameter for 20:1 if needed.
+> **Note**: Numerical tables below need re-running at 30:1 — original analysis was at 50:1. Level counts, margin requirements, and max affordable levels will change. The qualitative findings and mathematical relationships are leverage-independent.
+
 ## Executive Summary
 
 **The surefire hedge strategy has positive expectancy validated on blind out-of-sample data, but carries structural tail risk that cannot be eliminated — only redistributed.**
 
-With proper % equity sizing (0.5% base, sqrt multiplier, 12 levels):
+### What the Simple Framework Tried and What It Found
 
-- **99.7-99.9% cycle win rate** (consistent across train AND blind test periods)
-- **Profit Factor 2.16-21.52**, positive EV per cycle
-- **0% probability of ruin** under normal and moderately stressed conditions
-- **Scales linearly**: identical % returns at $10k, $100k, $1M
-- **Blind backtest (2025-02 to 2026-03) OUTPERFORMS training period** — no overfitting
+The V2 research systematically tested every simple parameter and filter to improve the raw strategy:
 
-**The tail risk investigation (Phase 6-7) reveals structural constraints:**
+| What We Tried | Scripts | Verdict | Detail |
+|---|---|---|---|
+| **Entry signals** (EMA, RSI, MACD, SMA, ADX, combinations) | 01 | **NO HELP** | All indicators ~33% L0 win rate — no better than "always long". Win rate is mechanically set by TP/hedge distance ratio, not entry signal. |
+| **ATR-based hedge geometry** (TP multiple x RR ratio sweep) | 02 | **DEFINES THE GAME** | TP distance and hedge ratio determine L0 win rate. TP=0.8*ATR, RR=2.0 is the sweet spot for the hedge math to work. Not tunable without breaking the hedge structure. |
+| **Session filters** (Tokyo, London, NY, Overlap, Off Hours) | 03, 05 | **MARGINAL** | Best combo (London + High vol) reduces bust rate from 7.53% to 6.32% — only 16% improvement. Tokyo/London ~6.8% vs NY ~8.8%. Not enough to matter. |
+| **Cooldown bars** (0 to 200 bars between entries) | 03 | **NO HELP** | P(loss\|previous loss) stays 28-36% regardless of wait time. Market doesn't "reset" after a loss. |
+| **Sizing operators** (2x, sqrt(2), linear, fibonacci, conservative, flat) | 08 | **SIGNIFICANT** | sqrt(2) multiplier dramatically reduces exposure per bust while enabling more levels. Best PF improvement: 1.89→2.93. This is the single most impactful simple parameter. |
+| **Variable level count** (2 to 7+ levels) | 08 | **SIGNIFICANT** | More levels = lower P(bust) but higher bust severity. 7 lvl/sqrt achieves 2.6% bust rate with PF 2.93. Trade-off is real but quantifiable. |
+| **% equity sizing** (0.1% to 3.0% of equity) | 10 | **WORKS** | Replaces fixed lots. Auto-adapts level count to capital. Identical % returns at any capital tier. Sweet spot: 0.3-0.5% base. |
+| **Combined best config** (12 lvl, sqrt, 0.5%, % equity) | 10-13 | **VALIDATED** | 99.7% cycle win rate, 0.26% bust rate, PF 3.57, 0% ruin in 10k MC paths. Blind test OUTPERFORMS train. |
 
-- **One bust erases 78 average wins** (12 lvl/sqrt config)
-- **The martingale invariant**: Risk = (p*m)^N / (m-1). You can trade frequency for severity but cannot reduce the product below a floor determined by per-level P(lose).
-- **The critical quantity is p*m**: sqrt(2) gives p*m = 0.80 (adding levels HELPS), while 2x gives p*m = 1.13 (adding levels HURTS). This mathematically proves why sqrt(2) outperforms 2x.
-- **Deep levels (L6+) are NET NEGATIVE** with sqrt multiplier
-- **Under double regime stress: median return turns negative**
+### What the Simple Framework Cannot Solve
 
-**Mathematical problem classification (Phase 7):**
-- The optimization is MINLP with 5 variables — trivially solvable, NOT NP-hard
-- 3 problems are INHERENT (P(bust)>0, asymmetry, finite capital) — unsolvable
-- 2 problems are VALIDATED TARGETS for ML: entry quality (P5) and regime detection (P6)
-- Entry quality (reducing P(L0 lose) from 0.63) has the highest impact on EV
+Three problems are **mathematically inherent** to the martingale structure:
+- **P(bust) > 0 always** — finite capital guarantees a maximum level count
+- **Asymmetry ratio > 1 always** — one bust erases 78 average wins (12 lvl/sqrt)
+- **Frequency ↔ severity trade-off** — the martingale invariant: Risk = (p·m)^N / (m-1). You can trade bust frequency for bust severity but cannot reduce the product.
 
-**Blind validation (Phase 8):**
-- Test period outperforms train across ALL configs and ALL metrics
-- Per-level P(lose) is stable between periods (L0: 0.623 train vs 0.634 test)
-- The mean-reversion edge is REAL and PERSISTENT, not a statistical artifact
+Two problems are **regime-dependent** and have no simple-framework solution:
+- **No pre-entry signal predicts busts** — Cohen's d < 0.1 for all features (ATR, RSI, trend, momentum, range). Busts begin AFTER entry.
+- **No regime shift detection** — under 2x stress, median return goes NEGATIVE. Simple framework has zero defence.
+
+### What ML Must Solve (Validated Targets)
+
+| Problem | ID | Impact | Why ML | What Simple Framework Proved |
+|---|---|---|---|---|
+| **Entry quality** — reduce P(L0 lose) from 0.63 | P5 | **HIGHEST** | No single indicator or combination moves L0 win rate. ML can use high-dimensional features + non-linear boundaries. | Every indicator tested (~33% L0 win rate). Combinations no better. The edge must come from pattern recognition, not threshold rules. |
+| **Regime detection** — identify when p shifts | P6 | **CRITICAL** | Rolling bust rate is the only simple monitor. ML can detect regime shifts BEFORE bust rate spikes (leading indicator vs lagging). | Double stress scenario: median return -2%, only 22% profitable. Strategy bleeds silently in adverse regimes. |
+| **98.7% of busts are choppy range** (inherent) | — | Context | Choppy oscillation between h and tp is the dominant loss mode. ML cannot prevent this — but can estimate P(choppy regime) and throttle exposure. | 14_loss_paths proved this is geometric, not predictable from pre-entry features. |
+
+**Bottom line**: The simple framework captures ~80% of the opportunity. It optimized the sizing operator (sqrt), level count, and equity-based scaling — the mechanical parts. What remains are the statistical/predictive parts: knowing WHEN to trade and WHEN to stop. These require ML.
 
 ---
 
@@ -233,7 +245,7 @@ P(bust) is identical (same TP/SL geometry), but:
 
 ### Finding 17: Margin Requirements
 
-At 50:1 leverage with standard 2x sizing:
+At 30:1 leverage with standard 2x sizing:
 
 | Levels | Cumulative Margin + Max Loss |
 |--------|------------------------------|
@@ -285,7 +297,7 @@ Instead of fixed lot sizes and fixed 5 levels, the production strategy should us
 - **Level count = max levels affordable** at current equity (not fixed N)
 - **Multiplier = sqrt(2)** per level (not 2x) — more levels, less exposure per bust
 
-Capital tier -> max levels (0.5% base, sqrt multiplier, 50:1 leverage):
+Capital tier -> max levels (0.5% base, sqrt multiplier, 30:1 leverage):
 
 | Capital | Levels | Base Lot | Max Lot | Cumulative Notional |
 |---------|--------|----------|---------|---------------------|
@@ -341,7 +353,7 @@ Duration caps are unnecessary — even a 4-hour cap only affects 9 of 6,419 cycl
 
 ### Finding 22: Base Size Sensitivity
 
-Tested base sizing from 0.1% to 3.0% of equity ($10k, sqrt, 50:1):
+Tested base sizing from 0.1% to 3.0% of equity ($10k, sqrt, 30:1):
 
 | Base % | Levels | Return | PF | MaxDD | Sharpe |
 |--------|--------|--------|-----|-------|--------|
@@ -852,7 +864,7 @@ The simple framework captures ~80% of the opportunity. ML could capture the rema
 Base size:     0.3% of equity (conservative start)
 Multiplier:    sqrt(2) per level (~1.414x)
 Max levels:    Auto (determined by available margin)
-Leverage:      50:1
+Leverage:      30:1
 Entry signal:  EMA 8/21 crossover
 TP distance:   ATR(14) * 0.8
 Hedge dist:    TP / 2.0

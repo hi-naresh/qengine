@@ -47,7 +47,7 @@ OUTPUT_DIR = 'notebooks/surefire_v2'
 # ─── Sizing Parameters ───────────────────────────────────────────────────────
 # Base size as % of equity
 BASE_EQUITY_PCT = 0.005   # 0.5% of equity per base unit
-LEVERAGE = 50             # 50:1
+LEVERAGE = 30             # 30:1 (change to 20 for conservative analysis)
 CONTRACT_SIZE = 100_000   # standard lot = 100k units
 AVG_PRICE = 1.11          # EUR-USD approximate
 
@@ -440,14 +440,14 @@ print("=" * 80)
 # Test configurations
 sim_configs = [
     # (name, capital, base_pct, multiplier, leverage, max_levels_override, max_duration)
-    ('$10k / 0.5% / sqrt / auto', 10_000, 0.005, 'sqrt', 50, None, None),
-    ('$10k / 0.5% / 2x / auto', 10_000, 0.005, 'standard_2x', 50, None, None),
-    ('$10k / 0.3% / sqrt / auto', 10_000, 0.003, 'sqrt', 50, None, None),
-    ('$10k / 1.0% / sqrt / auto', 10_000, 0.01, 'sqrt', 50, None, None),
-    ('$100k / 0.5% / sqrt / auto', 100_000, 0.005, 'sqrt', 50, None, None),
-    ('$100k / 0.5% / 2x / auto', 100_000, 0.005, 'standard_2x', 50, None, None),
-    ('$1M / 0.5% / sqrt / auto', 1_000_000, 0.005, 'sqrt', 50, None, None),
-    ('$1M / 0.3% / sqrt / auto', 1_000_000, 0.003, 'sqrt', 50, None, None),
+    ('$10k / 0.5% / sqrt / auto', 10_000, 0.005, 'sqrt', LEVERAGE, None, None),
+    ('$10k / 0.5% / 2x / auto', 10_000, 0.005, 'standard_2x', LEVERAGE, None, None),
+    ('$10k / 0.3% / sqrt / auto', 10_000, 0.003, 'sqrt', LEVERAGE, None, None),
+    ('$10k / 1.0% / sqrt / auto', 10_000, 0.01, 'sqrt', LEVERAGE, None, None),
+    ('$100k / 0.5% / sqrt / auto', 100_000, 0.005, 'sqrt', LEVERAGE, None, None),
+    ('$100k / 0.5% / 2x / auto', 100_000, 0.005, 'standard_2x', LEVERAGE, None, None),
+    ('$1M / 0.5% / sqrt / auto', 1_000_000, 0.005, 'sqrt', LEVERAGE, None, None),
+    ('$1M / 0.3% / sqrt / auto', 1_000_000, 0.003, 'sqrt', LEVERAGE, None, None),
 ]
 
 all_results = {}
@@ -477,7 +477,7 @@ print("STUDY 3: DURATION ANALYSIS — How long do cycles take?")
 print("=" * 80)
 
 # Run baseline to get duration data
-base_cycles, base_eq = run_full_simulation(10_000, 0.005, MULTIPLIER_CONFIGS['sqrt'], 50)
+base_cycles, base_eq = run_full_simulation(10_000, 0.005, MULTIPLIER_CONFIGS['sqrt'], LEVERAGE)
 
 durations = np.array([c['bars_taken'] for c in base_cycles])
 outcomes = np.array([c['outcome'] for c in base_cycles])
@@ -516,7 +516,7 @@ for lvl in range(int(np.max(levels)) + 1):
 print(f"\n  TESTING DURATION CAPS:")
 for max_bars in [48, 96, 144, 288, 576]:  # 4h, 8h, 12h, 24h, 48h
     hours = max_bars * 5 / 60
-    cycles_d, eq_d = run_full_simulation(10_000, 0.005, MULTIPLIER_CONFIGS['sqrt'], 50,
+    cycles_d, eq_d = run_full_simulation(10_000, 0.005, MULTIPLIER_CONFIGS['sqrt'], LEVERAGE,
                                           max_duration_bars=max_bars)
     m = compute_risk_metrics(cycles_d, eq_d, 10_000)
     if m.get('n_cycles', 0) > 0:
@@ -663,14 +663,14 @@ print("=" * 80)
 base_pct_range = [0.001, 0.002, 0.003, 0.005, 0.007, 0.01, 0.015, 0.02, 0.03]
 
 print(f"\n  Testing base_pct from {base_pct_range[0]*100:.1f}% to {base_pct_range[-1]*100:.1f}% "
-      f"(sqrt multiplier, $10k, 50:1)")
+      f"(sqrt multiplier, $10k, {LEVERAGE}:1)")
 print(f"\n  {'Base %':<8} {'Levels':<8} {'Cycles':<8} {'Return%':<10} {'PF':<8} "
       f"{'MaxDD%':<8} {'Sharpe':<8} {'Sortino':<8} {'Kelly':<8}")
 print(f"  {'-'*74}")
 
 sensitivity_data = []
 for bp in base_pct_range:
-    cycles_s, eq_s = run_full_simulation(10_000, bp, MULTIPLIER_CONFIGS['sqrt'], 50)
+    cycles_s, eq_s = run_full_simulation(10_000, bp, MULTIPLIER_CONFIGS['sqrt'], LEVERAGE)
     m = compute_risk_metrics(cycles_s, eq_s, 10_000)
     if m.get('n_cycles', 0) > 0:
         # Get typical levels used
@@ -854,7 +854,7 @@ if sensitivity_data:
     axes[1, 1].set_title('Risk-Adjusted Efficiency', fontweight='bold')
     axes[1, 1].grid(True, alpha=0.3)
 
-    plt.suptitle('Base Size Sensitivity ($10k, sqrt, 50:1)', fontsize=14, fontweight='bold')
+    plt.suptitle(f'Base Size Sensitivity ($10k, sqrt, {LEVERAGE}:1)', fontsize=14, fontweight='bold')
     plt.tight_layout()
     fig.savefig(f'{OUTPUT_DIR}/10_base_pct_sensitivity.png', dpi=150, bbox_inches='tight')
     plt.close()
@@ -910,7 +910,7 @@ print("FINAL SUMMARY — CAPITAL SCALING & RISK ANALYSIS")
 print("=" * 80)
 
 print(f"""
-  LEVEL ALLOCATION BY CAPITAL (0.5% base, sqrt multiplier, 50:1):
+  LEVEL ALLOCATION BY CAPITAL (0.5% base, sqrt multiplier, {LEVERAGE}:1):
 """)
 for cap in [5_000, 10_000, 25_000, 50_000, 100_000, 500_000, 1_000_000]:
     ml, lots, data = compute_max_levels(cap, 0.005, MULTIPLIER_CONFIGS['sqrt'], LEVERAGE)

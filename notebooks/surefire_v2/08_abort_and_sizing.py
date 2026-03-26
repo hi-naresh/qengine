@@ -345,12 +345,12 @@ print("\n" + "=" * 80)
 print("TEST 4: MARGIN ANALYSIS — Required balance per level")
 print("=" * 80)
 
-# Typical EUR-USD margin requirement: ~3.33% (30:1 leverage) or ~2% (50:1)
+# Typical EUR-USD margin requirement: ~5% (20:1 leverage) or ~3.33% (30:1)
 # Per lot margin = price * 100,000 * margin_rate
 avg_price = np.mean(closes[~np.isnan(closes)])
 print(f"\n  Avg EUR-USD price: {avg_price:.5f}")
 
-for leverage in [30, 50, 100]:
+for leverage in [20, 30, 50]:
     margin_rate = 1 / leverage
     print(f"\n  {'='*60}")
     print(f"  Leverage: {leverage}:1 (margin rate: {margin_rate*100:.2f}%)")

@@ -299,40 +299,167 @@
     </div>
 
     <!-- About -->
-    <div v-if="activeTab === 'About'" class="max-w-lg space-y-4">
-      <div class="card">
-        <h2 class="text-sm font-semibold mb-4 text-surface-300">System Information</h2>
-        <div v-if="aboutInfo" class="space-y-2">
-          <div class="flex justify-between p-2 bg-surface-800 rounded" v-for="item in aboutItems" :key="item.label">
-            <span class="text-xs text-surface-500">{{ item.label }}</span>
-            <span class="text-xs text-surface-200 font-mono">{{ item.value }}</span>
-          </div>
-        </div>
-        <div v-else class="text-sm text-surface-500 py-4 text-center">Loading system info...</div>
+    <div v-if="activeTab === 'About'" class="max-w-2xl">
+      <!-- About Sub-tabs -->
+      <div class="flex gap-1.5 mb-5 flex-wrap">
+        <button v-for="st in aboutSubTabs" :key="st" @click="aboutSubTab = st"
+          class="px-3 py-1.5 rounded-lg text-xs transition-colors"
+          :class="aboutSubTab === st ? 'bg-brand-600/20 text-brand-400 font-medium' : 'bg-surface-800/60 text-surface-500 hover:text-surface-300'">
+          {{ st }}
+        </button>
       </div>
 
-      <div v-if="aboutInfo && aboutInfo.update_info && aboutInfo.update_info.is_update_info_available" class="card">
-        <h2 class="text-sm font-semibold mb-4 text-surface-300">Updates</h2>
-        <div class="space-y-2">
-          <div class="flex justify-between p-2 bg-surface-800 rounded">
-            <span class="text-xs text-surface-500">Latest Version (PyPI)</span>
-            <span class="text-xs font-mono" :class="aboutInfo.update_info.latest_version !== aboutInfo.system_info.qengine_version ? 'text-amber-400' : 'text-green-400'">
+      <!-- Sub-tab: Overview -->
+      <div v-if="aboutSubTab === 'Overview'" class="space-y-4">
+        <div class="card">
+          <h2 class="text-sm font-semibold mb-3 text-surface-300">About QEngine</h2>
+          <p class="text-xs text-surface-400 leading-relaxed mb-3">
+            QEngine is a multi-asset algorithmic trading platform purpose-built for Forex, Commodities, and CFD trading with realistic cost modelling, true hedging, and native broker connectivity. It was forked from
+            <a href="https://github.com/jesse-ai/jesse" target="_blank" class="text-brand-400 hover:underline">Jesse</a>, an open-source crypto trading framework, and rebuilt from the ground up to serve professional CFD traders.
+          </p>
+          <div class="flex flex-wrap gap-1.5">
+            <span v-for="tag in ['Forex','Commodities','Indices','CFDs','Crypto','Live Trading','AI/LLM']" :key="tag"
+              class="text-[10px] px-2 py-0.5 bg-brand-600/15 text-brand-400 rounded-full">{{ tag }}</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="text-sm font-semibold mb-4 text-surface-300">System Information</h2>
+          <div v-if="aboutInfo" class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div class="p-2.5 bg-surface-800 rounded-lg" v-for="item in aboutItems" :key="item.label">
+              <div class="text-[10px] text-surface-500 uppercase tracking-wide">{{ item.label }}</div>
+              <div class="text-xs text-surface-200 font-mono mt-0.5">{{ item.value }}</div>
+            </div>
+          </div>
+          <div v-else class="text-sm text-surface-500 py-4 text-center">Loading system info...</div>
+        </div>
+
+        <div v-if="aboutInfo && aboutInfo.update_info && aboutInfo.update_info.is_update_info_available" class="card">
+          <div class="flex justify-between items-center">
+            <h2 class="text-sm font-semibold text-surface-300">Updates</h2>
+            <span class="text-xs font-mono px-2 py-0.5 rounded"
+              :class="aboutInfo.update_info.latest_version !== aboutInfo.system_info.qengine_version ? 'bg-amber-500/10 text-amber-400' : 'bg-green-500/10 text-green-400'">
               {{ aboutInfo.update_info.latest_version }}
             </span>
           </div>
         </div>
+
+        <div class="card">
+          <h2 class="text-sm font-semibold mb-2 text-surface-300">License</h2>
+          <p class="text-xs text-surface-400 leading-relaxed">
+            MIT License. Original Jesse framework copyright acknowledged. The <code class="text-[10px] bg-surface-800 px-1 rounded">jesse_rust</code> indicator library is used as-is from the upstream project.
+          </p>
+        </div>
       </div>
 
-      <div class="card">
-        <h2 class="text-sm font-semibold mb-4 text-surface-300">About QEngine</h2>
-        <p class="text-xs text-surface-400 leading-relaxed">
-          QEngine is a multi-asset algorithmic trading platform. It supports Forex, Commodities, Indices, and Crypto trading with built-in broker integrations for OANDA, IG Markets, and Interactive Brokers.
-        </p>
-        <div class="mt-3 flex gap-2">
-          <span class="text-xs px-2 py-1 bg-brand-600/20 text-brand-400 rounded">Forex</span>
-          <span class="text-xs px-2 py-1 bg-brand-600/20 text-brand-400 rounded">Commodities</span>
-          <span class="text-xs px-2 py-1 bg-brand-600/20 text-brand-400 rounded">Indices</span>
-          <span class="text-xs px-2 py-1 bg-brand-600/20 text-brand-400 rounded">Crypto</span>
+      <!-- Sub-tab: Origin -->
+      <div v-if="aboutSubTab === 'Origin'" class="space-y-4">
+        <div class="card">
+          <h2 class="text-sm font-semibold mb-3 text-surface-300">Forked from Jesse</h2>
+          <p class="text-xs text-surface-400 leading-relaxed mb-4">
+            <a href="https://github.com/jesse-ai/jesse" target="_blank" class="text-brand-400 hover:underline">Jesse</a> (by jesse-ai) provided the original foundation: an event-driven backtesting engine, a strategy base class with order management, 170+ technical indicators via a Rust backend, crypto exchange support, and a basic Flask API with Nuxt 3 dashboard.
+          </p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <h3 class="text-xs font-semibold text-green-400 mb-2">Kept from Jesse</h3>
+              <div class="space-y-1.5">
+                <div v-for="item in jesseKept" :key="item" class="flex items-start gap-2 text-[11px] text-surface-400">
+                  <span class="text-green-500/60 mt-0.5 shrink-0">+</span>
+                  <span>{{ item }}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 class="text-xs font-semibold text-red-400 mb-2">Removed / Replaced</h3>
+              <div class="space-y-1.5">
+                <div v-for="item in jesseRemoved" :key="item" class="flex items-start gap-2 text-[11px] text-surface-400">
+                  <span class="text-red-500/60 mt-0.5 shrink-0">-</span>
+                  <span>{{ item }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="text-sm font-semibold mb-3 text-surface-300">Full Package Rename</h2>
+          <p class="text-xs text-surface-400 leading-relaxed mb-3">540+ files modified. Every import, config, CLI command, database name, and internal reference renamed.</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+            <div v-for="r in renames" :key="r.from" class="flex items-center gap-2 p-2 bg-surface-800 rounded">
+              <code class="text-red-400/60 line-through">{{ r.from }}</code>
+              <span class="text-surface-600">&rarr;</span>
+              <code class="text-green-400">{{ r.to }}</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-tab: What's New -->
+      <div v-if="aboutSubTab === 'What\'s New'" class="space-y-4">
+        <div v-for="feature in newFeatures" :key="feature.title" class="card">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="w-2 h-2 rounded-full" :class="feature.color"></span>
+            <h2 class="text-sm font-semibold text-surface-200">{{ feature.title }}</h2>
+          </div>
+          <div class="space-y-1.5 text-[11px] text-surface-400 leading-relaxed">
+            <p v-for="(line, i) in feature.lines" :key="i" v-html="line"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-tab: Changelog (from docs/CHANGELOG.md) -->
+      <div v-if="aboutSubTab === 'Changelog'" class="space-y-4">
+        <div v-for="(ver, vi) in changelogVersions" :key="ver.version" class="card">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-sm font-bold text-surface-200">v{{ ver.version }}</span>
+            <span class="text-[10px] text-surface-500">{{ ver.date }}</span>
+            <span v-if="vi === 0" class="text-[10px] px-1.5 py-0.5 bg-green-500/10 text-green-400 rounded-full">Latest</span>
+          </div>
+
+          <!-- Expandable sections -->
+          <div class="space-y-3">
+            <div v-for="section in ver.sections" :key="section.title">
+              <button @click="toggleSection(ver.version, section.title)"
+                class="flex items-center gap-2 w-full text-left group">
+                <svg class="w-3 h-3 text-surface-500 transition-transform" :class="isSectionOpen(ver.version, section.title) ? 'rotate-90' : ''" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
+                </svg>
+                <span class="text-xs font-medium text-surface-300 group-hover:text-surface-100">{{ section.title }}</span>
+                <span class="text-[9px] text-surface-600">{{ section.items.length }} items</span>
+              </button>
+              <div v-if="isSectionOpen(ver.version, section.title)" class="pl-5 mt-1.5 space-y-1 border-l border-surface-700/50">
+                <p v-for="(item, ii) in section.items" :key="ii" class="text-[11px] text-surface-400 leading-relaxed" v-html="formatItem(item)"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-tab: Engine Changes -->
+      <div v-if="aboutSubTab === 'Engine Changes'" class="space-y-4">
+        <div class="card">
+          <h2 class="text-sm font-semibold mb-2 text-surface-300">Modified from Jesse</h2>
+          <p class="text-xs text-surface-400 leading-relaxed mb-4">Core files significantly modified or added to support CFD trading, real cost models, and live broker connectivity.</p>
+
+          <!-- Filter buttons -->
+          <div class="flex gap-1.5 mb-4">
+            <button v-for="f in ['All', 'NEW', 'MAJOR', 'MODIFIED']" :key="f" @click="modFilter = f"
+              class="px-2 py-1 rounded text-[10px] transition-colors"
+              :class="modFilter === f ? 'bg-surface-700 text-surface-200' : 'text-surface-500 hover:text-surface-300'">
+              {{ f }} <span class="text-surface-600">({{ f === 'All' ? coreModifications.length : coreModifications.filter(m => modFilterMap[f] === m.level).length }})</span>
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            <div v-for="mod in filteredModifications" :key="mod.file" class="p-2.5 bg-surface-800 rounded-lg">
+              <div class="flex items-center justify-between mb-1">
+                <code class="text-[10px] text-brand-400">{{ mod.file }}</code>
+                <span class="text-[9px] px-1.5 py-0.5 rounded-full" :class="mod.level === 'major' ? 'bg-amber-500/10 text-amber-400' : mod.level === 'new' ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400'">{{ mod.level === 'new' ? 'NEW' : mod.level === 'major' ? 'MAJOR' : 'MODIFIED' }}</span>
+              </div>
+              <p class="text-[10px] text-surface-500 leading-relaxed">{{ mod.desc }}</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -453,6 +580,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api, defaultBrokerId } from '../api'
+import { changelog as parsedChangelog } from '../changelog-parser'
 
 const activeTab = ref('LLM')
 const tabs = ['LLM', 'Broker Keys', 'Notifications', 'Cost & Randomness', 'Maintenance', 'About']
@@ -522,6 +650,106 @@ const notifError = ref(false)
 
 // About
 const aboutInfo = ref(null)
+const aboutSubTabs = ['Overview', 'Origin', "What's New", 'Changelog', 'Engine Changes']
+const aboutSubTab = ref('Overview')
+const modFilter = ref('All')
+const modFilterMap = { NEW: 'new', MAJOR: 'major', MODIFIED: 'mod' }
+const filteredModifications = computed(() => {
+  if (modFilter.value === 'All') return coreModifications
+  return coreModifications.filter(m => m.level === modFilterMap[modFilter.value])
+})
+
+const jesseKept = [
+  'Core event-driven backtesting engine loop',
+  'Strategy base class lifecycle (should_long, go_long, update_position)',
+  '170+ technical indicators via jesse_rust',
+  'Crypto exchange support (Binance, Bybit, etc.)',
+  'MIT License with original copyright',
+]
+const jesseRemoved = [
+  'Nuxt 3 dashboard (16MB, 438 files) \u2192 Vue 3 + Vite',
+  'Flask API server \u2192 FastAPI',
+  'SQLite support \u2192 PostgreSQL only',
+  'External live-trading plugin \u2192 native drivers',
+  'Crypto-only exchange configs and fee models',
+]
+const renames = [
+  { from: 'from jesse.*', to: 'from qengine.*' },
+  { from: 'jesse_db', to: 'qengine_db' },
+  { from: 'jesse run', to: 'qengine run' },
+  { from: 'jesse_submitted', to: 'engine_submitted' },
+  { from: '/jesse-trade/*', to: '/marketplace/*' },
+  { from: 'jesse_trade.py', to: 'upstream_api.py' },
+]
+
+const newFeatures = [
+  { title: 'CFD Hedging Engine', color: 'bg-blue-400', lines: [
+    'MT4/MT5-style independent ticket system \u2014 multiple long and short sub-positions within a single position, each with its own entry price and P&L tracking.',
+    '<code class="text-[10px] bg-surface-800 px-1 rounded">CFDTicket</code> class, <code class="text-[10px] bg-surface-800 px-1 rounded">open_ticket()</code>, <code class="text-[10px] bg-surface-800 px-1 rounded">close_ticket()</code>, <code class="text-[10px] bg-surface-800 px-1 rounded">close_all_tickets()</code> with per-ticket P&L and gross exposure margin calculation.',
+    'Unified exchange type <code class="text-[10px] bg-surface-800 px-1 rounded">cfd</code> replacing crypto-only futures/spot modes.',
+  ]},
+  { title: 'Realistic Cost Model', color: 'bg-green-400', lines: [
+    'Spread shifts fill price (buy at ask, sell at bid) instead of flat fee deduction \u2014 how real brokers work.',
+    'Configurable per-broker: spread (pips + randomness), slippage (pips + randomness), commission per lot, overnight swap charges at 5pm NY rollover. Weekend gap handling for stop/limit orders.',
+    'Margin call simulation with stop-out at configurable margin level.',
+  ]},
+  { title: 'Native Broker Connectors', color: 'bg-purple-400', lines: [
+    '<strong>OANDA</strong> \u2014 REST API with per-trade TP/SL, trade ID tracking, hedging mode, trade sync every 3s, order enrichment from transaction history.',
+    '<strong>IG Markets</strong> \u2014 Lightstreamer real-time streaming (no rate limit cost), CFD account auto-detection, deal confirmation flow, exponential backoff rate limiting.',
+    '<strong>Interactive Brokers</strong> \u2014 TWS socket API via ib_insync.',
+    'All built on a unified <code class="text-[10px] bg-surface-800 px-1 rounded">ForexLiveDriver</code> base class. Multi-tier sync (orders, trades, positions, account) with independent intervals and backoff.',
+  ]},
+  { title: 'Live Trading Infrastructure', color: 'bg-amber-400', lines: [
+    'Native live/paper trading mode (no external plugin) with graceful shutdown, session reports, and real-time Redis state publishing.',
+    'Position, order, ticket, account, and strategy state broadcast to dashboard every tick. Session reports with win rate, drawdown, and full trade history.',
+  ]},
+  { title: 'Strategy Framework Extensions', color: 'bg-cyan-400', lines: [
+    '<strong>Hedge mode</strong> \u2014 simultaneous long+short. <strong>CFD callbacks</strong> \u2014 <code class="text-[10px] bg-surface-800 px-1 rounded">on_ticket_opened</code>, <code class="text-[10px] bg-surface-800 px-1 rounded">on_ticket_closed</code>. <strong>Enhanced close</strong> \u2014 <code class="text-[10px] bg-surface-800 px-1 rounded">on_close_position(order, closed_trade)</code> now receives the trade object.',
+    'Forex properties: spread, pip_size, session, market_is_open, swap_long/short, contract_size, minutes_to_close.',
+    'Helpers: pips_to_price(), price_to_pips(), lot_size_for_risk(), liquidate(), shared_vars, chart_label.',
+  ]},
+  { title: 'Backtest Engine Upgrades', color: 'bg-rose-400', lines: [
+    'Floating P&L curve and margin usage tracking alongside equity curve. Market hours awareness \u2014 skips execution when forex markets are closed.',
+    'Overnight swap charges at 5pm NY rollover. Margin call handling with stop-out. Weekend gap slippage. Per-session stats for hedge strategies.',
+    'Session persistence in PostgreSQL with strategy source code, execution logs, charts, and full HTML report generation.',
+  ]},
+  { title: 'Dashboard (Completely New)', color: 'bg-pink-400', lines: [
+    'Entire UI rebuilt with Vue 3 + Vite + Tailwind CSS. Mobile-first responsive with glassmorphism bottom navigation, adaptive grids, and touch-optimised controls.',
+    '13 views: Dashboard, Brokers, Tools, Strategies, Backtest, Optimization, Monte Carlo, Live Trade, Import Data, LLM Studio, Issues, Settings, Login.',
+    'Multi-workspace tabs for backtests. Multi-session tabs for live trading with expandable ticket tables, filterable logs, and 10 account metric cards.',
+    'Lightweight Charts with 8 timeframes, progressive rendering, full-screen mode. Real-time WebSocket with GZIP compression and auto-reconnection.',
+  ]},
+  { title: 'AI Strategy Engine', color: 'bg-violet-400', lines: [
+    'LLM-powered strategy generation, refinement, and validation. Supports Anthropic Claude, OpenAI GPT, and Google Gemini.',
+    'In-dashboard LLM Studio for interactive development. AI-assisted strategy fixing in the backtest view with inline editor.',
+  ]},
+  { title: 'Optimization & Monte Carlo', color: 'bg-teal-400', lines: [
+    '<strong>Optimization</strong> \u2014 Optuna + Ray distributed computing. 7 objective functions (Sharpe, Calmar, Sortino, Omega, Serenity, Smart Sharpe, Smart Sortino). Training/testing split.',
+    '<strong>Monte Carlo</strong> \u2014 Trade shuffling and candle perturbation. Gaussian noise and Moving Block Bootstrap pipelines. Confidence intervals and p-values.',
+  ]},
+  { title: 'Infrastructure', color: 'bg-orange-400', lines: [
+    'FastAPI backend (22 controllers), Redis pub/sub, WebSocket manager with heartbeat and pattern subscriptions.',
+    'PostgreSQL-only with comprehensive migrations. Pyright LSP for in-browser code intelligence. Docker multi-stage builds. Railway deployment.',
+    'Instrument registry with pip sizes, contract sizes, margin rates, swap rates per symbol. Market hours per asset class with DST handling.',
+  ]},
+]
+
+// Changelog from docs/CHANGELOG.md (parsed at build time)
+const changelogVersions = parsedChangelog
+const openSections = ref({})
+function toggleSection(version, title) {
+  const key = `${version}::${title}`
+  openSections.value[key] = !openSections.value[key]
+}
+function isSectionOpen(version, title) {
+  return !!openSections.value[`${version}::${title}`]
+}
+function formatItem(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-surface-300">$1</strong>')
+    .replace(/`(.+?)`/g, '<code class="text-[10px] bg-surface-800 px-1 rounded">$1</code>')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" class="text-brand-400 hover:underline">$1</a>')
+}
 const aboutItems = computed(() => {
   if (!aboutInfo.value) return []
   const si = aboutInfo.value.system_info || {}
@@ -532,13 +760,34 @@ const aboutItems = computed(() => {
     { label: 'CPU Cores', value: si.cpu_cores || 'N/A' },
     { label: 'Docker', value: si.is_docker ? 'Yes' : 'No' },
     { label: 'Live Trading', value: aboutInfo.value.has_live_plugin_installed ? 'Available' : 'Not Available' },
-    { label: 'Plan', value: aboutInfo.value.plan || 'N/A' },
   ]
   if (si.live_plugin_version) {
     items.splice(1, 0, { label: 'Live Plugin Version', value: si.live_plugin_version })
   }
   return items
 })
+
+const coreModifications = [
+  { file: 'models/ForexCFDExchange.py', level: 'new', desc: 'Entire new exchange model: spread-based fees, overnight swaps, margin calculation, leverage, cost settings, order lifecycle management.' },
+  { file: 'models/Position.py', level: 'major', desc: 'CFDTicket class added. Ticket management (open/close/sync). PnL, margin, is_open, is_close, to_dict all modified for multi-ticket CFD mode. Gross exposure tracking.' },
+  { file: 'strategies/Strategy.py', level: 'major', desc: '20+ new properties (forex/CFD), 7 new methods (pip helpers, ticket management, liquidate), hedge mode, modified callbacks (on_close_position signature), price caching, execution deadlock fix.' },
+  { file: 'models/Order.py', level: 'mod', desc: 'New fields: ticket_id (CFD ticket link), vars (exchange metadata JSON), fee (per-order fee tracking).' },
+  { file: 'services/order_service.py', level: 'major', desc: 'Spread & slippage application on fill price for CFD. Fee calculation at execution. CFD trade tracking skip for ticket mode.' },
+  { file: 'services/position_service.py', level: 'major', desc: 'New _handle_cfd_order() for independent ticket management. CFD branch in order execution routing. Per-ticket trade recording.' },
+  { file: 'services/closed_trade_service.py', level: 'mod', desc: 'New record_ticket_close() for per-ticket ClosedTrade creation with metadata.' },
+  { file: 'services/exchange_service.py', level: 'mod', desc: 'CFD exchange creation branch. _apply_backtest_cost_settings() for per-broker spread/slippage config.' },
+  { file: 'services/candle_service.py', level: 'mod', desc: 'Import optimization: eliminated per-batch DB queries and O(n^2) gap fill. Eager tuple materialization. Timestamp range validation.' },
+  { file: 'modes/backtest_mode.py', level: 'major', desc: 'Floating PnL & margin tracking, market hours integration, overnight swaps, margin call stop-out, gap handling, session stats, HTML reports.' },
+  { file: 'modes/forex_live_mode.py', level: 'new', desc: 'Native live trading orchestration (1,352 lines): multi-tier broker sync, Redis state publishing, graceful shutdown, session reports.' },
+  { file: 'live_drivers/base.py', level: 'new', desc: 'ForexLiveDriver abstract base class: unified interface for all broker drivers with abstract + optional methods.' },
+  { file: 'live_drivers/OANDA/', level: 'new', desc: 'OANDA driver: market/limit/stop orders, per-trade TP/SL, trade sync, order enrichment, symbol conversion.' },
+  { file: 'live_drivers/IG/', level: 'new', desc: 'IG Markets driver: Lightstreamer streaming, CFD account detection, deal confirmation, rate limit backoff.' },
+  { file: 'core/instruments.py', level: 'new', desc: 'Instrument registry: pip sizes, contract sizes, margin rates, swap rates, asset class inference per symbol.' },
+  { file: 'core/market_hours.py', level: 'new', desc: 'Market hours: forex/commodity/index schedules, session detection, rollover times, DST handling.' },
+  { file: 'services/llm_engine.py', level: 'new', desc: 'AI strategy generation/refinement: Anthropic, OpenAI, Gemini providers with auto-config and prompt engineering.' },
+  { file: 'services/ws_manager.py', level: 'new', desc: 'WebSocket connection manager: Redis pub/sub, heartbeat, pattern subscriptions, multi-client handling.' },
+  { file: 'services/safety_sizing.py', level: 'new', desc: 'Risk calculator: worst-case loss, max safe size, affordability check, dynamic levels, exposure ratio.' },
+]
 
 // Maintenance
 const storageInfo = ref(null)

@@ -35,7 +35,7 @@ print("=" * 80)
 print("""
 DEFINITIONS:
   E     = Account equity (finite)
-  L     = Leverage ratio (e.g. 50)
+  L     = Leverage ratio (e.g. 30)
   b     = Base position size (in lots, or as fraction of equity)
   m     = Multiplier per level (e.g. 2.0, sqrt(2), ...)
   tp    = Take-profit distance (in price units, e.g. ATR * 0.8)
@@ -139,7 +139,7 @@ THE FUNDAMENTAL INSIGHT:
 print("  MARGIN GROWTH vs EQUITY:")
 print("  " + "-" * 70)
 equity = 10000
-leverage = 50
+leverage = 30  # 30:1 (change to 20 for conservative analysis)
 price = 100000  # EUR-USD notional per lot
 base_pct = 0.005  # 0.5% of equity
 base_lots = equity * base_pct / price * leverage  # in lots

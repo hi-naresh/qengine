@@ -320,9 +320,9 @@ def run_mc_margin_aware(dist, max_levels, sizes, n_sims=N_SIMULATIONS, n_cycles=
     p_bust = dist['p_bust']
     n_real = len(all_pnls)
 
-    # Pre-compute margin requirements per level (50:1 leverage)
+    # Pre-compute margin requirements per level (30:1 leverage)
     avg_price = 1.11
-    margin_per_level = [avg_price * s * 100_000 * 0.02 for s in sizes]
+    margin_per_level = [avg_price * s * 100_000 * (1/30) for s in sizes]  # 30:1 leverage
     cum_margins = np.cumsum(margin_per_level)
 
     final_balances = np.zeros(n_sims)

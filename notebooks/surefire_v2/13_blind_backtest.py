@@ -66,7 +66,7 @@ print(f"  Test:  {len(c_test):,} candles ({len(c_test)/288:.0f} days)")
 # =============================================================================
 def simulate_cycles(all_candles, offset, tp_mult=0.8, hedge_ratio=2.0,
                     max_levels=12, multiplier_fn=None, base_pct=0.005,
-                    equity_start=10000, leverage=50):
+                    equity_start=10000, leverage=30):
     """Run full cycle simulation with % equity sizing."""
     if multiplier_fn is None:
         multiplier_fn = lambda n: np.sqrt(2)**n
