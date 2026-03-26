@@ -1,8 +1,7 @@
 <template>
   <!-- Bottom Nav Bar — mobile only -->
-  <nav class="fixed bottom-0 left-0 right-0 z-50 lg:hidden"
-    style="padding-bottom: env(safe-area-inset-bottom)">
-    <div class="bottom-nav-glass flex items-stretch justify-around px-2 mx-4 mb-2 rounded-xl">
+  <nav class="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
+    <div class="bottom-nav-glass flex items-stretch justify-around px-2 mx-6 mb-4 rounded-3xl">
       <!-- Home -->
       <router-link to="/" class="bottom-tab" :class="isHome ? 'bottom-tab-active' : 'bottom-tab-idle'"
         @click="closeSheets">
@@ -33,8 +32,7 @@
 
   <!-- Trading Sheet -->
   <Transition name="sheet">
-    <div v-if="showTrading" class="fixed bottom-0 left-0 right-0 z-40 lg:hidden"
-      style="padding-bottom: env(safe-area-inset-bottom)">
+    <div v-if="showTrading" class="fixed bottom-0 left-0 right-0 z-40 lg:hidden">
       <div class="sheet-glass rounded-t-2xl pb-24 px-5 pt-4">
         <div class="w-10 h-1 bg-surface-500/30 rounded-full mx-auto mb-4"></div>
         <div class="grid grid-cols-3 gap-3">
@@ -51,8 +49,7 @@
 
   <!-- More Sheet -->
   <Transition name="sheet">
-    <div v-if="showMore" class="fixed bottom-0 left-0 right-0 z-40 lg:hidden"
-      style="padding-bottom: env(safe-area-inset-bottom)">
+    <div v-if="showMore" class="fixed bottom-0 left-0 right-0 z-40 lg:hidden">
       <div class="sheet-glass rounded-t-2xl pb-24 px-5 pt-4">
         <div class="w-10 h-1 bg-surface-500/30 rounded-full mx-auto mb-4"></div>
         <div class="grid grid-cols-3 gap-3 mb-5">
