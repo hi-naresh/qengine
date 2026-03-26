@@ -1,12 +1,16 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-center mb-8">Import Candle Data</h1>
+    <div class="text-center mb-8">
+      <h1 class="text-2xl font-bold">Import Candle Data</h1>
+      <p class="text-sm text-surface-500 mt-1">Download historical OHLCV data from your broker for backtesting and research</p>
+    </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Import Form -->
       <div class="lg:col-span-1 space-y-4">
         <div class="card space-y-3">
-          <h2 class="text-sm font-semibold text-surface-300 mb-2">Import Configuration</h2>
+          <h2 class="text-sm font-semibold text-surface-300 mb-1">Import Configuration</h2>
+          <p class="text-[11px] text-surface-500 mb-2">Select a broker, symbol, and date range to fetch candle data into your local database</p>
 
           <div>
             <label class="label">Exchange / Broker</label>

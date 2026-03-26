@@ -1,0 +1,306 @@
+{
+  "optimal_percentile": 80,
+  "optimal_threshold": 0.6597038990955911,
+  "walk_forward_results": [
+    {
+      "test_year": 2008,
+      "train_years": "2006-2007",
+      "best_percentile": 80,
+      "threshold": 0.6557982420685372,
+      "metric": 0.18879088170169525,
+      "test_cycles": 3033,
+      "test_busts": 4,
+      "test_bust_rate_all": 0.13188262446422683,
+      "test_bust_rate_kept": 0.15748031496062992,
+      "test_skip_rate": 16.25453346521596,
+      "test_busts_avoided": 0
+    },
+    {
+      "test_year": 2009,
+      "train_years": "2006-2008",
+      "best_percentile": 75,
+      "threshold": 0.6235640610398063,
+      "metric": 0.2045181470632044,
+      "test_cycles": 3069,
+      "test_busts": 5,
+      "test_bust_rate_all": 0.16291951775822744,
+      "test_bust_rate_kept": 0.05717552887364208,
+      "test_skip_rate": 43.01075268817204,
+      "test_busts_avoided": 4
+    },
+    {
+      "test_year": 2010,
+      "train_years": "2006-2009",
+      "best_percentile": 70,
+      "threshold": 0.6207886083338823,
+      "metric": 0.21853487977506306,
+      "test_cycles": 3088,
+      "test_busts": 5,
+      "test_bust_rate_all": 0.16191709844559585,
+      "test_bust_rate_kept": 0.0881057268722467,
+      "test_skip_rate": 26.489637305699482,
+      "test_busts_avoided": 3
+    },
+    {
+      "test_year": 2011,
+      "train_years": "2006-2010",
+      "best_percentile": 80,
+      "threshold": 0.6652612795165692,
+      "metric": 0.23746081504702204,
+      "test_cycles": 3119,
+      "test_busts": 7,
+      "test_bust_rate_all": 0.22443090734209684,
+      "test_bust_rate_kept": 0.1564945226917058,
+      "test_skip_rate": 18.05065726194293,
+      "test_busts_avoided": 3
+    },
+    {
+      "test_year": 2012,
+      "train_years": "2006-2011",
+      "best_percentile": 70,
+      "threshold": 0.6158071700853991,
+      "metric": 0.2384235589704637,
+      "test_cycles": 3075,
+      "test_busts": 7,
+      "test_bust_rate_all": 0.22764227642276422,
+      "test_bust_rate_kept": 0.22999080036798528,
+      "test_skip_rate": 29.300813008130085,
+      "test_busts_avoided": 2
+    },
+    {
+      "test_year": 2013,
+      "train_years": "2006-2012",
+      "best_percentile": 80,
+      "threshold": 0.6619627996891042,
+      "metric": 0.21300627933963825,
+      "test_cycles": 3021,
+      "test_busts": 2,
+      "test_bust_rate_all": 0.066203243958954,
+      "test_bust_rate_kept": 0.07971303308090873,
+      "test_skip_rate": 16.948030453492223,
+      "test_busts_avoided": 0
+    },
+    {
+      "test_year": 2014,
+      "train_years": "2006-2013",
+      "best_percentile": 80,
+      "threshold": 0.660006226703524,
+      "metric": 0.19580887049645962,
+      "test_cycles": 3003,
+      "test_busts": 5,
+      "test_bust_rate_all": 0.1665001665001665,
+      "test_bust_rate_kept": 0.041911148365465216,
+      "test_skip_rate": 20.546120546120548,
+      "test_busts_avoided": 4
+    },
+    {
+      "test_year": 2015,
+      "train_years": "2006-2014",
+      "best_percentile": 75,
+      "threshold": 0.636667670013127,
+      "metric": 0.24054787573076372,
+      "test_cycles": 2934,
+      "test_busts": 5,
+      "test_bust_rate_all": 0.17041581458759372,
+      "test_bust_rate_kept": 0.1695633743111488,
+      "test_skip_rate": 19.59781867757328,
+      "test_busts_avoided": 1
+    },
+    {
+      "test_year": 2016,
+      "train_years": "2006-2015",
+      "best_percentile": 75,
+      "threshold": 0.6340819046113649,
+      "metric": 0.23275862068965514,
+      "test_cycles": 3053,
+      "test_busts": 3,
+      "test_bust_rate_all": 0.0982640026203734,
+      "test_bust_rate_kept": 0.0,
+      "test_skip_rate": 24.729773992793973,
+      "test_busts_avoided": 3
+    },
+    {
+      "test_year": 2017,
+      "train_years": "2006-2016",
+      "best_percentile": 75,
+      "threshold": 0.6339223536527355,
+      "metric": 0.25817434460711636,
+      "test_cycles": 3011,
+      "test_busts": 8,
+      "test_bust_rate_all": 0.2656924609764198,
+      "test_bust_rate_kept": 0.2640845070422535,
+      "test_skip_rate": 24.543341082696777,
+      "test_busts_avoided": 2
+    },
+    {
+      "test_year": 2018,
+      "train_years": "2006-2017",
+      "best_percentile": 75,
+      "threshold": 0.6338043984359809,
+      "metric": 0.2282608695652174,
+      "test_cycles": 2977,
+      "test_busts": 6,
+      "test_bust_rate_all": 0.20154517971111857,
+      "test_bust_rate_kept": 0.1480019733596448,
+      "test_skip_rate": 31.911320120927105,
+      "test_busts_avoided": 3
+    },
+    {
+      "test_year": 2019,
+      "train_years": "2006-2018",
+      "best_percentile": 80,
+      "threshold": 0.6602585790818426,
+      "metric": 0.22666666666666668,
+      "test_cycles": 3036,
+      "test_busts": 3,
+      "test_bust_rate_all": 0.09881422924901186,
+      "test_bust_rate_kept": 0.07627765064836003,
+      "test_skip_rate": 13.636363636363635,
+      "test_busts_avoided": 1
+    },
+    {
+      "test_year": 2020,
+      "train_years": "2006-2019",
+      "best_percentile": 75,
+      "threshold": 0.6339031576629204,
+      "metric": 0.22434134430796482,
+      "test_cycles": 2945,
+      "test_busts": 3,
+      "test_bust_rate_all": 0.10186757215619693,
+      "test_bust_rate_kept": 0.04668534080298786,
+      "test_skip_rate": 27.26655348047538,
+      "test_busts_avoided": 2
+    },
+    {
+      "test_year": 2021,
+      "train_years": "2006-2020",
+      "best_percentile": 80,
+      "threshold": 0.6585920784962499,
+      "metric": 0.23208117760287658,
+      "test_cycles": 3035,
+      "test_busts": 4,
+      "test_bust_rate_all": 0.13179571663920922,
+      "test_bust_rate_kept": 0.1327433628318584,
+      "test_skip_rate": 25.53542009884679,
+      "test_busts_avoided": 1
+    },
+    {
+      "test_year": 2022,
+      "train_years": "2006-2021",
+      "best_percentile": 80,
+      "threshold": 0.6603283895227349,
+      "metric": 0.22351292405835194,
+      "test_cycles": 2929,
+      "test_busts": 3,
+      "test_bust_rate_all": 0.10242403550699897,
+      "test_bust_rate_kept": 0.12892135797163728,
+      "test_skip_rate": 20.553089791737793,
+      "test_busts_avoided": 0
+    },
+    {
+      "test_year": 2023,
+      "train_years": "2006-2022",
+      "best_percentile": 80,
+      "threshold": 0.6604889806090842,
+      "metric": 0.2090909090909091,
+      "test_cycles": 2944,
+      "test_busts": 4,
+      "test_bust_rate_all": 0.1358695652173913,
+      "test_bust_rate_kept": 0.12970168612191957,
+      "test_skip_rate": 21.433423913043477,
+      "test_busts_avoided": 1
+    },
+    {
+      "test_year": 2024,
+      "train_years": "2006-2023",
+      "best_percentile": 80,
+      "threshold": 0.6609454911307059,
+      "metric": 0.2021702361673522,
+      "test_cycles": 3024,
+      "test_busts": 8,
+      "test_bust_rate_all": 0.26455026455026454,
+      "test_bust_rate_kept": 0.2376237623762376,
+      "test_skip_rate": 16.50132275132275,
+      "test_busts_avoided": 2
+    },
+    {
+      "test_year": 2025,
+      "train_years": "2006-2024",
+      "best_percentile": 80,
+      "threshold": 0.6599955650745594,
+      "metric": 0.18999303354348804,
+      "test_cycles": 2952,
+      "test_busts": 3,
+      "test_bust_rate_all": 0.10162601626016261,
+      "test_bust_rate_kept": 0.12526096033402923,
+      "test_skip_rate": 18.868563685636857,
+      "test_busts_avoided": 0
+    }
+  ],
+  "permutation_test": {
+    "gate": "PASS",
+    "p_value": 0.003,
+    "observed_separation": 2.1686746987951806,
+    "null_mean": 1.0207613645955445,
+    "null_std": 0.3322301165999228,
+    "n_permutations": 1000
+  },
+  "comparison_table": [
+    {
+      "method": "No filter",
+      "skip_pct": 0.0,
+      "bust_rate": 0.17061454364750703,
+      "busts_avoided": 0,
+      "pnl_impact": 0.0
+    },
+    {
+      "method": "Danger > 80th pct",
+      "skip_pct": 20.0,
+      "bust_rate": 0.1325161504058307,
+      "busts_avoided": 39,
+      "pnl_impact": -15.996346293986868
+    },
+    {
+      "method": "Danger > 85th pct",
+      "skip_pct": 15.000828225940035,
+      "bust_rate": 0.13836379935300308,
+      "busts_avoided": 32,
+      "pnl_impact": -11.722205794209989
+    },
+    {
+      "method": "Danger > 90th pct",
+      "skip_pct": 10.0,
+      "bust_rate": 0.15276167338449928,
+      "busts_avoided": 20,
+      "pnl_impact": -8.354650297925923
+    },
+    {
+      "method": "Danger > 95th pct",
+      "skip_pct": 5.000828225940037,
+      "bust_rate": 0.15867203710484562,
+      "busts_avoided": 12,
+      "pnl_impact": -3.78039399546867
+    },
+    {
+      "method": "WF adaptive",
+      "skip_pct": 22.70995527579924,
+      "bust_rate": 0.13716245177882555,
+      "busts_avoided": 39,
+      "pnl_impact": -18.94175346508332
+    },
+    {
+      "method": "GBM top 10%",
+      "skip_pct": 10.0,
+      "bust_rate": 0.03865054386836729,
+      "busts_avoided": 82,
+      "pnl_impact": 2.007656276608314
+    },
+    {
+      "method": "Chop > 62",
+      "skip_pct": 8.507536856054331,
+      "bust_rate": 0.15570119853713293,
+      "busts_avoided": 17,
+      "pnl_impact": -7.537610704459209
+    }
+  ]
+}

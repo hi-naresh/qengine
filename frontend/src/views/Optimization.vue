@@ -2,7 +2,10 @@
   <div>
     <!-- Workspace Tabs -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
-      <h1 class="text-2xl font-bold text-center sm:text-left">Optimization</h1>
+      <div>
+        <h1 class="text-2xl font-bold text-center sm:text-left">Optimization</h1>
+        <p class="text-xs text-surface-500 mt-0.5">Search hyperparameter space to find optimal strategy configurations</p>
+      </div>
       <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg overflow-x-auto">
         <div v-for="wt in workspaceTabs" :key="wt.id"
           @click="!running && switchWorkspace(wt.id)"
@@ -26,7 +29,8 @@
       <!-- Left: Config Panel -->
       <div class="lg:col-span-1 space-y-4" v-show="!running || showConfig">
         <div class="card">
-          <h2 class="text-sm font-semibold mb-4 text-surface-300">Configuration</h2>
+          <h2 class="text-sm font-semibold mb-1 text-surface-300">Configuration</h2>
+          <p class="text-[11px] text-surface-500 mb-4">Pick a strategy and date range -- the optimizer will search for the best hyperparameters</p>
 
           <div class="space-y-3">
             <div>

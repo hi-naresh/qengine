@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-center mb-8">LLM Strategy Studio</h1>
+    <div class="text-center mb-6">
+      <h1 class="text-2xl font-bold">LLM Strategy Studio</h1>
+      <p class="text-sm text-surface-500 mt-1">Generate, refine, and validate trading strategies using AI -- requires an LLM provider in Settings</p>
+    </div>
 
     <!-- Status Bar -->
     <div class="card mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">

@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-center mb-8">Dashboard</h1>
+    <div class="text-center mb-8">
+      <h1 class="text-2xl font-bold">Dashboard</h1>
+      <p class="text-sm text-surface-500 mt-1">Overview of running tasks, recent activity, and system health</p>
+    </div>
 
     <div v-if="loading" class="text-surface-500 text-sm">Loading...</div>
 

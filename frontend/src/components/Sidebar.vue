@@ -13,23 +13,32 @@
     <nav class="flex-1 py-4 px-3 space-y-0.5 overflow-auto">
       <div class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Overview</div>
       <router-link v-for="item in overviewItems" :key="item.to" :to="item.to"
-        class="nav-link" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'">
+        class="nav-link group" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'" :title="item.hint">
         <component :is="item.icon" class="w-4 h-4 flex-shrink-0" />
-        {{ item.label }}
+        <div class="min-w-0">
+          <div class="text-sm leading-tight">{{ item.label }}</div>
+          <div class="text-[10px] leading-tight mt-0.5 transition-colors" :class="isActive(item.to) ? 'text-brand-400/50' : 'text-surface-600 group-hover:text-surface-500'">{{ item.hint }}</div>
+        </div>
       </router-link>
 
       <div class="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Trading</div>
       <router-link v-for="item in tradingItems" :key="item.to" :to="item.to"
-        class="nav-link" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'">
-        <component :is="item.icon" class="w-4 h-4 flex-shrink-0" />
-        {{ item.label }}
+        class="nav-link group" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'" :title="item.hint">
+        <component :is="item.icon" class="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <div class="min-w-0">
+          <div class="text-sm leading-tight">{{ item.label }}</div>
+          <div class="text-[10px] leading-tight mt-0.5 transition-colors" :class="isActive(item.to) ? 'text-brand-400/50' : 'text-surface-600 group-hover:text-surface-500'">{{ item.hint }}</div>
+        </div>
       </router-link>
 
       <div class="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Tools</div>
       <router-link v-for="item in toolItems" :key="item.to" :to="item.to"
-        class="nav-link" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'">
-        <component :is="item.icon" class="w-4 h-4 flex-shrink-0" />
-        {{ item.label }}
+        class="nav-link group" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'" :title="item.hint">
+        <component :is="item.icon" class="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <div class="min-w-0">
+          <div class="text-sm leading-tight">{{ item.label }}</div>
+          <div class="text-[10px] leading-tight mt-0.5 transition-colors" :class="isActive(item.to) ? 'text-brand-400/50' : 'text-surface-600 group-hover:text-surface-500'">{{ item.hint }}</div>
+        </div>
       </router-link>
     </nav>
 
@@ -96,24 +105,24 @@ const SunIcon = icon(['M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364
 const MoonIcon = icon(['M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z'])
 
 const overviewItems = [
-  { to: '/', label: 'Dashboard', icon: DashIcon },
-  { to: '/brokers', label: 'Brokers', icon: BrokerIcon },
+  { to: '/', label: 'Dashboard', icon: DashIcon, hint: 'Activity & system status' },
+  { to: '/brokers', label: 'Brokers', icon: BrokerIcon, hint: 'Connected exchanges' },
 ]
 
 const tradingItems = [
-  { to: '/strategies', label: 'Strategies', icon: StratIcon },
-  { to: '/backtest', label: 'Backtest', icon: BacktestIcon },
-  { to: '/optimization', label: 'Optimization', icon: OptimizeIcon },
-  { to: '/monte-carlo', label: 'Monte Carlo', icon: MonteCarloIcon },
-  { to: '/live', label: 'Live / Paper', icon: LiveIcon },
-  { to: '/import', label: 'Import Data', icon: ImportIcon },
+  { to: '/strategies', label: 'Strategies', icon: StratIcon, hint: 'Create & test strategies' },
+  { to: '/backtest', label: 'Backtest', icon: BacktestIcon, hint: 'Test on historical data' },
+  { to: '/optimization', label: 'Optimization', icon: OptimizeIcon, hint: 'Tune hyperparameters' },
+  { to: '/monte-carlo', label: 'Monte Carlo', icon: MonteCarloIcon, hint: 'Stress-test robustness' },
+  { to: '/live', label: 'Live / Paper', icon: LiveIcon, hint: 'Trade live or simulate' },
+  { to: '/import', label: 'Import Data', icon: ImportIcon, hint: 'Download OHLCV candles' },
 ]
 
 const toolItems = [
-  { to: '/tools', label: 'Tools', icon: InstrIcon },
-  { to: '/llm', label: 'LLM Studio', icon: LLMIcon },
-  { to: '/issues', label: 'Issues', icon: IssuesIcon },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon },
+  { to: '/tools', label: 'Tools', icon: InstrIcon, hint: 'Instruments & calculators' },
+  { to: '/llm', label: 'LLM Studio', icon: LLMIcon, hint: 'AI strategy generation' },
+  { to: '/issues', label: 'Issues', icon: IssuesIcon, hint: 'Bugs & feature requests' },
+  { to: '/settings', label: 'Settings', icon: SettingsIcon, hint: 'API keys & config' },
 ]
 </script>
 

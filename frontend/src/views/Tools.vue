@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-center mb-8">Tools</h1>
+    <div class="text-center mb-6">
+      <h1 class="text-2xl font-bold">Tools</h1>
+      <p class="text-sm text-surface-500 mt-1">Instrument browser, pip value calculator, and trading utilities</p>
+    </div>
 
     <!-- Tool Tabs -->
     <div class="flex gap-2 mb-5">

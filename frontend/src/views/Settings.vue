@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-center mb-8">Settings</h1>
+    <div class="text-center mb-6">
+      <h1 class="text-2xl font-bold">Settings</h1>
+      <p class="text-sm text-surface-500 mt-1">LLM providers, broker API keys, and application configuration</p>
+    </div>
 
     <!-- Settings Tabs -->
     <div class="flex gap-2 mb-5 flex-wrap">
@@ -381,18 +384,7 @@
             </div>
           </div>
         </div>
-
-        <div class="card">
-          <h2 class="text-sm font-semibold mb-3 text-surface-300">Full Package Rename</h2>
-          <p class="text-xs text-surface-400 leading-relaxed mb-3">540+ files modified. Every import, config, CLI command, database name, and internal reference renamed.</p>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-            <div v-for="r in renames" :key="r.from" class="flex items-center gap-2 p-2 bg-surface-800 rounded">
-              <code class="text-red-400/60 line-through">{{ r.from }}</code>
-              <span class="text-surface-600">&rarr;</span>
-              <code class="text-green-400">{{ r.to }}</code>
-            </div>
-          </div>
-        </div>
+        
       </div>
 
       <!-- Sub-tab: What's New -->
