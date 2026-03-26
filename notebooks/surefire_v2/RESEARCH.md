@@ -45,7 +45,10 @@ Two problems are **regime-dependent** and have no simple-framework solution:
 
 ---
 
-## Phase 1: Indicator & Distance Research (Complete)
+## Phase 1: Raw Strategy — Entry Signals, Distance, Cooldown (Complete)
+
+> **Goal**: Can entry indicators, ATR geometry, or cooldown improve the raw L0 win rate?
+> **Verdict**: NO. L0 win rate is mechanically determined by TP/hedge distance ratio. No indicator or filter moves it.
 
 ### Finding 1: Indicators Provide Zero Edge
 
@@ -85,7 +88,10 @@ The original coin-flip Monte Carlo showed 95.5% ruin at 33% L0 win rate. **This 
 
 ---
 
-## Phase 2: Full Cycle Simulation & Tail Risk (Complete)
+## Phase 2: Full Cycle Simulation — Session Filters & Bust Rate (Complete)
+
+> **Goal**: Run the full multi-level hedge on real data. Do session/volatility filters reduce bust rate?
+> **Verdict**: Marginal. Best filter combo reduces bust rate by 16% (7.53%→6.32%). Not enough to change the risk profile.
 
 ### Finding 5: Real Bust Rate is Lower Than Theoretical
 
@@ -136,7 +142,10 @@ Best filter combination reduces bust rate by only 16% (7.53% to 6.32%).
 
 ---
 
-## Phase 3: Bust Anatomy & Mitigation Strategies (Complete)
+## Phase 3: Sizing Operators, Level Count & Structural Optimization (Complete)
+
+> **Goal**: Can we reduce tail risk through sizing operators (multiplier variations), level count, or early abort?
+> **Verdict**: YES — the single most impactful simple-framework lever. sqrt(2) multiplier + more levels dramatically improves PF while reducing exposure. But asymmetry ratio grows with levels.
 
 ### Finding 9: Conditional Win Probability Increases With Depth
 
@@ -257,7 +266,10 @@ With sqrt sizing, 7 levels only needs ~$2,300 — easily affordable with $10k ba
 
 ---
 
-## Phase 4: Corrected Monte Carlo (Complete)
+## Phase 4: Monte Carlo Validation — Is the Strategy Viable? (Complete)
+
+> **Goal**: Run proper Monte Carlo (bootstrap from real cycle P&L, not coin-flip model).
+> **Verdict**: YES — 0% ruin across all configs, all 10,000 paths, up to 5,000 cycles.
 
 ### Finding 18: Strategy is Viable — 0% Ruin
 
@@ -288,7 +300,10 @@ The Phase 1 Monte Carlo (script 04) showed 95.5% ruin because:
 
 ---
 
-## Phase 5: Capital Scaling & Quant-Level Risk Analysis (Complete)
+## Phase 5: % Equity Sizing, Capital Scaling & Risk Metrics (Complete)
+
+> **Goal**: Replace fixed lots with % equity sizing. Does it scale? What are the quant risk metrics?
+> **Verdict**: Scales perfectly. 99.7% win rate with 12 lvl/sqrt. Identical % returns at $10k, $100k, $1M.
 
 ### Finding 19: % Equity Sizing with Capital-Adaptive Levels
 
@@ -412,9 +427,10 @@ Sqrt is the recommended default — it provides enough levels to make busts extr
 
 ---
 
-## Phase 6: Deep Tail Risk Investigation (Complete)
+## Phase 6: Deep Tail Risk — The Martingale Invariant (Complete)
 
-This phase investigates the fundamental question: **Can the asymmetry between wins and busts be tamed by config tuning, or is it inherent to the martingale structure?**
+> **Goal**: Can the asymmetry between wins and busts be tamed by config tuning, or is it inherent?
+> **Verdict**: INHERENT. The martingale invariant ensures frequency ↔ severity is a fixed trade-off. sqrt(2) has a 4.7x safety margin (vs 1.8x for 2x), but the asymmetry cannot be eliminated.
 
 ### Finding 26: The Fundamental Asymmetry — One Bust Erases N Wins
 
@@ -524,9 +540,10 @@ Tracking all 17 busts chronologically for 12 lvl / sqrt / 0.5%:
 
 ---
 
-## Phase 7: Mathematical Risk Framework — Formal Equations (Complete)
+## Phase 7: Mathematical Framework — Problem Classification for ML (Complete)
 
-This phase derives the exact equations, classifies the optimization problem, and identifies which problems are solvable vs inherent.
+> **Goal**: Derive exact equations, classify what is solvable vs inherent, identify ML targets.
+> **Verdict**: 8 problems identified. 3 inherent (unsolvable), 2 partial (solved by sqrt), 2 validated ML targets (P5: entry quality, P6: regime detection), 1 already solved (optimization).
 
 ### Finding 34: The Exact P&L Equations
 
@@ -652,9 +669,10 @@ Regime sensitivity (P(bust) change):
 
 ---
 
-## Phase 8: Blind Out-of-Sample Backtest (Complete)
+## Phase 8: Blind Backtest — Does the Simple Framework Generalize? (Complete)
 
-**The most important validation.** All research (Scripts 01-12) used data from 2024-01-01 to 2025-02-01. This phase tests on UNSEEN data from 2025-02-01 to 2026-03-21 — a 13.7-month blind period the strategy has never been exposed to.
+> **Goal**: Test on UNSEEN data (2025-02 to 2026-03) that no research script ever touched.
+> **Verdict**: YES — test OUTPERFORMS train across ALL configs and ALL metrics. The mean-reversion edge is real. The simple framework generalizes, confirming we are not overfit.
 
 ### Finding 39: Test OUTPERFORMS Train — No Overfitting
 
@@ -713,9 +731,10 @@ Rolling 200-cycle window across the full dataset:
 
 ---
 
-## Phase 9: Market Loss Paths — Exhaustive Path Analysis (Complete)
+## Phase 9: Loss Path Analysis — What Causes Busts and Can ML Fix Them? (Complete)
 
-Every bust must follow a specific geometric price path. This phase extracts and classifies ALL bust price paths to identify which loss modes are inherent vs solvable.
+> **Goal**: Classify every bust by its price path geometry. Which loss modes can ML address?
+> **Verdict**: 98.7% of busts are "choppy range" — an inherent geometric vulnerability (oscillation between h and tp). No pre-entry feature separates busts from wins (Cohen's d < 0.1). ML cannot predict individual busts but CAN detect regimes where choppy oscillation is more frequent.
 
 ### Finding 43: 98.7% of Busts Are Choppy Range (Path B)
 
@@ -816,98 +835,112 @@ This means the **market produces choppy oscillation patterns frequently (42% of 
 
 ---
 
-## The Honest Verdict
+## Summary: What the Simple Framework Solved and What Remains
 
-### What the Strategy IS
+### What the Simple Framework Solved (Mechanical/Structural)
 
-A positive-expectancy system that works because EUR-USD exhibits slight mean-reversion at 5-minute ATR-based distances. With 12 levels and sqrt sizing, it converts this microstructure edge into a 99.7% cycle win rate with 0.26% bust probability.
+These are the problems where parameter tuning and structural choices made a measurable difference:
 
-### What the Strategy IS NOT
+| Problem | Solution | Impact | Script |
+|---|---|---|---|
+| Sizing progression | sqrt(2) multiplier instead of 2x | PF 1.89→2.93, exposure halved | 08 |
+| Level count | More levels (12 vs 5) | P(bust) 7.5%→0.26% | 08, 10 |
+| Position sizing | % equity instead of fixed lots | Perfect scaling, auto-adaptive levels | 10 |
+| Base size selection | 0.3-0.5% of equity | Sweet spot: returns vs risk | 10 |
+| Multiplier math proof | p·m < 1 (sqrt) vs p·m > 1 (2x) | Mathematical proof sqrt is correct | 12 |
+| Validation | Blind out-of-sample test | No overfitting — edge is real | 13 |
 
-A free lunch. The martingale invariant ensures that:
-1. **Every win is small, every bust is large** — ratio is always 10-80x depending on config
-2. **More levels make busts rarer but proportionally worse** — you cannot escape this
-3. **25% of all cycles go toward recovering from busts** — the "real" return is the net after recovery
-4. **The edge depends on market microstructure** — if mean-reversion disappears, the strategy bleeds
+### What the Simple Framework Proved DOESN'T Work
 
-### The Critical Question: Simple Framework or ML?
+| Approach | Why It Fails | Evidence | Script |
+|---|---|---|---|
+| Entry indicators | L0 win rate = f(TP/hedge ratio), not entry signal | All indicators ≈33%, same as "always long" | 01 |
+| Indicator combinations | Agreement filters reduce signal count, not win rate | EMA+RSI+ADX: same win rate, fewer signals | 01 |
+| Cooldown after loss | Market is memoryless at this timescale | P(loss\|prev loss) = P(loss) | 03 |
+| Session filters | Marginal bust rate reduction (16% at best) | 7.53%→6.32% — not enough to change the game | 03, 05 |
+| Bust prediction from market features | Busts begin AFTER entry, no pre-entry signal | Cohen's d < 0.1 for all features | 07, 14 |
 
-**Based on Phase 6-8 findings, the simple framework WORKS and is validated on blind data** but has no defense against regime shifts:
+### What Remains — The Gaps Only ML/AI Can Address
+
+| Gap | Why Simple Methods Fail | What ML Could Do | Expected Impact |
+|---|---|---|---|
+| **P5: Entry quality** (P(L0 lose) = 0.63) | No single indicator or threshold combination improves L0 win rate. The separation boundary is non-linear and high-dimensional. | Supervised classifier on pre-entry features (price microstructure, order flow, multi-timeframe). Even P(L0 lose) 0.63→0.50 changes p·m from 0.80→0.71 — massive EV improvement. | **HIGHEST** — +12% EV per 20% L0 improvement |
+| **P6: Regime detection** (p is non-stationary) | Rolling bust rate is a LAGGING indicator — detects regime shift AFTER losses occur. No simple feature predicts regime transitions. | HMM, change-point detection, or classifier on volatility structure. Detect BEFORE bust rate spikes. Throttle or halt in adverse regimes. | **CRITICAL** — survival under stress |
+| **Bust probability estimation** | Simple circuit breakers use fixed thresholds. Real regimes are continuous, not binary. | Online Bayesian estimation of current P(bust). Dynamic base size: reduce in uncertain regimes, increase in favorable. | MODERATE — smoother equity curve |
+| **Dynamic ATR geometry** | Fixed TP=0.8·ATR, RR=2.0 across all regimes. May be suboptimal when volatility structure changes. | Learn optimal TP/hedge ratio conditioned on current regime. Different regimes may have different sweet spots. | MODERATE — but requires careful validation |
+
+### The Honest Assessment
+
+| What the Strategy IS | What the Strategy IS NOT |
+|---|---|
+| Positive-expectancy system based on EUR-USD mean-reversion at 5m ATR distances | A free lunch — martingale invariant ensures asymmetry |
+| 99.7% cycle win rate with validated blind test outperformance | Immune to regime shifts — bleeds silently under 2x stress |
+| 0% ruin under normal and single-stress conditions | Predictable at the individual cycle level — 42% of market time is bust-like |
+| Scales identically from $10k to $1M | Self-healing — 25% of cycles just recover from busts |
+
+### Regime Stress Table (What ML Must Protect Against)
 
 | Condition | Simple Framework | With ML/Regime Detection |
-|-----------|-----------------|-------------------------|
+|---|---|---|
 | Normal market | Works well (+7.5% median MC) | Works well |
 | Single stress factor | Survives (+3.8%) | Survives better |
 | Double stress | **FAILS** (median -2%) | Could halt trading |
 | Regime shift | **No detection capability** | Could detect and adapt |
 
-**Recommendation**: The simple framework is viable as a production system IF AND ONLY IF it includes:
-
-1. **Circuit breaker**: If rolling bust rate exceeds 2x historical (0.52%), halt trading for N hours
-2. **Regime monitor**: Track rolling 100-cycle bust rate, ATR expansion, spread widening
-3. **Max daily loss**: Cap at -2% equity per day regardless of cycle count
-4. **Gradual scaling**: Start at 0.3% base, increase to 0.5% only after 500+ profitable cycles
-
-**For a more robust system**: ML could provide:
-- Regime detection (trending vs mean-reverting periods)
-- Dynamic level adjustment based on predicted volatility regime
-- Entry quality scoring (even small improvements at L0 compound massively)
-- Bust probability estimation for circuit breaker decisions
-
-The simple framework captures ~80% of the opportunity. ML could capture the remaining 20% and, more importantly, provide protection during the regime shifts that the simple framework cannot detect.
+**The simple framework captures ~80% of the opportunity.** It solved the mechanical problems (sizing, levels, scaling). What remains are the statistical/predictive problems (entry quality, regime detection) that require learning from data — the domain of ML.
 
 ---
 
-## Recommended Production Configuration
+## Recommended Production Configuration (Simple Framework Baseline)
 
 ```
 Base size:     0.3% of equity (conservative start)
 Multiplier:    sqrt(2) per level (~1.414x)
-Max levels:    Auto (determined by available margin)
-Leverage:      30:1
-Entry signal:  EMA 8/21 crossover
+Max levels:    Auto (determined by available margin at 30:1)
+Leverage:      30:1 (scripts parameterized for 20:1 if needed)
+Entry signal:  EMA 8/21 crossover (placeholder — ML target P5)
 TP distance:   ATR(14) * 0.8
 Hedge dist:    TP / 2.0
 Duration cap:  None needed (95% of cycles < 50 min)
 
-CIRCUIT BREAKERS (mandatory):
+CIRCUIT BREAKERS (mandatory — until ML regime detection replaces them):
 - Max daily loss: -2% of equity -> halt for 24 hours
 - Rolling bust rate: if > 0.52% (2x normal) over last 200 cycles -> halt
 - Max consecutive busts: 3 -> halt and review
 - ATR expansion: if ATR > 2x 200-period average -> reduce base to 0.1%
 ```
 
-### Risk Profile (Honest Assessment)
+### Risk Profile
 
-| Risk Metric | Value | Assessment |
-|-------------|-------|------------|
-| EV per cycle | +0.0036% | Positive but thin |
-| Bust/win ratio | 78.9x | High — structural |
-| Recovery cycles per bust | 93 median | Slow |
-| Cycles spent recovering | ~25% of all cycles | Significant drag |
-| Safety margin (sqrt) | 4.7x before EV=0 | Good buffer |
-| P(ruin) normal conditions | 0.00% | Excellent |
-| P(ruin) double stress | 0.00% (but -2% median) | Survives but bleeds |
-| Regime shift vulnerability | HIGH — no detection | Critical gap |
-| Kurtosis | 601 | Extreme fat tails |
+| Risk Metric | Value | Assessment | ML Could Improve? |
+|---|---|---|---|
+| EV per cycle | +0.0036% | Positive but thin | YES — P5 (entry quality) |
+| Bust/win ratio | 78.9x | High — structural | NO — inherent (P3) |
+| Recovery cycles per bust | 93 median | Slow | NO — consequence of asymmetry |
+| Cycles spent recovering | ~25% of all cycles | Significant drag | Partially — fewer busts = less recovery |
+| Safety margin (sqrt) | 4.7x before EV=0 | Good buffer | YES — P5 widens this further |
+| P(ruin) normal conditions | 0.00% | Excellent | Already solved |
+| P(ruin) double stress | 0.00% (but -2% median) | Survives but bleeds | YES — P6 (regime detection) |
+| Regime shift vulnerability | HIGH — no detection | **Critical gap** | **YES — P6 is the priority** |
+| Kurtosis | 601 | Extreme fat tails | NO — structural |
 
 ---
 
 ## File Reference
 
-| File | Phase | What |
-|------|-------|------|
-| `01_momentum_indicators.ipynb` | 1 | Indicators provide zero edge (proven) |
-| `02_atr_distance_sweep.py` | 1 | Distance ratio determines win rate (proven) |
-| `03_cooldown_session.py` | 1 | Cooldown has no effect (proven) |
-| `04_monte_carlo.py` | 1 | Ruin probability — SUPERSEDED by scripts 09, 10 |
-| `05_full_cycle_simulation.py` | 2 | Bust rate under filters (complete) |
-| `06_cycle_pnl_analysis.py` | 2 | P&L distribution, equity curve (complete) |
-| `07_bust_anatomy.py` | 3 | Conditional probabilities, last leg analysis, bust profiling (complete) |
-| `08_abort_and_sizing.py` | 3 | Early abort levels, dynamic sizing, hybrid strategies (complete) |
-| `09_monte_carlo_corrected.py` | 4 | Corrected Monte Carlo with real distributions (complete) |
-| `10_capital_scaling_risk.py` | 5 | % equity sizing, capital scaling, quant risk metrics, duration analysis (complete) |
-| `11_tail_risk_deep_dive.py` | 6 | Fundamental asymmetry, martingale invariant, stress testing, fat tails (complete) |
-| `12_risk_equations.py` | 7 | Exact P&L equations, p*m threshold, problem classification, sensitivity analysis (complete) |
-| `13_blind_backtest.py` | 8 | Blind out-of-sample validation, train/test comparison, statistical significance (complete) |
-| `14_loss_paths.py` | 9 | Exhaustive loss path analysis, geometric constraints, predictability assessment (complete) |
+| File | Phase | What It Tested | Key Finding |
+|---|---|---|---|
+| `01_momentum_indicators.ipynb` | 1 | Entry signals: EMA, RSI, MACD, SMA, ADX, combos | **NO HELP** — all ≈33%, same as random |
+| `02_atr_distance_sweep.py` | 1 | ATR-based TP/hedge distance geometry | **DEFINES THE GAME** — distance ratio sets win rate |
+| `03_cooldown_session.py` | 1 | Cooldown bars (0-200), session filters | **NO HELP** (cooldown), **MARGINAL** (sessions) |
+| `04_monte_carlo.py` | 1 | Naive Monte Carlo (coin-flip model) | **SUPERSEDED** — wrong model, see 09/10 |
+| `05_full_cycle_simulation.py` | 2 | Session + volatility filter combinations | **MARGINAL** — best combo reduces bust 16% |
+| `06_cycle_pnl_analysis.py` | 2 | P&L distribution, asymmetry measurement | 1 bust erases 6.5 wins (5 lvl/2x config) |
+| `07_bust_anatomy.py` | 3 | Bust predictability, market conditions, clustering | **NO SIGNAL** — busts unpredictable from pre-entry features |
+| `08_abort_and_sizing.py` | 3 | Sizing operators (6 variants), level count, margin | **SIGNIFICANT** — sqrt + more levels is the key lever |
+| `09_monte_carlo_corrected.py` | 4 | Monte Carlo with real cycle distributions | **0% RUIN** — all configs, all paths |
+| `10_capital_scaling_risk.py` | 5 | % equity sizing, capital tiers, risk metrics | **SCALES PERFECTLY** — identical % at any capital |
+| `11_tail_risk_deep_dive.py` | 6 | Asymmetry ratio, stress testing, fat tails | **INHERENT** — martingale invariant proven |
+| `12_risk_equations.py` | 7 | Exact equations, p·m threshold, problem classification | **8 problems: 3 inherent, 2 ML targets** |
+| `13_blind_backtest.py` | 8 | Blind out-of-sample (2025-02 to 2026-03) | **TEST OUTPERFORMS TRAIN** — no overfit |
+| `14_loss_paths.py` | 9 | All bust price paths classified (A-E types) | **98.7% choppy range** — inherent, not predictable |
