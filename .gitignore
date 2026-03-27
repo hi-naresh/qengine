@@ -7551,3 +7551,5 @@ pyrightconfig.json
 /frontend/node_modules/.package-lock.json
 /frontend/node_modules/.vue-global-types/vue_99_0_0_0.d.ts
 /frontend/node_modules/
+/bugs/
+/bugs/

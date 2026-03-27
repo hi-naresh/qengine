@@ -130,11 +130,22 @@ def _execute_backtest(
 
     # Store backtest session in database (only for UI dashboard, not for CLI/research)
     if not jh.should_execute_silently():
-        from qengine.models.BacktestSession import store_backtest_session
+        from qengine.models.BacktestSession import store_backtest_session, update_backtest_session_state
         store_backtest_session(
             id=client_id,
             status='running'
         )
+        # Persist route/config info so history labels show strategy/symbol/dates
+        try:
+            update_backtest_session_state(client_id, {
+                'exchange': exchange,
+                'routes': routes,
+                'data_routes': data_routes,
+                'start_date': start_date,
+                'finish_date': finish_date,
+            })
+        except Exception:
+            pass
 
     # load historical candles
     if candles is None:
@@ -263,7 +274,8 @@ def _execute_backtest(
             chart_data=chart_data,
             execution_duration=result.get('execution_duration'),
             strategy_codes=strategy_codes if strategy_codes else None,
-            logs=result.get('logs')
+            logs=result.get('logs'),
+            sessions=result.get('sessions')
         )
         update_backtest_session_status(client_id, 'finished')
 
@@ -855,6 +867,48 @@ def get_candles_from_pipeline(candles_pipeline: Optional[BaseCandlesPipeline], c
     return candles_pipeline.get_candles(candles[i: i + candles_pipeline._batch_size], i, candles_step)
 
 
+def _get_live_stats() -> dict:
+    """Gather live execution stats for progress reporting."""
+    stats = {}
+    try:
+        total_pnl = 0.0
+        total_floating = 0.0
+        total_margin = 0.0
+        equity = 0.0
+        session_num = None
+        total_trades = 0
+
+        for r in router.routes:
+            e = store.exchanges.get_exchange(r.exchange)
+            wallet = e.assets.get(jh.app_currency(), 0)
+            pos = store.positions.get_position(r.exchange, r.symbol)
+
+            floating = pos.pnl if pos and pos.is_open else 0.0
+            margin = pos.margin_used if pos and pos.is_open else 0.0
+            total_floating += floating
+            total_margin += margin
+            equity = wallet + total_floating
+
+            # Get session number from strategy vars (hedge strategies)
+            if r.strategy and hasattr(r.strategy, 'vars') and isinstance(r.strategy.vars, dict):
+                sn = r.strategy.vars.get('session_number')
+                if sn is not None:
+                    session_num = sn
+
+        # Count completed trades
+        total_trades = store.closed_trades.count
+
+        stats['equity'] = round(equity, 2)
+        stats['floating_pnl'] = round(total_floating, 2)
+        stats['margin_used'] = round(total_margin, 2)
+        stats['trades'] = total_trades
+        if session_num is not None:
+            stats['session'] = session_num
+    except Exception:
+        pass
+    return stats
+
+
 def _update_progress_bar(
         progressbar: Progressbar, run_silently: bool, candle_index: int, candle_step: int, last_update_time: float
 ) -> float:
@@ -869,6 +923,8 @@ def _update_progress_bar(
                 {
                     "current": progressbar.current,
                     "estimated_remaining_seconds": progressbar.estimated_remaining_seconds,
+                    "current_date": store.app.time,
+                    **_get_live_stats(),
                 },
             )
             # Update the last update time
@@ -1509,11 +1565,12 @@ def _simulate_new_candles(candles: dict, candles_pipelines: Dict[str, BaseCandle
 
             count = TIMEFRAME_TO_ONE_MINUTES[timeframe]
 
-            if (i + candles_step) % count == 0:
+            end_idx = i + candles_step
+            if (end_idx) % count == 0 and end_idx >= count and end_idx <= len(candles[j]["candles"]):
                 generated_candle = candle_service.generate_candle_from_one_minutes(
                     timeframe,
                     candles[j]["candles"][
-                    i - count + candles_step: i + candles_step],
+                    end_idx - count: end_idx],
                 )
 
                 candle_service.add_candle(

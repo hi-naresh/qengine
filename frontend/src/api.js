@@ -116,6 +116,7 @@ export const api = {
   removeBacktestSession: (id) => request('POST', `/backtest/sessions/${id}/remove`),
   updateBacktestNotes: (id, title, description, strategyCodes) =>
     request('POST', `/backtest/sessions/${id}/notes`, { title, description, strategy_codes: strategyCodes }),
+  updateBacktestState: (id, state) => request('POST', '/backtest/update-state', { id, state }),
   purgeBacktestSessions: (daysOld) => request('POST', '/backtest/purge-sessions', { days_old: daysOld }),
   getBacktestChartData: (id) => request('POST', `/backtest/sessions/${id}/chart-data`),
   getBacktestStrategyCode: (id) => request('POST', `/backtest/sessions/${id}/strategy-code`),
@@ -226,6 +227,10 @@ export const api = {
   updateIssue: (data) => request('POST', '/issues/update', data),
   deleteIssue: (id) => request('POST', '/issues/delete', { id }),
   clearIssues: (status) => request('POST', '/issues/clear', { status: status || null }),
+  getActiveIssueCount: () => request('POST', '/issues/active-count', {}),
+  getComments: (issue_id) => request('POST', '/issues/comments/list', { issue_id }),
+  createComment: (data) => request('POST', '/issues/comments/create', data),
+  deleteComment: (id) => request('POST', '/issues/comments/delete', { id }),
 }
 
 export function setToken(token) {
