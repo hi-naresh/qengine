@@ -158,11 +158,29 @@ def get_optimization_session_for_load_more(session: OptimizationSession) -> dict
 
 def get_backtest_session(session: BacktestSession) -> dict:
     """
-    Transform a BacktestSession model instance into a dictionary for API responses (listing)
+    Transform a BacktestSession model instance into a dictionary for API responses (listing).
+    Reconciles status with actual worker state.
     """
+    try:
+        is_active = str(session.id) in process_manager.active_workers
+    except Exception:
+        is_active = False
+
+    status = (session.status or '').lower()
+
+    # Reconcile: if DB says running but worker is dead, mark as stopped
+    if status == 'running' and not is_active:
+        status = 'stopped'
+        try:
+            from qengine.models.BacktestSession import update_backtest_session_status
+            update_backtest_session_status(str(session.id), 'stopped')
+        except Exception:
+            pass
+
     result = {
         'id': str(session.id),
-        'status': session.status,
+        'status': status or session.status,
+        'is_active': is_active,
         'created_at': session.created_at,
         'updated_at': session.updated_at,
         'execution_duration': session.execution_duration,
@@ -179,20 +197,39 @@ def get_backtest_session(session: BacktestSession) -> dict:
 
 def get_backtest_session_for_load_more(session: BacktestSession) -> dict:
     """
-    Transform a BacktestSession model instance with full data for detailed view
+    Transform a BacktestSession model instance with full data for detailed view.
+    Reconciles status with actual worker state.
     """
+    try:
+        is_active = str(session.id) in process_manager.active_workers
+    except Exception:
+        is_active = False
+
+    status = (session.status or '').lower()
+    if status == 'running' and not is_active:
+        status = 'stopped'
+        try:
+            from qengine.models.BacktestSession import update_backtest_session_status
+            update_backtest_session_status(str(session.id), 'stopped')
+        except Exception:
+            pass
+
     # Parse JSON fields and clean infinite values
     metrics = jh.clean_infinite_values(json.loads(session.metrics)) if session.metrics else None
     equity_curve = jh.clean_infinite_values(json.loads(session.equity_curve)) if session.equity_curve else []
     trades = jh.clean_infinite_values(json.loads(session.trades)) if session.trades else []
     hyperparameters = jh.clean_infinite_values(json.loads(session.hyperparameters)) if session.hyperparameters else None
-    
+
+    sessions = jh.clean_infinite_values(json.loads(session.sessions)) if session.sessions else []
+
     result = {
         'id': str(session.id),
-        'status': session.status,
+        'status': status or session.status,
+        'is_active': is_active,
         'metrics': metrics,
         'equity_curve': equity_curve,
         'trades': trades,
+        'sessions': sessions,
         'hyperparameters': hyperparameters,
         'has_chart_data': bool(session.chart_data),
         'created_at': session.created_at,
@@ -296,7 +333,9 @@ def _extract_candles_summary_metrics(results: dict) -> list:
     if not results or 'confidence_analysis' not in results:
         return metrics
 
-    ca_metrics = results['confidence_analysis']['metrics']
+    ca_metrics = results['confidence_analysis'].get('metrics')
+    if not ca_metrics:
+        return metrics
 
     # Define metrics to display (in order)
     metric_keys = ['net_profit_percentage', 'max_drawdown', 'sharpe_ratio', 'win_rate', 'total', 'annual_return', 'calmar_ratio']
@@ -333,7 +372,9 @@ def _extract_trades_summary_metrics(results: dict) -> list:
     if not results or 'confidence_analysis' not in results:
         return metrics
 
-    ca_metrics = results['confidence_analysis']['metrics']
+    ca_metrics = results['confidence_analysis'].get('metrics')
+    if not ca_metrics:
+        return metrics
 
     # Define metrics to display (in order)
     metric_keys = ['total_return', 'max_drawdown', 'sharpe_ratio', 'calmar_ratio']

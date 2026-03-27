@@ -1,5 +1,40 @@
 <template>
   <div>
+    <!-- Sticky Global Progress Banner -->
+    <div v-if="running" class="sticky top-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 mb-3 bg-surface-900/90 backdrop-blur-md border-b border-surface-700/50">
+      <div class="flex items-center gap-3">
+        <div class="relative w-9 h-9 flex-shrink-0">
+          <svg class="w-9 h-9 -rotate-90" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="10" class="text-surface-800" />
+            <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="10"
+              class="text-purple-500 transition-all duration-500 ease-out"
+              stroke-linecap="round"
+              :stroke-dasharray="2 * Math.PI * 52"
+              :stroke-dashoffset="2 * Math.PI * 52 * (1 - overallProgress / 100)" />
+          </svg>
+          <div class="absolute inset-0 flex items-center justify-center">
+            <span class="text-[9px] font-bold text-surface-200 tabular-nums">{{ Math.round(overallProgress) }}%</span>
+          </div>
+        </div>
+        <div class="flex-1 min-w-0 flex items-center gap-3 overflow-x-auto">
+          <span class="text-xs font-medium text-surface-300 truncate shrink-0">
+            Monte Carlo &middot; {{ form.strategy }} &middot; {{ form.symbol }}
+          </span>
+          <span v-if="form.runTrades" class="text-[11px] text-surface-500 hidden sm:inline shrink-0">
+            Trades: {{ tradesProgress.current }}/{{ tradesProgress.total }}
+          </span>
+          <span v-if="form.runCandles" class="text-[11px] text-surface-500 hidden sm:inline shrink-0">
+            Candles: {{ candlesProgress.current }}/{{ candlesProgress.total }}
+          </span>
+          <span v-if="runStartedAt" class="text-[11px] text-surface-500 hidden md:inline shrink-0">{{ elapsedTime }}</span>
+        </div>
+        <div class="w-32 h-1.5 bg-surface-800 rounded-full overflow-hidden hidden md:block shrink-0">
+          <div class="h-full bg-purple-500 rounded-full transition-all duration-500 ease-out" :style="{ width: overallProgress + '%' }"></div>
+        </div>
+        <button @click="cancelMonteCarlo" class="text-[10px] text-surface-500 hover:text-red-400 flex-shrink-0 px-2 py-1 rounded hover:bg-surface-800 transition-colors">Cancel</button>
+      </div>
+    </div>
+
     <!-- Workspace Tabs -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
       <div>
@@ -186,33 +221,76 @@
           <p :class="alertType === 'success' ? 'text-green-400' : 'text-amber-400'" class="text-sm">{{ alertMessage }}</p>
         </div>
 
-        <!-- Trades Progress -->
-        <div v-if="running && form.runTrades" class="card">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-semibold text-surface-300">Trade Shuffle Simulation</h2>
-            <span class="text-xs text-surface-500 font-mono">{{ tradesProgress.current }} / {{ tradesProgress.total }}</span>
+        <!-- Rich Progress Card -->
+        <div v-if="running || completed" class="card p-5 space-y-4">
+          <div class="flex items-center gap-5">
+            <!-- Circular gauge -->
+            <div class="relative w-24 h-24 flex-shrink-0">
+              <svg class="w-24 h-24 -rotate-90" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="8" class="text-surface-800" />
+                <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="8"
+                  :class="completed ? 'text-green-500' : 'text-purple-500'"
+                  class="transition-all duration-500 ease-out"
+                  stroke-linecap="round"
+                  :stroke-dasharray="2 * Math.PI * 52"
+                  :stroke-dashoffset="2 * Math.PI * 52 * (1 - overallProgress / 100)" />
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <svg v-if="completed" class="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                <span v-else class="text-xl font-bold text-surface-100 tabular-nums">{{ Math.round(overallProgress) }}%</span>
+              </div>
+            </div>
+            <!-- Info -->
+            <div class="flex-1 min-w-0 space-y-2">
+              <div class="flex items-center gap-2">
+                <span v-if="running" class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+                <span v-else-if="completed" class="w-2 h-2 rounded-full bg-green-400"></span>
+                <span class="text-sm font-medium text-surface-200">{{ running ? 'Monte Carlo' : 'Completed' }}</span>
+                <span class="text-xs text-surface-500">{{ form.strategy }} &middot; {{ form.symbol }}</span>
+              </div>
+              <!-- Dual progress bars -->
+              <div class="space-y-1.5">
+                <div v-if="form.runTrades" class="flex items-center gap-2">
+                  <span class="text-[10px] text-surface-500 w-14 shrink-0">Trades</span>
+                  <div class="flex-1 h-1.5 bg-surface-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-brand-500 rounded-full transition-all duration-500 ease-out" :style="{ width: tradesProgressPct + '%' }"></div>
+                  </div>
+                  <span class="text-[10px] text-surface-400 tabular-nums w-16 text-right">{{ tradesProgress.current }}/{{ tradesProgress.total }}</span>
+                </div>
+                <div v-if="form.runCandles" class="flex items-center gap-2">
+                  <span class="text-[10px] text-surface-500 w-14 shrink-0">Candles</span>
+                  <div class="flex-1 h-1.5 bg-surface-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-purple-500 rounded-full transition-all duration-500 ease-out" :style="{ width: candlesProgressPct + '%' }"></div>
+                  </div>
+                  <span class="text-[10px] text-surface-400 tabular-nums w-16 text-right">{{ candlesProgress.current }}/{{ candlesProgress.total }}</span>
+                </div>
+              </div>
+              <!-- Stats row -->
+              <div class="flex items-center gap-4 text-xs text-surface-500">
+                <span v-if="running && (tradesProgress.eta > 0 || candlesProgress.eta > 0)" class="flex items-center gap-1">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  ~{{ formatEta(Math.max(tradesProgress.eta, candlesProgress.eta)) }} remaining
+                </span>
+                <span v-if="runStartedAt" class="flex items-center gap-1">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+                  {{ elapsedTime }}
+                </span>
+                <span class="text-surface-600">{{ form.numScenarios }} scenarios &middot; {{ form.cpuCores }} cores</span>
+              </div>
+            </div>
           </div>
-          <div class="w-full bg-surface-800 rounded-full h-2 mb-2">
-            <div class="bg-brand-500 h-2 rounded-full transition-all duration-500" :style="{ width: tradesProgressPct + '%' }"></div>
-          </div>
-          <div class="flex justify-between text-[10px] text-surface-500">
-            <span>{{ tradesProgressPct.toFixed(1) }}%</span>
-            <span v-if="tradesProgress.eta > 0">ETA: {{ formatEta(tradesProgress.eta) }}</span>
-          </div>
-        </div>
 
-        <!-- Candles Progress -->
-        <div v-if="running && form.runCandles" class="card">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-semibold text-surface-300">Candle Simulation</h2>
-            <span class="text-xs text-surface-500 font-mono">{{ candlesProgress.current }} / {{ candlesProgress.total }}</span>
-          </div>
-          <div class="w-full bg-surface-800 rounded-full h-2 mb-2">
-            <div class="bg-purple-500 h-2 rounded-full transition-all duration-500" :style="{ width: candlesProgressPct + '%' }"></div>
-          </div>
-          <div class="flex justify-between text-[10px] text-surface-500">
-            <span>{{ candlesProgressPct.toFixed(1) }}%</span>
-            <span v-if="candlesProgress.eta > 0">ETA: {{ formatEta(candlesProgress.eta) }}</span>
+          <!-- Completed: View Results -->
+          <div v-if="completed" class="flex items-center gap-3 pt-1">
+            <button v-if="currentTaskId" @click="viewSession({ id: currentTaskId })" class="btn-primary btn-sm flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/></svg>
+              View Results
+            </button>
+            <button v-if="currentTaskId" @click="loadEquityCurves(currentTaskId)" class="btn-sm bg-surface-700 text-surface-300 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7 16l4-8 4 5 4-10"/></svg>
+              Equity Curves
+            </button>
+            <span class="text-xs text-surface-500">{{ alertMessage }}</span>
           </div>
         </div>
 
@@ -275,36 +353,61 @@
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-sm font-semibold text-surface-300">Equity Curves</h2>
             <div class="flex items-center gap-2">
+              <span v-if="activeEquityCurves?.scenarios" class="text-[10px] text-surface-500">{{ activeEquityCurves.scenarios.length }} scenarios</span>
               <select v-model="equityCurveType" class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300">
                 <option v-if="equityCurveData.trades" value="trades">Trade Shuffle</option>
                 <option v-if="equityCurveData.candles" value="candles">Candle Simulation</option>
               </select>
             </div>
           </div>
-          <div class="relative h-64 select-none">
-            <svg :viewBox="`0 0 ${ecChartWidth} ${ecChartHeight}`" class="w-full h-full" preserveAspectRatio="none">
+          <div class="relative select-none" style="height: 320px;" @mousemove="onChartHover" @mouseleave="chartHoverX = null">
+            <svg :viewBox="`0 0 ${ecChartWidth} ${ecChartHeight}`" class="w-full h-full" preserveAspectRatio="xMidYMid meet">
+              <!-- Background -->
+              <rect :x="ecPad.left" :y="ecPad.top" :width="ecChartWidth - ecPad.left - ecPad.right" :height="ecChartHeight - ecPad.top - ecPad.bottom" fill="#0a0a0f" rx="4" />
               <!-- Grid lines -->
               <line v-for="i in 5" :key="'ecgrid-' + i"
                 :x1="ecPad.left" :x2="ecChartWidth - ecPad.right"
                 :y1="ecPad.top + (i - 1) * ((ecChartHeight - ecPad.top - ecPad.bottom) / 4)"
                 :y2="ecPad.top + (i - 1) * ((ecChartHeight - ecPad.top - ecPad.bottom) / 4)"
-                stroke="#333" stroke-width="0.5" stroke-dasharray="4,4" />
+                stroke="#1f2937" stroke-width="0.5" />
+              <!-- Y-axis labels -->
+              <text v-for="i in 5" :key="'ecy-' + i"
+                :x="ecPad.left - 4" :y="ecPad.top + (i - 1) * ((ecChartHeight - ecPad.top - ecPad.bottom) / 4) + 3"
+                text-anchor="end" fill="#6b7280" font-size="9" font-family="monospace">
+                {{ ecYLabel(i - 1) }}
+              </text>
+              <!-- Percentile band (5th-95th) -->
+              <polygon v-if="percentileBandPath" :points="percentileBandPath" fill="#6366f1" opacity="0.08" />
               <!-- Scenario lines -->
               <polyline v-for="(path, idx) in scenarioLinePaths" :key="'sc-' + idx"
-                :points="path" fill="none" stroke="#6366f1" stroke-width="0.5" opacity="0.3" />
+                :points="path" fill="none" stroke="#6366f1" stroke-width="0.5" opacity="0.15" />
+              <!-- Median line -->
+              <polyline v-if="medianLinePath" :points="medianLinePath" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7" />
               <!-- Original line -->
               <polyline v-if="originalLinePath" :points="originalLinePath" fill="none" stroke="#22c55e" stroke-width="2" />
+              <!-- Starting balance reference -->
+              <line :x1="ecPad.left" :x2="ecChartWidth - ecPad.right"
+                :y1="balanceY" :y2="balanceY"
+                stroke="#fbbf24" stroke-width="0.5" stroke-dasharray="6,4" opacity="0.4" />
+              <!-- Hover crosshair -->
+              <line v-if="chartHoverX !== null"
+                :x1="chartHoverX" :x2="chartHoverX"
+                :y1="ecPad.top" :y2="ecChartHeight - ecPad.bottom"
+                stroke="#6b7280" stroke-width="0.5" stroke-dasharray="3,3" />
             </svg>
             <!-- Legend -->
-            <div class="absolute top-2 left-2 flex items-center gap-4 text-[10px]">
-              <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-green-500 inline-block"></span> Original</span>
-              <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-indigo-500 inline-block opacity-50"></span> Scenarios</span>
+            <div class="absolute top-3 left-14 flex items-center gap-4 text-[10px]">
+              <span class="flex items-center gap-1"><span class="w-4 h-0.5 bg-green-500 inline-block"></span> Original</span>
+              <span class="flex items-center gap-1"><span class="w-4 h-0.5 bg-purple-400 inline-block opacity-70" style="border-bottom: 1px dashed;"></span> Median</span>
+              <span class="flex items-center gap-1"><span class="w-4 h-2 bg-indigo-500 inline-block opacity-20 rounded-sm"></span> 5-95th Pctl</span>
+              <span class="flex items-center gap-1"><span class="w-4 h-0.5 bg-amber-400 inline-block opacity-50" style="border-bottom: 1px dashed;"></span> Start Balance</span>
             </div>
-            <!-- Y-axis labels -->
-            <div class="absolute top-0 right-0 h-full flex flex-col justify-between text-[10px] text-surface-500 font-mono pr-1 py-2">
-              <span>{{ ecYMax.toFixed(0) }}</span>
-              <span>{{ ((ecYMax + ecYMin) / 2).toFixed(0) }}</span>
-              <span>{{ ecYMin.toFixed(0) }}</span>
+            <!-- Summary stats -->
+            <div v-if="ecSummary" class="absolute bottom-3 left-14 flex items-center gap-4 text-[10px]">
+              <span class="text-green-400">Final: ${{ ecSummary.originalFinal?.toFixed(0) }}</span>
+              <span class="text-red-400">Worst: ${{ ecSummary.worstFinal?.toFixed(0) }}</span>
+              <span class="text-surface-400">Median: ${{ ecSummary.medianFinal?.toFixed(0) }}</span>
+              <span class="text-green-400/70">Best: ${{ ecSummary.bestFinal?.toFixed(0) }}</span>
             </div>
           </div>
         </div>
@@ -433,21 +536,6 @@
           </button>
         </div>
 
-        <!-- Circular Progress -->
-        <div v-if="running" class="flex justify-center py-4">
-          <div class="relative w-32 h-32">
-            <svg class="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="52" stroke="#374151" stroke-width="8" fill="none" />
-              <circle cx="60" cy="60" r="52" stroke="#8b5cf6" stroke-width="8" fill="none"
-                :stroke-dasharray="2 * Math.PI * 52"
-                :stroke-dashoffset="2 * Math.PI * 52 * (1 - overallProgress / 100)"
-                stroke-linecap="round" class="transition-all duration-500" />
-            </svg>
-            <div class="absolute inset-0 flex items-center justify-center">
-              <span class="text-2xl font-bold text-surface-200">{{ Math.round(overallProgress) }}%</span>
-            </div>
-          </div>
-        </div>
 
         <!-- Info Panel - Running -->
         <div class="card" v-if="running && generalInfo">
@@ -564,7 +652,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { api, defaultBrokerId } from '../api'
 import { useWebSocket } from '../useWebSocket'
 
@@ -598,6 +686,9 @@ const sessionsSearch = ref('')
 const sessionsStatusFilter = ref('all')
 const existingCandles = ref([])
 let pollTimer = null
+const runStartedAt = ref(null)
+const elapsedNow = ref(Date.now())
+let elapsedTimer = null
 
 // WebSocket-driven state
 const tradesProgress = ref({ current: 0, total: 0, eta: 0 })
@@ -690,7 +781,10 @@ const candlesProgressPct = computed(() => {
   return (candlesProgress.value.current / candlesProgress.value.total) * 100
 })
 
+const completed = computed(() => !running.value && alertType.value === 'success' && !!alertMessage.value)
+
 const overallProgress = computed(() => {
+  if (completed.value) return 100
   let total = 0
   let done = 0
   if (form.value.runTrades) {
@@ -703,6 +797,24 @@ const overallProgress = computed(() => {
   }
   if (total === 0) return 0
   return (done / total) * 100
+})
+
+const elapsedTime = computed(() => {
+  if (!runStartedAt.value) return ''
+  const diff = Math.floor((elapsedNow.value - runStartedAt.value) / 1000)
+  if (diff < 60) return `${diff}s elapsed`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s elapsed`
+  return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m elapsed`
+})
+
+// Elapsed timer
+watch(running, (isRunning) => {
+  if (isRunning) {
+    elapsedNow.value = Date.now()
+    elapsedTimer = setInterval(() => { elapsedNow.value = Date.now() }, 1000)
+  } else {
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
+  }
 })
 
 // Unified metrics: show live data when running, session data when viewing
@@ -720,8 +832,9 @@ const activeCandlesMetrics = computed(() => {
 
 // Equity curve chart
 const ecChartWidth = 800
-const ecChartHeight = 250
-const ecPad = { top: 20, right: 50, bottom: 10, left: 10 }
+const ecChartHeight = 320
+const ecPad = { top: 20, right: 10, bottom: 20, left: 60 }
+const chartHoverX = ref(null)
 
 const activeEquityCurves = computed(() => {
   if (!equityCurveData.value) return null
@@ -786,6 +899,84 @@ const scenarioLinePaths = computed(() => {
     return computeEquityLinePath(prices, ecYMin.value, ecYMax.value)
   })
 })
+
+function ecYLabel(idx) {
+  const range = ecYMax.value - ecYMin.value
+  const val = ecYMax.value - (idx / 4) * range
+  return '$' + val.toFixed(0)
+}
+
+const balanceY = computed(() => {
+  const bal = form.value.balance
+  const { yMin, yMax } = ecYBounds.value
+  if (yMax === yMin) return ecPad.top + (ecChartHeight - ecPad.top - ecPad.bottom) / 2
+  const yRange = ecChartHeight - ecPad.top - ecPad.bottom
+  return ecPad.top + yRange - ((bal - yMin) / (yMax - yMin)) * yRange
+})
+
+const medianLinePath = computed(() => {
+  const curves = activeEquityCurves.value
+  if (!curves?.scenarios?.length) return ''
+  const allPrices = curves.scenarios.map(sc => getEquityCurvePrices(sc))
+  const maxLen = Math.max(...allPrices.map(p => p.length))
+  if (maxLen === 0) return ''
+  const medians = []
+  for (let i = 0; i < maxLen; i++) {
+    const vals = allPrices.map(p => p[Math.min(i, p.length - 1)]).filter(v => v != null).sort((a, b) => a - b)
+    if (vals.length) medians.push(vals[Math.floor(vals.length / 2)])
+  }
+  return computeEquityLinePath(medians, ecYMin.value, ecYMax.value)
+})
+
+const percentileBandPath = computed(() => {
+  const curves = activeEquityCurves.value
+  if (!curves?.scenarios?.length) return ''
+  const allPrices = curves.scenarios.map(sc => getEquityCurvePrices(sc))
+  const maxLen = Math.max(...allPrices.map(p => p.length))
+  if (maxLen === 0) return ''
+
+  const xRange = ecChartWidth - ecPad.left - ecPad.right
+  const yRange = ecChartHeight - ecPad.top - ecPad.bottom
+  const { yMin, yMax } = ecYBounds.value
+  const toY = (v) => yMax === yMin ? ecPad.top + yRange / 2 : ecPad.top + yRange - ((v - yMin) / (yMax - yMin)) * yRange
+  const toX = (i) => ecPad.left + (i / Math.max(maxLen - 1, 1)) * xRange
+
+  const upper = []
+  const lower = []
+  for (let i = 0; i < maxLen; i++) {
+    const vals = allPrices.map(p => p[Math.min(i, p.length - 1)]).filter(v => v != null).sort((a, b) => a - b)
+    if (vals.length) {
+      upper.push(`${toX(i).toFixed(1)},${toY(vals[Math.floor(vals.length * 0.95)]).toFixed(1)}`)
+      lower.push(`${toX(i).toFixed(1)},${toY(vals[Math.floor(vals.length * 0.05)]).toFixed(1)}`)
+    }
+  }
+  return [...upper, ...lower.reverse()].join(' ')
+})
+
+const ecSummary = computed(() => {
+  const curves = activeEquityCurves.value
+  if (!curves) return null
+  const origPrices = curves.original ? getEquityCurvePrices(curves.original) : []
+  const scenarioPrices = (curves.scenarios || []).map(sc => getEquityCurvePrices(sc))
+  const finals = scenarioPrices.map(p => p[p.length - 1]).filter(v => v != null).sort((a, b) => a - b)
+  if (!finals.length) return null
+  return {
+    originalFinal: origPrices.length ? origPrices[origPrices.length - 1] : null,
+    worstFinal: finals[0],
+    medianFinal: finals[Math.floor(finals.length / 2)],
+    bestFinal: finals[finals.length - 1],
+  }
+})
+
+function onChartHover(e) {
+  const rect = e.currentTarget.getBoundingClientRect()
+  const x = ((e.clientX - rect.left) / rect.width) * ecChartWidth
+  if (x >= ecPad.left && x <= ecChartWidth - ecPad.right) {
+    chartHoverX.value = x
+  } else {
+    chartHoverX.value = null
+  }
+}
 
 function onExchangeChange() {
   const syms = availableSymbols.value
@@ -920,6 +1111,9 @@ useWebSocket((msg) => {
       stopPolling()
       _updateActiveWsTab({ running: false, hasResults: true })
       setTimeout(loadSessions, 1000)
+      if (currentTaskId.value) {
+        loadCompletedResults(currentTaskId.value)
+      }
     }
   } else if (event === 'monte-carlo.exception') {
     error.value = data?.error || 'Monte Carlo simulation failed'
@@ -1031,6 +1225,7 @@ async function startMonteCarlo() {
   equityCurveData.value = null
   selectedSession.value = null
   running.value = true
+  runStartedAt.value = Date.now()
   showConfig.value = false
 
   const id = crypto.randomUUID()
@@ -1126,10 +1321,13 @@ async function pollSessionProgress() {
     // Update progress from child sessions
     if (session.trades_session) {
       const ts = session.trades_session
-      tradesProgress.value = {
-        current: ts.completed_scenarios || 0,
-        total: ts.num_scenarios || form.value.numScenarios,
-        eta: tradesProgress.value.eta,
+      const dbVal = ts.completed_scenarios || 0
+      if (dbVal > tradesProgress.value.current) {
+        tradesProgress.value = {
+          current: dbVal,
+          total: ts.num_scenarios || form.value.numScenarios,
+          eta: tradesProgress.value.eta,
+        }
       }
       if (ts.summary_metrics?.length) {
         tradesSummaryMetrics.value = ts.summary_metrics
@@ -1137,10 +1335,14 @@ async function pollSessionProgress() {
     }
     if (session.candles_session) {
       const cs = session.candles_session
-      candlesProgress.value = {
-        current: cs.completed_scenarios || 0,
-        total: cs.num_scenarios || form.value.numScenarios,
-        eta: candlesProgress.value.eta,
+      const dbVal = cs.completed_scenarios || 0
+      // Only update if DB value is higher (don't overwrite WebSocket live data)
+      if (dbVal > candlesProgress.value.current) {
+        candlesProgress.value = {
+          current: dbVal,
+          total: cs.num_scenarios || form.value.numScenarios,
+          eta: candlesProgress.value.eta,
+        }
       }
       if (cs.summary_metrics?.length) {
         candlesSummaryMetrics.value = cs.summary_metrics
@@ -1185,7 +1387,10 @@ async function loadSessions() {
 }
 
 async function viewSession(s) {
-  equityCurveData.value = null
+  // Only clear equity data if switching to a different session
+  if (selectedSession.value?.id !== s.id) {
+    equityCurveData.value = null
+  }
   if (!openTabs.value.find(t => t.id === s.id)) {
     const label = sessionStrategy(s) || s.id?.slice(0, 8)
     openTabs.value.push({ id: s.id, label })
@@ -1203,6 +1408,10 @@ async function viewSession(s) {
     } catch {
       selectedSession.value = s
     }
+  }
+  // Auto-load equity curves for finished sessions
+  if (selectedSession.value?.status === 'finished') {
+    loadEquityCurves(s.id)
   }
 }
 
@@ -1231,6 +1440,45 @@ async function removeSession(s) {
     loadSessions()
   } catch (e) {
     error.value = e.message
+  }
+}
+
+async function loadCompletedResults(taskId, attempt = 0) {
+  // Wait before first attempt to let DB writes settle, shorter for retries
+  await new Promise(r => setTimeout(r, attempt === 0 ? 2000 : 3000))
+
+  // Load session data (for candle metrics table)
+  let sessionLoaded = false
+  try {
+    const res = await api.getMonteCarloSession(taskId)
+    const session = res.session
+    if (session) {
+      selectedSession.value = session
+      if (session.candles_session?.summary_metrics?.length) {
+        candlesSummaryMetrics.value = session.candles_session.summary_metrics
+      }
+      if (session.trades_session?.summary_metrics?.length) {
+        tradesSummaryMetrics.value = session.trades_session.summary_metrics
+      }
+      sessionLoaded = true
+    }
+  } catch { /* will retry */ }
+
+  // Load equity curves
+  let curvesLoaded = false
+  try {
+    const res = await api.getMonteCarloEquityCurves(taskId)
+    if (res && (res.trades || res.candles)) {
+      equityCurveData.value = res
+      if (res.trades) equityCurveType.value = 'trades'
+      else if (res.candles) equityCurveType.value = 'candles'
+      curvesLoaded = true
+    }
+  } catch { /* will retry */ }
+
+  // Retry up to 3 times if data is missing
+  if ((!sessionLoaded || !curvesLoaded) && attempt < 3) {
+    loadCompletedResults(taskId, attempt + 1)
   }
 }
 
@@ -1383,5 +1631,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopPolling()
+  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
 })
 </script>

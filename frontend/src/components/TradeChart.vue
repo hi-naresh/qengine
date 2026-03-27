@@ -600,8 +600,14 @@ function _handleEsc(e) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('keydown', _handleEsc)
+  // Auto-render if candle data is already available when mounted
+  if (props.candles.length) {
+    await nextTick()
+    renderCandles()
+    renderEquity()
+  }
 })
 
 onBeforeUnmount(() => {

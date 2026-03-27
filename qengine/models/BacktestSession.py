@@ -29,6 +29,9 @@ class BacktestSession(peewee.Model):
     description = peewee.TextField(null=True)
     strategy_codes = peewee.TextField(null=True)
     
+    # Hedge sessions (JSON array of session summaries with stats)
+    sessions = peewee.TextField(null=True)
+
     # Backtest logs (JSON array of {timestamp, message, type})
     logs = peewee.TextField(null=True)
 
@@ -142,6 +145,16 @@ class BacktestSession(peewee.Model):
         self.chart_data = json.dumps(data_dict) if data_dict else None
     
     @property
+    def sessions_json(self):
+        if not self.sessions:
+            return []
+        return json.loads(self.sessions)
+
+    @sessions_json.setter
+    def sessions_json(self, sessions_list):
+        self.sessions = json.dumps(sessions_list) if sessions_list else None
+
+    @property
     def state_json(self):
         """
         Returns the frontend state as a Python dictionary
@@ -205,13 +218,15 @@ class BacktestSession(peewee.Model):
 # if database is open, create the table
 if database.is_open():
     BacktestSession.create_table()
-    # Migrate: add 'logs' column if missing (for existing databases)
+    # Migrate: add missing columns for existing databases
     try:
         cols = [col.name for col in database.db.get_columns('backtestsession')]
+        from playhouse.migrate import PostgresqlMigrator, migrate as pw_migrate
+        migrator = PostgresqlMigrator(database.db)
         if 'logs' not in cols:
-            from playhouse.migrate import PostgresqlMigrator, migrate as pw_migrate
-            migrator = PostgresqlMigrator(database.db)
             pw_migrate(migrator.add_column('backtestsession', 'logs', peewee.TextField(null=True)))
+        if 'sessions' not in cols:
+            pw_migrate(migrator.add_column('backtestsession', 'sessions', peewee.TextField(null=True)))
     except Exception:
         pass
 
@@ -240,6 +255,7 @@ def store_backtest_session(
             'metrics': None,
             'equity_curve': None,
             'trades': None,
+            'sessions': None,
             'hyperparameters': None,
             'chart_data': None,
             'state': None,
@@ -288,7 +304,8 @@ def update_backtest_session_results(
     chart_data: dict = None,
     execution_duration: float = None,
     strategy_codes: dict = None,
-    logs: list = None
+    logs: list = None,
+    sessions: list = None
 ) -> None:
     d = {
         'updated_at': jh.now_to_timestamp(True)
@@ -317,6 +334,16 @@ def update_backtest_session_results(
 
     if logs is not None:
         d['logs'] = json.dumps(logs)
+
+    if sessions is not None:
+        # Strip individual trade objects from sessions to save space
+        # (trades are already stored separately)
+        stripped = []
+        for s in sessions:
+            sc = {k: v for k, v in s.items() if k != 'trades'}
+            sc['trade_count'] = s.get('trade_count', len(s.get('trades', [])))
+            stripped.append(sc)
+        d['sessions'] = json.dumps(stripped)
 
     BacktestSession.update(**d).where(BacktestSession.id == id).execute()
 

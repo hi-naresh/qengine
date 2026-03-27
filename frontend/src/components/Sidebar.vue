@@ -1,55 +1,79 @@
 <template>
-  <aside class="fixed left-0 top-0 h-screen w-60 flex-col z-40 hidden lg:flex sidebar-glass">
-    <div class="p-5 border-b border-white/[0.06]">
+  <aside class="fixed left-0 top-0 h-screen flex-col z-40 hidden lg:flex sidebar-glass transition-all duration-200"
+    :class="collapsed ? 'w-16' : 'w-60'">
+    <div class="border-b border-white/[0.06]" :class="collapsed ? 'p-3 flex justify-center' : 'p-5'">
       <div class="flex items-center gap-2">
-        <img src="/favicon.svg" alt="QEngine" class="w-8 h-8" />
-        <div>
+        <img src="/favicon.svg" alt="QEngine" class="w-8 h-8 flex-shrink-0" />
+        <div v-if="!collapsed">
           <div class="text-sm font-semibold text-surface-100 tracking-tight">QEngine</div>
           <div class="text-[10px] text-surface-500 font-medium">v2.0</div>
         </div>
       </div>
     </div>
 
-    <nav class="flex-1 py-4 px-3 space-y-0.5 overflow-auto">
-      <div class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Overview</div>
+    <nav class="flex-1 py-4 space-y-0.5 overflow-auto" :class="collapsed ? 'px-2' : 'px-3'">
+      <div v-if="!collapsed" class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Overview</div>
       <router-link v-for="item in overviewItems" :key="item.to" :to="item.to"
-        class="nav-link group" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'" :title="item.hint">
+        class="nav-link group" :class="[isActive(item.to) ? 'nav-active' : 'nav-idle', collapsed ? 'justify-center px-0 py-2.5' : '']" :title="collapsed ? item.label : item.hint">
         <component :is="item.icon" class="w-4 h-4 flex-shrink-0" />
-        <div class="min-w-0">
+        <div v-if="!collapsed" class="min-w-0">
           <div class="text-sm leading-tight">{{ item.label }}</div>
           <div class="text-[10px] leading-tight mt-0.5 transition-colors" :class="isActive(item.to) ? 'text-brand-400/50' : 'text-surface-600 group-hover:text-surface-500'">{{ item.hint }}</div>
         </div>
       </router-link>
 
-      <div class="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Trading</div>
+      <div v-if="!collapsed" class="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Trading</div>
+      <div v-else class="border-t border-white/[0.06] my-2"></div>
       <router-link v-for="item in tradingItems" :key="item.to" :to="item.to"
-        class="nav-link group" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'" :title="item.hint">
-        <component :is="item.icon" class="w-4 h-4 flex-shrink-0 mt-0.5" />
-        <div class="min-w-0">
+        class="nav-link group" :class="[isActive(item.to) ? 'nav-active' : 'nav-idle', collapsed ? 'justify-center px-0 py-2.5' : '']" :title="collapsed ? item.label : item.hint">
+        <component :is="item.icon" class="w-4 h-4 flex-shrink-0" :class="collapsed ? '' : 'mt-0.5'" />
+        <div v-if="!collapsed" class="min-w-0">
           <div class="text-sm leading-tight">{{ item.label }}</div>
           <div class="text-[10px] leading-tight mt-0.5 transition-colors" :class="isActive(item.to) ? 'text-brand-400/50' : 'text-surface-600 group-hover:text-surface-500'">{{ item.hint }}</div>
         </div>
       </router-link>
 
-      <div class="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Tools</div>
+      <div v-if="!collapsed" class="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-surface-600 font-semibold">Tools</div>
+      <div v-else class="border-t border-white/[0.06] my-2"></div>
       <router-link v-for="item in toolItems" :key="item.to" :to="item.to"
-        class="nav-link group" :class="isActive(item.to) ? 'nav-active' : 'nav-idle'" :title="item.hint">
-        <component :is="item.icon" class="w-4 h-4 flex-shrink-0 mt-0.5" />
-        <div class="min-w-0">
-          <div class="text-sm leading-tight">{{ item.label }}</div>
+        class="nav-link group" :class="[isActive(item.to) ? 'nav-active' : 'nav-idle', collapsed ? 'justify-center px-0 py-2.5' : '']" :title="collapsed ? item.label : item.hint">
+        <div class="relative flex-shrink-0">
+          <component :is="item.icon" class="w-4 h-4" :class="collapsed ? '' : 'mt-0.5'" />
+          <span v-if="item.to === '/issues' && activeIssueCount > 0 && collapsed"
+            class="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-full px-0.5 leading-none">
+            {{ activeIssueCount > 99 ? '99+' : activeIssueCount }}
+          </span>
+        </div>
+        <div v-if="!collapsed" class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="text-sm leading-tight">{{ item.label }}</span>
+            <span v-if="item.to === '/issues' && activeIssueCount > 0"
+              class="min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full px-1 leading-none">
+              {{ activeIssueCount > 99 ? '99+' : activeIssueCount }}
+            </span>
+          </div>
           <div class="text-[10px] leading-tight mt-0.5 transition-colors" :class="isActive(item.to) ? 'text-brand-400/50' : 'text-surface-600 group-hover:text-surface-500'">{{ item.hint }}</div>
         </div>
       </router-link>
     </nav>
 
-    <div class="p-4 border-t border-white/[0.06] space-y-1">
-      <button @click="toggleTheme" class="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-sm text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors">
-        <component :is="isDark ? SunIcon : MoonIcon" class="w-4 h-4" />
-        {{ isDark ? 'Light Mode' : 'Dark Mode' }}
+    <div class="border-t border-white/[0.06] space-y-1" :class="collapsed ? 'p-2' : 'p-4'">
+      <button @click="toggleSidebar" class="flex items-center gap-2 w-full rounded-lg text-sm text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors"
+        :class="collapsed ? 'justify-center px-0 py-2' : 'px-3 py-2'" :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 transition-transform duration-200" :class="collapsed ? 'rotate-180' : ''">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
+        </svg>
+        <span v-if="!collapsed">Collapse</span>
       </button>
-      <button @click="handleLogout" class="flex items-center gap-2 px-3 py-2 w-full rounded-lg text-sm text-surface-500 hover:text-red-400 hover:bg-surface-800 transition-colors">
+      <button @click="toggleTheme" class="flex items-center gap-2 w-full rounded-lg text-sm text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors"
+        :class="collapsed ? 'justify-center px-0 py-2' : 'px-3 py-2'" :title="collapsed ? (isDark ? 'Light Mode' : 'Dark Mode') : ''">
+        <component :is="isDark ? SunIcon : MoonIcon" class="w-4 h-4" />
+        <span v-if="!collapsed">{{ isDark ? 'Light Mode' : 'Dark Mode' }}</span>
+      </button>
+      <button @click="handleLogout" class="flex items-center gap-2 w-full rounded-lg text-sm text-surface-500 hover:text-red-400 hover:bg-surface-800 transition-colors"
+        :class="collapsed ? 'justify-center px-0 py-2' : 'px-3 py-2'" :title="collapsed ? 'Logout' : ''">
         <LogoutIcon class="w-4 h-4" />
-        Logout
+        <span v-if="!collapsed">Logout</span>
       </button>
     </div>
   </aside>
@@ -57,13 +81,29 @@
 
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
-import { logout } from '../api'
-import { h, ref } from 'vue'
+import { logout, api } from '../api'
+import { h, ref, onMounted } from 'vue'
+import { useSidebar } from '../useSidebar'
 
 const router = useRouter()
 const route = useRoute()
+const { collapsed, toggle: toggleSidebar } = useSidebar()
 
 const isDark = ref(document.documentElement.classList.contains('dark'))
+const activeIssueCount = ref(0)
+
+async function loadActiveIssueCount() {
+  try {
+    const res = await api.getActiveIssueCount()
+    activeIssueCount.value = res.count || 0
+  } catch (e) { /* ignore */ }
+}
+
+onMounted(() => {
+  loadActiveIssueCount()
+  // Refresh count every 30s
+  setInterval(loadActiveIssueCount, 30000)
+})
 
 function toggleTheme() {
   isDark.value = !isDark.value

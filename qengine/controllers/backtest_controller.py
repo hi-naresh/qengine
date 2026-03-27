@@ -307,8 +307,8 @@ def get_backtest_session_logs(session_id: str, authorization: Optional[str] = He
 def compute_exposure_table(request_json: dict = Body(...), authorization: Optional[str] = Header(None)):
     """
     Compute a theoretical exposure table from strategy hyperparameters.
-    The size HP (initial_size / base_size) is always treated as % of equity.
-    e.g. initial_size=1 means 1% of balance used as notional for level 0.
+    initial_size / base_size = % of equity used as MARGIN for level 0.
+    qty = margin * leverage / price  (same formula as the live strategy).
 
     Request body:
       - exchange: str
@@ -330,7 +330,7 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
     # Instrument properties
     pip_size = instrument_registry.get_pip_size(symbol)
     contract_size = instrument_registry.get_contract_size(symbol)
-    pip_value_per_lot = pip_size * contract_size if pip_size > 0 else 0
+    pip_value_per_unit = pip_size  # P&L per unit per pip move
 
     # Leverage from broker info / instrument margin rate
     broker = exchange_info.get(exchange_name, {})
@@ -341,17 +341,17 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
         leverage = 1.0 / margin_rate
 
     # Extract hedging params (support multiple naming conventions)
-    # This is ALWAYS % of equity (e.g. 1 = 1%, 2.5 = 2.5%)
+    # This is % of equity as MARGIN (e.g. 1 = 1% of balance used as margin)
     base_pct = float(hp.get('base_size', hp.get('initial_size', hp.get('lot_size', hp.get('qty', 1.0)))))
     sizing_operator = str(hp.get('sizing_operator', 'multiplier'))
     sizing_factor = float(hp.get('sizing_factor', hp.get('multiplier', hp.get('lot_multiplier', 2.0))))
     max_levels = int(hp.get('max_levels', hp.get('max_orders', 1)))
 
-    # TP and hedge distances in pips
-    tp_pips = float(hp.get('tp_upper', hp.get('tp_pips', hp.get('take_profit_pips', 0))))
+    # TP and hedge distances in pips (support tp_distance, tp_upper, tp_pips, take_profit_pips)
+    tp_pips = float(hp.get('tp_distance', hp.get('tp_upper', hp.get('tp_pips', hp.get('take_profit_pips', 0)))))
     tp_lower = float(hp.get('tp_lower', tp_pips))
     risk_reward = float(hp.get('risk_reward', 0))
-    hedge_pips = float(hp.get('hedge_pips', hp.get('hedge_distance', hp.get('sl_pips', hp.get('stop_loss_pips', 0)))))
+    hedge_pips = float(hp.get('hedge_distance', hp.get('hedge_pips', hp.get('sl_pips', hp.get('stop_loss_pips', 0)))))
 
     if risk_reward > 0 and tp_pips > 0 and hedge_pips <= 0:
         hedge_pips = tp_pips / risk_reward
@@ -375,11 +375,14 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
 
     price = _estimate_price(symbol)
 
-    # Convert % equity to lots: notional = balance * pct/100, lots = notional / (contract_size * price)
-    if contract_size > 0 and price > 0:
-        base_lots = (balance * base_pct / 100.0) / (contract_size * price)
+    # Convert % equity (as margin) to units:
+    # margin = balance * pct / 100
+    # units  = margin * leverage / price
+    # This matches the strategy's _base_qty() formula exactly.
+    if price > 0:
+        base_units = (balance * base_pct / 100.0) * leverage / price
     else:
-        base_lots = (balance * base_pct / 100.0) / price if price > 0 else 0
+        base_units = 0
 
     # Direction alternation
     initial_dir = str(hp.get('direction', 'long')).lower()
@@ -391,32 +394,74 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
 
     table = []
     cumulative_margin = 0.0
-    cumulative_loss = 0.0
+
+    # Surefire hedge zigzag model:
+    # Entries alternate between two price levels on a number line (pips from L0 entry).
+    # L0 enters at 0. If L0 is LONG and loses, price drops to -hedge_pips → L1 SHORT enters there.
+    # If L1 loses, price rises back to 0 → L2 LONG enters there. And so on.
+    # So: even levels enter at 0, odd levels enter at hedge_offset.
+    hedge_offset = -hedge_pips if initial_dir == 'long' else hedge_pips
+
+    # Track all open legs: (direction, units, entry_pips)
+    open_legs = []
 
     for level in range(max_levels):
         factor = _sizing_multiplier(level)
         level_pct = base_pct * factor
-        lot_size = base_lots * factor
-        units = lot_size * contract_size if contract_size > 0 else lot_size
-        notional = lot_size * contract_size * price if contract_size > 0 else lot_size * price
-        margin_required = notional / leverage if leverage > 0 else notional
+        level_units = base_units * factor
+        level_lots = level_units / contract_size if contract_size > 0 else level_units
 
+        margin_required = level_units * price / leverage if leverage > 0 else level_units * price
         cumulative_margin += margin_required
         margin_pct = (cumulative_margin / balance * 100) if balance > 0 else 0
 
-        dir_tp = tp_pips if directions[level] == 'long' else tp_lower
-        leg_loss = lot_size * pip_value_per_lot * hedge_pips if pip_value_per_lot > 0 and hedge_pips > 0 else 0
-        leg_tp_profit = lot_size * pip_value_per_lot * dir_tp if pip_value_per_lot > 0 and dir_tp > 0 else 0
+        direction = directions[level]
+        entry_pips = 0.0 if level % 2 == 0 else hedge_offset
 
-        worst_float = cumulative_loss + leg_loss
-        net_if_tp = leg_tp_profit - cumulative_loss
+        open_legs.append((direction, level_units, entry_pips))
+
+        # Leg loss: this single leg's loss if price moves hedge_pips against it
+        leg_loss = level_units * pip_value_per_unit * hedge_pips if pip_value_per_unit > 0 and hedge_pips > 0 else 0
+
+        # --- Won: TP hits at this level, ALL open legs close ---
+        # TP is tp_pips in the favorable direction from the current (last) entry.
+        tp_profit_all = 0.0
+        if has_tp_sl and tp_pips > 0:
+            tp_price_pips = entry_pips + (tp_pips if direction == 'long' else -tp_pips)
+            for leg_dir, leg_units, leg_entry in open_legs:
+                if leg_dir == 'long':
+                    pnl_pips = tp_price_pips - leg_entry
+                else:
+                    pnl_pips = leg_entry - tp_price_pips
+                tp_profit_all += leg_units * pip_value_per_unit * pnl_pips
+
+        # --- Bust scenarios: session busts at this level (no more hedges) ---
+        # Price moves hedge_pips against the last leg → bust trigger fires.
+        # Same-direction legs: all lose hedge_pips each.
+        # Opposite-direction legs: at breakeven (their entry = bust trigger price).
+        #
+        # Two exit choices after bust:
+        # 1) "Close all" — close everything at the bust trigger. Opposite at 0.
+        # 2) "Opposite TP" — close losing legs, let opposite run to their TP (gain tp_pips each).
+        bust_close = 0.0  # close all at hedge trigger
+        bust_opp_tp = 0.0  # close losers, opposite hits TP
+        if pip_value_per_unit > 0 and hedge_pips > 0:
+            for leg_dir, leg_units, leg_entry in open_legs:
+                if leg_dir == direction:
+                    # Same direction as last leg — loses hedge_pips
+                    same_dir_loss = -leg_units * pip_value_per_unit * hedge_pips
+                    bust_close += same_dir_loss
+                    bust_opp_tp += same_dir_loss
+                else:
+                    # Opposite direction — breakeven if closed now, or +tp_pips if TP runs
+                    bust_opp_tp += leg_units * pip_value_per_unit * tp_pips
 
         row = {
             'level': level,
-            'direction': directions[level].upper(),
+            'direction': direction.upper(),
             'equity_pct': round(level_pct, 2),
-            'lots': round(lot_size, 4),
-            'units': round(units, 0),
+            'lots': round(level_lots, 4),
+            'units': round(level_units, 0),
             'margin': round(margin_required, 2),
             'cumul_margin': round(cumulative_margin, 2),
             'margin_pct': round(margin_pct, 2),
@@ -424,13 +469,11 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
 
         if has_tp_sl:
             row['leg_loss'] = round(-leg_loss, 2)
-            row['cumul_loss'] = round(-(cumulative_loss + leg_loss), 2)
-            row['worst_float'] = round(-worst_float, 2)
-            row['tp_profit'] = round(leg_tp_profit, 2)
-            row['net_if_tp'] = round(net_if_tp, 2)
+            row['won'] = round(tp_profit_all, 2)
+            row['bust_close'] = round(bust_close, 2)
+            row['bust_opp_tp'] = round(bust_opp_tp, 2)
 
         table.append(row)
-        cumulative_loss += leg_loss
 
     return JSONResponse({
         'table': table,

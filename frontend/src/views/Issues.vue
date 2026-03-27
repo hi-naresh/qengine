@@ -41,6 +41,10 @@
               <span class="capitalize">{{ issue.status.replace('-', ' ') }}</span>
               <span v-if="issue.author">&middot; {{ issue.author }}</span>
               <span>&middot; {{ formatDate(issue.created_at) }}</span>
+              <span v-if="issue.comment_count" class="inline-flex items-center gap-1 text-surface-400">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>
+                {{ issue.comment_count }}
+              </span>
             </div>
             <div v-if="issue.labels && issue.labels.length" class="flex gap-1 mt-1.5">
               <span v-for="l in issue.labels" :key="l"
@@ -119,14 +123,14 @@
     </div>
 
     <!-- View Modal -->
-    <div v-if="viewingIssue" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="viewingIssue = null">
-      <div class="bg-surface-900 border border-surface-700 rounded-xl w-full max-w-lg mx-4 p-5">
+    <div v-if="viewingIssue" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeViewModal">
+      <div class="bg-surface-900 border border-surface-700 rounded-xl w-full max-w-2xl mx-4 p-5 max-h-[90vh] overflow-y-auto">
         <div class="flex items-start justify-between mb-3">
           <div class="flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full" :class="statusColor(viewingIssue.status)"></span>
             <h2 class="text-sm font-semibold text-surface-200">{{ viewingIssue.title }}</h2>
           </div>
-          <button @click="viewingIssue = null" class="text-surface-500 hover:text-surface-300">
+          <button @click="closeViewModal" class="text-surface-500 hover:text-surface-300">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
@@ -140,7 +144,7 @@
           <span v-for="l in viewingIssue.labels" :key="l"
             class="text-[10px] px-1.5 py-0.5 bg-surface-700 text-surface-400 rounded">{{ l }}</span>
         </div>
-        <div v-if="viewingIssue.description" class="text-sm text-surface-400 bg-surface-800 rounded-lg p-3 whitespace-pre-wrap max-h-[300px] overflow-auto">{{ viewingIssue.description }}</div>
+        <div v-if="viewingIssue.description" class="text-sm text-surface-400 bg-surface-800 rounded-lg p-3 whitespace-pre-wrap max-h-[200px] overflow-auto">{{ viewingIssue.description }}</div>
         <div v-else class="text-sm text-surface-600 italic">No description provided.</div>
 
         <!-- Quick status change -->
@@ -152,6 +156,74 @@
             class="btn-sm text-[10px] bg-surface-800 text-surface-400 hover:text-surface-200 capitalize">
             {{ s.replace('-', ' ') }}
           </button>
+        </div>
+
+        <!-- Comments Section -->
+        <div class="mt-4 pt-4 border-t border-surface-700">
+          <div class="flex items-center gap-2 mb-3">
+            <svg class="w-4 h-4 text-surface-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>
+            <h3 class="text-xs font-semibold text-surface-300">Comments <span v-if="comments.length" class="text-surface-500 font-normal">({{ comments.length }})</span></h3>
+          </div>
+
+          <!-- Comments loading -->
+          <div v-if="commentsLoading" class="text-xs text-surface-600 py-2">Loading comments...</div>
+
+          <!-- Comment threads -->
+          <div v-else class="space-y-3">
+            <template v-for="comment in topLevelComments" :key="comment.id">
+              <div class="bg-surface-800/50 rounded-lg p-3">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="text-xs font-medium text-surface-300">{{ comment.author || 'Anonymous' }}</span>
+                      <span class="text-[10px] text-surface-600">{{ formatDateTime(comment.created_at) }}</span>
+                    </div>
+                    <p class="text-sm text-surface-400 whitespace-pre-wrap break-words">{{ comment.body }}</p>
+                  </div>
+                  <div class="flex gap-1 flex-shrink-0">
+                    <button @click="startReply(comment.id)" class="p-1 rounded hover:bg-surface-700 text-surface-600 hover:text-surface-400" title="Reply">
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/></svg>
+                    </button>
+                    <button @click="deleteComment(comment.id)" class="p-1 rounded hover:bg-red-500/10 text-surface-600 hover:text-red-400" title="Delete">
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Replies -->
+                <div v-if="getReplies(comment.id).length" class="mt-2 ml-4 space-y-2 border-l-2 border-surface-700 pl-3">
+                  <div v-for="reply in getReplies(comment.id)" :key="reply.id" class="py-1">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-0.5">
+                          <span class="text-xs font-medium text-surface-300">{{ reply.author || 'Anonymous' }}</span>
+                          <span class="text-[10px] text-surface-600">{{ formatDateTime(reply.created_at) }}</span>
+                        </div>
+                        <p class="text-xs text-surface-400 whitespace-pre-wrap break-words">{{ reply.body }}</p>
+                      </div>
+                      <button @click="deleteComment(reply.id)" class="p-1 rounded hover:bg-red-500/10 text-surface-600 hover:text-red-400 flex-shrink-0" title="Delete">
+                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Inline reply form -->
+                <div v-if="replyingTo === comment.id" class="mt-2 ml-4 flex gap-2">
+                  <input v-model="replyBody" class="input text-xs flex-1" placeholder="Write a reply..." @keyup.enter="submitReply(comment.id)" ref="replyInput" />
+                  <button @click="submitReply(comment.id)" class="btn-primary btn-sm text-[10px]" :disabled="!replyBody.trim()">Reply</button>
+                  <button @click="replyingTo = null; replyBody = ''" class="btn-sm text-[10px] bg-surface-700 text-surface-400">Cancel</button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Add comment form -->
+          <div class="mt-3 flex gap-2">
+            <input v-model="commentAuthor" class="input text-xs w-24 flex-shrink-0" placeholder="Name" />
+            <input v-model="commentBody" class="input text-xs flex-1" placeholder="Write a comment..." @keyup.enter="submitComment" />
+            <button @click="submitComment" class="btn-primary btn-sm text-[10px] flex-shrink-0" :disabled="!commentBody.trim()">Comment</button>
+          </div>
         </div>
       </div>
     </div>
@@ -191,6 +263,14 @@ const formError = ref('')
 const labelsInput = ref('')
 
 const form = ref({ title: '', description: '', status: 'todo', priority: 'medium', author: '', labels: [] })
+
+// Comments
+const comments = ref([])
+const commentsLoading = ref(false)
+const commentBody = ref('')
+const commentAuthor = ref('')
+const replyingTo = ref(null)
+const replyBody = ref('')
 
 const statusFilters = [
   { label: 'All', value: '' },
@@ -234,6 +314,12 @@ function formatDate(ts) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function formatDateTime(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
 async function loadIssues() {
   loading.value = true
   try {
@@ -250,7 +336,89 @@ async function loadIssues() {
 function prevPage() { offset.value = Math.max(0, offset.value - limit) }
 function nextPage() { if (offset.value + limit < total.value) offset.value += limit }
 
-function viewIssue(issue) { viewingIssue.value = issue }
+function viewIssue(issue) {
+  viewingIssue.value = issue
+  loadComments(issue.id)
+}
+
+function closeViewModal() {
+  viewingIssue.value = null
+  comments.value = []
+  replyingTo.value = null
+  replyBody.value = ''
+}
+
+async function loadComments(issueId) {
+  commentsLoading.value = true
+  try {
+    const res = await api.getComments(issueId)
+    comments.value = res.comments || []
+  } catch (e) {
+    console.error('Failed to load comments:', e)
+  } finally {
+    commentsLoading.value = false
+  }
+}
+
+const topLevelComments = computed(() => comments.value.filter(c => !c.parent_id))
+
+function getReplies(commentId) {
+  return comments.value.filter(c => c.parent_id === commentId)
+}
+
+function startReply(commentId) {
+  replyingTo.value = commentId
+  replyBody.value = ''
+}
+
+async function submitComment() {
+  if (!commentBody.value.trim() || !viewingIssue.value) return
+  const author = commentAuthor.value.trim() || null
+  if (author) localStorage.setItem('te_issue_author', author)
+  try {
+    await api.createComment({
+      issue_id: viewingIssue.value.id,
+      author,
+      body: commentBody.value.trim(),
+    })
+    commentBody.value = ''
+    await loadComments(viewingIssue.value.id)
+    await loadIssues()
+  } catch (e) {
+    console.error('Failed to create comment:', e)
+  }
+}
+
+async function submitReply(parentId) {
+  if (!replyBody.value.trim() || !viewingIssue.value) return
+  const author = commentAuthor.value.trim() || null
+  if (author) localStorage.setItem('te_issue_author', author)
+  try {
+    await api.createComment({
+      issue_id: viewingIssue.value.id,
+      parent_id: parentId,
+      author,
+      body: replyBody.value.trim(),
+    })
+    replyBody.value = ''
+    replyingTo.value = null
+    await loadComments(viewingIssue.value.id)
+    await loadIssues()
+  } catch (e) {
+    console.error('Failed to create reply:', e)
+  }
+}
+
+async function deleteComment(commentId) {
+  if (!viewingIssue.value) return
+  try {
+    await api.deleteComment(commentId)
+    await loadComments(viewingIssue.value.id)
+    await loadIssues()
+  } catch (e) {
+    console.error('Failed to delete comment:', e)
+  }
+}
 
 function editIssue(issue) {
   form.value = {
@@ -330,6 +498,9 @@ onMounted(() => {
   loadIssues()
   // Pre-fill author from last time
   const saved = localStorage.getItem('te_issue_author')
-  if (saved) form.value.author = saved
+  if (saved) {
+    form.value.author = saved
+    commentAuthor.value = saved
+  }
 })
 </script>

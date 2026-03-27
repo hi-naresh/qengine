@@ -406,28 +406,30 @@ class MonteCarloRunner:
     def _run_candles_with_progress(self, config: dict, pipeline_class, pipeline_kwargs: dict) -> dict:
         """Run candles simulation with progress tracking"""
         import time
-        
+
         logger.log_monte_carlo("Inside _run_candles_with_progress", session_id=self.session_id)
-        
+
         # Reset start time for this simulation
         self.start_time = jh.now_to_timestamp()
         last_update_time = None
+        last_db_update_count = 0
         throttle_interval = 0.5  # Only publish every 0.5 seconds
-        
+        db_update_interval = 3   # Update DB every 3 completed scenarios
+
         def progress_callback(completed_count: int):
             """Called when scenarios complete to update progress"""
-            nonlocal last_update_time
-            
+            nonlocal last_update_time, last_db_update_count
+
             if completed_count <= self.num_scenarios:
                 current_time = time.time()
-                
+
                 # Only publish if enough time has passed or it's the last update
                 should_publish = (
-                    last_update_time is None or 
+                    last_update_time is None or
                     (current_time - last_update_time) >= throttle_interval or
                     completed_count == self.num_scenarios
                 )
-                
+
                 if should_publish:
                     # Calculate estimated remaining time
                     elapsed = jh.now_to_timestamp() - self.start_time
@@ -437,14 +439,25 @@ class MonteCarloRunner:
                         estimated_remaining = int(avg_time_per_scenario * remaining_scenarios)
                     else:
                         estimated_remaining = 0
-                    
+
                     sync_publish('candles_progressbar', {
                         'current': completed_count,
                         'total': self.num_scenarios,
                         'estimated_remaining_seconds': estimated_remaining
                     })
-                    
+
                     last_update_time = current_time
+
+                # Also update DB periodically so polling endpoint returns fresh data
+                if completed_count - last_db_update_count >= db_update_interval or completed_count == self.num_scenarios:
+                    try:
+                        update_candles_session_progress(
+                            id=self.candles_session_id,
+                            completed=completed_count
+                        )
+                        last_db_update_count = completed_count
+                    except Exception:
+                        pass
         
         logger.log_monte_carlo(f"About to call monte_carlo_candles with {len(self.candles)} candle datasets", session_id=self.session_id)
         
