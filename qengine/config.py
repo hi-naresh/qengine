@@ -205,8 +205,11 @@ def set_config(conf: dict) -> None:
 
 def reset_config() -> None:
     import copy
-    global config
-    config = copy.deepcopy(backup_config)
+    # Mutate in-place instead of rebinding, so all existing references
+    # (e.g. `from qengine.config import config as qe_config`) stay valid.
+    fresh = copy.deepcopy(backup_config)
+    config.clear()
+    config.update(fresh)
 
 
 import copy

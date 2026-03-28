@@ -1543,6 +1543,10 @@ def _simulate_new_candles(candles: dict, candles_pipelines: Dict[str, BaseCandle
     for j in candles:
         candles_pipeline = candles_pipelines[j]
         short_candles = get_candles_from_pipeline(candles_pipeline, candles[j]['candles'], i, candles_step)
+        # Clamp to remaining array length at the tail end of the data
+        remaining = len(candles[j]['candles']) - i
+        if len(short_candles) > remaining:
+            short_candles = short_candles[:remaining]
         candles[j]['candles'][i:i+candles_step] = short_candles
         if i != 0:
             previous_short_candles = candles[j]["candles"][i - 1]

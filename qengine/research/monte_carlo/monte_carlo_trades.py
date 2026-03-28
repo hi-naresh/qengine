@@ -137,6 +137,7 @@ def monte_carlo_trades(
     cpu_cores: Optional[int] = None,
     progress_callback = None,
     result_callback = None,
+    risk_config: Optional[dict] = None,
 ) -> MonteCarloTradesReturn:
     if cpu_cores is None:
         available_cores = cpu_count()
@@ -158,7 +159,8 @@ def monte_carlo_trades(
         return _run_monte_carlo_simulation(
             config, routes, data_routes, candles, warmup_candles,
             benchmark, hyperparameters, fast_mode, num_scenarios, progress_bar,
-            cpu_cores, ray_started_here, progress_callback, result_callback
+            cpu_cores, ray_started_here, progress_callback, result_callback,
+            risk_config=risk_config
         )
     except Exception as e:
         jh.debug(f"Error during Monte Carlo simulation: {e}")
@@ -171,13 +173,22 @@ def monte_carlo_trades(
 def _run_monte_carlo_simulation(
     config: dict, routes: List[Dict[str, str]], data_routes: List[Dict[str, str]],
     candles: dict, warmup_candles: dict, benchmark: bool, hyperparameters: dict, fast_mode: bool,
-    num_scenarios: int, progress_bar: bool, cpu_cores: int, started_ray_here: bool, progress_callback=None, result_callback=None
+    num_scenarios: int, progress_bar: bool, cpu_cores: int, started_ray_here: bool, progress_callback=None, result_callback=None,
+    risk_config: Optional[dict] = None
 ) -> dict:
     try:
+        # Save and restore app mode — backtest() overwrites it to 'backtest'
+        from qengine.config import config as qe_config
+        saved_mode = qe_config['app'].get('trading_mode', 'monte-carlo')
+
         original_result = _run_original_backtest(
             config, routes, data_routes, candles, warmup_candles,
             hyperparameters, fast_mode, benchmark
         )
+
+        # Restore app mode so logging/publishing works correctly after this point
+        qe_config['app']['trading_mode'] = saved_mode
+
         original_trades, original_equity_curve, starting_balance = _extract_trade_data(
             original_result, config
         )
@@ -187,17 +198,20 @@ def _run_monte_carlo_simulation(
         scenario_refs = _launch_monte_carlo_scenarios(
             num_scenarios, trades_ref, equity_curve_ref, starting_balance
         )
-        results = _process_scenario_results(scenario_refs, pbar, progress_callback, result_callback)
+        processed = _process_scenario_results(scenario_refs, pbar, progress_callback, result_callback)
+        results = processed['results']
+        scenario_errors = processed['errors']
         if pbar:
             pbar.close()
         print(f"Completed {len(results)} Monte Carlo scenarios out of {num_scenarios} requested")
-        confidence_analysis = _calculate_confidence_intervals(original_result, results)
+        confidence_analysis = _calculate_confidence_intervals(original_result, results, risk_config=risk_config)
         return {
             'original': original_result,
             'scenarios': results,
             'confidence_analysis': confidence_analysis,
             'num_scenarios': len(results),
-            'total_requested': num_scenarios
+            'total_requested': num_scenarios,
+            'errors': scenario_errors,
         }
     except Exception as e:
         print(f"Error during Monte Carlo simulation: {e}")
@@ -360,9 +374,13 @@ def _calculate_volatility_metrics(values: List[float]) -> Tuple[float, float]:
     return annualized_volatility, sharpe_ratio
 
 
-def _calculate_confidence_intervals(original_result: dict, simulation_results: list) -> dict:
+def _calculate_confidence_intervals(original_result: dict, simulation_results: list, risk_config: Optional[dict] = None) -> dict:
     if not simulation_results:
         return {'error': 'No simulation results to analyze'}
+    # Extract configurable thresholds
+    rc = risk_config or {}
+    bust_threshold = float(rc.get('bustThreshold', rc.get('bust_threshold', 25.0)))
+    ruin_threshold = float(rc.get('ruinThreshold', rc.get('ruin_threshold', -98)))
     metrics = {
         'total_return': [],
         'max_drawdown': [],
@@ -431,16 +449,58 @@ def _calculate_confidence_intervals(original_result: dict, simulation_results: l
             'is_significant_5pct': p_value < ALPHA_5_PERCENT,
             'is_significant_1pct': p_value < ALPHA_1_PERCENT
         }
+    # ── Risk metrics: P(ruin), P(bust), and max consecutive losses from trade shuffle ──
+    ruin_count = 0
+    bust_count = 0
+    max_consec_losses_list = []
+
+    for result in simulation_results:
+        total_return = result.get('total_return', 0)
+        if isinstance(total_return, (int, float)) and total_return <= ruin_threshold:
+            ruin_count += 1
+        dd = result.get('max_drawdown', 0)
+        if isinstance(dd, (int, float)) and abs(dd) >= bust_threshold:
+            bust_count += 1
+
+        # Count actual max consecutive losses from shuffled trades
+        trades = result.get('trades', [])
+        if trades:
+            max_streak = 0
+            current_streak = 0
+            for t in trades:
+                pnl = t.get('PNL', 0)
+                if pnl < 0:
+                    current_streak += 1
+                    max_streak = max(max_streak, current_streak)
+                else:
+                    current_streak = 0
+            max_consec_losses_list.append(max_streak)
+
+    n_sims = len(simulation_results)
+    risk_metrics = {
+        'p_ruin': ruin_count / n_sims if n_sims > 0 else 0,
+        'p_bust': bust_count / n_sims if n_sims > 0 else 0,
+        'bust_threshold': bust_threshold,
+        'ruin_threshold': ruin_threshold,
+        'ruin_count': ruin_count,
+        'bust_count': bust_count,
+        'num_simulations': n_sims,
+        'avg_max_consecutive_losses': float(np.mean(max_consec_losses_list)) if max_consec_losses_list else 0,
+        'p95_max_consecutive_losses': float(np.percentile(max_consec_losses_list, 95)) if max_consec_losses_list else 0,
+    }
+
     summary = {
-        'num_simulations': len(simulation_results),
+        'num_simulations': n_sims,
         'significant_metrics_5pct': sum(1 for m in confidence_analysis.values() if m.get('is_significant_5pct', False)),
         'significant_metrics_1pct': sum(1 for m in confidence_analysis.values() if m.get('is_significant_1pct', False)),
-        'total_metrics': len(confidence_analysis)
+        'total_metrics': len(confidence_analysis),
+        'risk_metrics': risk_metrics,
     }
 
     return {
         'summary': summary,
         'metrics': confidence_analysis,
+        'risk_metrics': risk_metrics,
         'interpretation': _generate_interpretation(confidence_analysis)
     }
 

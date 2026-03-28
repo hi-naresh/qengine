@@ -52,17 +52,22 @@ def _setup_progress_bar(progress_bar: bool, total_scenarios: int, description: s
 def _safe_log_message(message: str, pbar, is_error: bool = False) -> None:
     formatted_message = message
     if is_error:
-        formatted_message = f"{'='*80}\n🚨 ERROR: {message}\n{'='*80}"
-    
+        formatted_message = f"{'='*80}\nERROR: {message}\n{'='*80}"
+
     if pbar:
         if jh.is_notebook():
             print(formatted_message)
         else:
             from tqdm import tqdm
             tqdm.write(formatted_message)
-    
-    if jh.app_mode() == 'monte-carlo':
-        logger.log_monte_carlo(message if not is_error else f"ERROR: {message}", session_id=jh.get_session_id())
+
+    # Always try to log via Redis (app_mode may have been overwritten by backtest() call)
+    try:
+        session_id = jh.get_session_id()
+        logger.log_monte_carlo(message if not is_error else f"ERROR: {message}", session_id=session_id)
+    except Exception:
+        # Fallback: print to stdout so it at least appears in server logs
+        print(f"[MC] {formatted_message}")
 
 
 def _process_scenario_results(
@@ -70,45 +75,79 @@ def _process_scenario_results(
     pbar,
     progress_callback=None,
     result_callback=None
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
+    """Process Ray scenario results. Returns {'results': [...], 'errors': [...]}."""
+    import time
+
     results: List[Dict[str, Any]] = []
+    errors: List[str] = []
     remaining_refs = scenario_refs.copy()
     total_scenarios = len(scenario_refs)
     completed_count = 0
-    
+    stall_start = time.time()
+    MAX_STALL_SECONDS = 300  # Cancel remaining if no progress for 5 min
+
     while remaining_refs:
         completed_refs, remaining_refs = ray.wait(remaining_refs, num_returns=1, timeout=RAY_WAIT_TIMEOUT)
+
+        if not completed_refs:
+            # No new completions — check for stall
+            if time.time() - stall_start > MAX_STALL_SECONDS:
+                stall_msg = f"Cancelled {len(remaining_refs)} remaining scenarios after {MAX_STALL_SECONDS}s stall"
+                _safe_log_message(stall_msg, pbar, is_error=True)
+                errors.append(stall_msg)
+                # Cancel remaining Ray tasks
+                for ref in remaining_refs:
+                    try:
+                        ray.cancel(ref, force=True)
+                    except Exception:
+                        pass
+                remaining_refs = []
+            continue
+
+        stall_start = time.time()  # Reset stall timer on progress
+
         for ref in completed_refs:
             try:
                 response = ray.get(ref)
                 if isinstance(response, dict) and 'result' in response:
                     if response['result'] is not None:
                         results.append(response['result'])
-                        # Stream the result immediately to the caller (for progressive UI updates)
                         if result_callback is not None:
                             try:
                                 result_callback(response['result'])
                             except Exception:
-                                # Do not crash the loop due to callback errors
                                 pass
                     if response.get('log'):
                         is_error = response.get('error', False)
                         _safe_log_message(response['log'], pbar, is_error=is_error)
+                        if is_error:
+                            errors.append(response['log'])
                 else:
                     results.append(response)
             except Exception as e:
                 error_msg = f"Error processing scenario result: {str(e)}"
                 _safe_log_message(error_msg, pbar, is_error=True)
-            
+                errors.append(error_msg)
+
             if pbar:
                 pbar.update(1)
-            
-            # Call progress callback with actual completion count
+
             completed_count += 1
             if progress_callback:
                 progress_callback(completed_count)
-    
-    return results
+
+    # Log summary if there were failures
+    failed = total_scenarios - len(results)
+    if failed > 0:
+        summary = f"Scenario summary: {len(results)}/{total_scenarios} succeeded, {failed} failed"
+        if errors:
+            # Log first 3 unique errors
+            unique_errors = list(dict.fromkeys(errors))[:3]
+            summary += "\nFirst errors:\n" + "\n".join(unique_errors)
+        _safe_log_message(summary, pbar, is_error=True)
+
+    return {'results': results, 'errors': errors}
 
 
 def _create_ray_shared_objects(

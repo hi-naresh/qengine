@@ -174,6 +174,9 @@ import { ref, onMounted } from 'vue'
 import { api, defaultBrokerId } from '../api'
 import { useWebSocket } from '../useWebSocket'
 import ProgressBar from '../components/ProgressBar.vue'
+import { useProcessManager } from '../useProcessManager'
+
+const pm = useProcessManager()
 
 const brokers = ref([])
 const importing = ref(false)
@@ -216,6 +219,7 @@ useWebSocket((msg) => {
       current: data?.current || 0,
       eta: data?.estimated_remaining_seconds || 0,
     }
+    if (currentTaskId.value) pm.update(currentTaskId.value, { progress: data?.current || 0, eta: data?.estimated_remaining_seconds || 0 })
     // Update import info from progress data
     if (data?.count !== undefined) {
       importInfo.value = { ...importInfo.value, count: data.count }
@@ -228,11 +232,13 @@ useWebSocket((msg) => {
       importError.value = false
       importing.value = false
       progress.value = { current: 100, eta: 0 }
+      pm.complete(currentTaskId.value)
       loadExisting()
     } else if (data?.type === 'error') {
       importMsg.value = data?.message || 'Import failed'
       importError.value = true
       importing.value = false
+      pm.fail(currentTaskId.value)
     } else if (data?.type === 'info') {
       importMsg.value = data?.message || ''
       importError.value = false
@@ -242,16 +248,19 @@ useWebSocket((msg) => {
     importError.value = true
     importing.value = false
     progress.value = { current: 0, eta: 0 }
+    pm.fail(currentTaskId.value)
   } else if (event === 'candles.termination') {
     importing.value = false
     importMsg.value = 'Import terminated.'
     importError.value = false
     progress.value = { current: 0, eta: 0 }
+    pm.cancel(currentTaskId.value)
   } else if (event === 'candles.unexpectedTermination') {
     importing.value = false
     importMsg.value = data?.message || 'Import terminated unexpectedly.'
     importError.value = true
     progress.value = { current: 0, eta: 0 }
+    pm.fail(currentTaskId.value)
   }
 })
 
@@ -272,6 +281,9 @@ async function startImport() {
   const id = crypto.randomUUID()
   currentTaskId.value = id
 
+  const importLabel = `Import · ${form.value.symbol} · ${form.value.exchange}`
+  pm.register(id, { type: 'import', label: importLabel, cancelFn: cancelImport, routePath: '/import' })
+
   try {
     await api.importCandles({
       id,
@@ -285,6 +297,7 @@ async function startImport() {
     importMsg.value = e.message
     importError.value = true
     importing.value = false
+    pm.fail(id)
   }
 }
 

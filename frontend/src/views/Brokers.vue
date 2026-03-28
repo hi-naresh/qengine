@@ -158,9 +158,52 @@
 
         <!-- API credentials form -->
         <div class="space-y-3">
-          <h3 class="text-xs text-surface-500 font-medium uppercase tracking-wide">
-            {{ currentEnvConfig?.configured ? 'Update Credentials' : 'Connect API' }}
-          </h3>
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs text-surface-500 font-medium uppercase tracking-wide">
+              {{ currentEnvConfig?.configured ? 'Update Credentials' : 'Connect API' }}
+            </h3>
+            <button @click="showSetupGuide = !showSetupGuide" class="text-[10px] text-brand-400 hover:underline">
+              {{ showSetupGuide ? 'Hide guide' : 'How to get credentials?' }}
+            </button>
+          </div>
+
+          <!-- Inline setup guide -->
+          <div v-if="showSetupGuide" class="p-3 rounded-lg bg-brand-600/5 border border-brand-600/10 space-y-3">
+            <template v-if="brokerGuideKey">
+              <!-- Sub-tabs: Have account / Need account -->
+              <div class="flex gap-1 p-0.5 bg-surface-800 rounded-md">
+                <button @click="guideTab = 'have_account'"
+                  class="flex-1 text-[10px] py-1.5 rounded font-medium transition-colors"
+                  :class="guideTab === 'have_account' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
+                  I have an account
+                </button>
+                <button @click="guideTab = 'need_account'"
+                  class="flex-1 text-[10px] py-1.5 rounded font-medium transition-colors"
+                  :class="guideTab === 'need_account' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
+                  I need an account
+                </button>
+              </div>
+
+              <!-- Have account: login + get API key -->
+              <ol v-if="guideTab === 'have_account'" class="space-y-1.5">
+                <li v-for="(step, i) in brokerGuides[brokerGuideKey].login" :key="'l'+i" class="flex gap-2 text-[11px] text-surface-400">
+                  <span class="text-brand-400/60 shrink-0">{{ i + 1 }}.</span>
+                  <span v-html="step"></span>
+                </li>
+              </ol>
+
+              <!-- Need account: signup flow -->
+              <ol v-else class="space-y-1.5">
+                <li v-for="(step, i) in brokerGuides[brokerGuideKey].signup" :key="'s'+i" class="flex gap-2 text-[11px] text-surface-400">
+                  <span class="text-brand-400/60 shrink-0">{{ i + 1 }}.</span>
+                  <span v-html="step"></span>
+                </li>
+              </ol>
+
+              <p class="text-[10px] text-surface-500 italic">{{ brokerGuides[brokerGuideKey].note }}</p>
+            </template>
+            <p v-else class="text-xs text-surface-500">Setup guide not available for this broker yet.</p>
+          </div>
 
           <div v-if="modalBroker.name === 'Interactive Brokers'" class="p-3 rounded-lg bg-surface-800 text-xs text-surface-400">
             IBKR connects to local TWS/IB Gateway. Ensure it's running on port {{ modalEnv === 'demo' ? '7497' : '7496' }}.
@@ -169,15 +212,18 @@
           <div>
             <label class="label">{{ modalBroker.name === 'IG Markets' ? 'API Key' : 'API Key / Token' }}</label>
             <input v-model="form.api_key" type="password" class="input" placeholder="Enter API key" />
+            <p v-if="brokerGuideKey && brokerGuides[brokerGuideKey].fields?.api_key" class="text-[10px] text-surface-600 mt-1">{{ brokerGuides[brokerGuideKey].fields.api_key }}</p>
           </div>
           <div v-if="modalBroker.name === 'IG Markets'">
             <label class="label">Password</label>
             <input v-model="form.api_secret" type="password" class="input" placeholder="IG account password" />
+            <p v-if="brokerGuideKey && brokerGuides[brokerGuideKey].fields?.api_secret" class="text-[10px] text-surface-600 mt-1">{{ brokerGuides[brokerGuideKey].fields.api_secret }}</p>
           </div>
           <div>
             <label class="label">{{ modalBroker.name === 'IG Markets' ? 'Username' : 'Account ID' }}</label>
             <input v-model="form.account_id" class="input"
               :placeholder="modalBroker.name === 'IG Markets' ? 'IG username' : 'Account ID'" />
+            <p v-if="brokerGuideKey && brokerGuides[brokerGuideKey].fields?.account_id" class="text-[10px] text-surface-600 mt-1">{{ brokerGuides[brokerGuideKey].fields.account_id }}</p>
           </div>
           <div v-if="modalBroker.name === 'IG Markets'">
             <label class="label">Account ID <span class="text-surface-500 font-normal">(optional — auto-detects CFD account if empty)</span></label>
@@ -221,6 +267,73 @@ const form = ref({ api_key: '', api_secret: '', account_id: '', ig_account_id: '
 const saving = ref(false)
 const formMessage = ref('')
 const formError = ref(false)
+const showSetupGuide = ref(false)
+const guideTab = ref('have_account')
+
+// Broker setup guides — split into signup (new account) and login (existing account) flows
+const brokerGuides = {
+  oanda: {
+    signup: [
+      'Go to <a href="https://hub.oanda.com/apply/demo/" target="_blank" class="text-brand-400 hover:underline">OANDA Demo Signup</a> for a free practice account, or <a href="https://www.oanda.com/apply/" target="_blank" class="text-brand-400 hover:underline">OANDA Live</a> for real trading',
+      'Complete the registration form and verify your email',
+      'For live accounts: complete identity verification (KYC) and fund your account',
+      'Once registered, switch to <strong>"I have an account"</strong> to get your API token',
+    ],
+    login: [
+      'Go to <a href="https://hub.oanda.com/tpa/personal_token" target="_blank" class="text-brand-400 hover:underline">OANDA Personal Token</a> page (log in if prompted)',
+      'Click <strong>"Generate"</strong> to create a new API token',
+      'Copy the token — paste it as <strong>API Key</strong> below',
+      'Your <strong>Account ID</strong> is shown on the same page (format: xxx-xxx-xxxxxxx-xxx)',
+    ],
+    note: 'Demo accounts are free and don\'t expire.',
+    fields: { api_key: 'API Token from Personal Token page', account_id: 'e.g. 001-004-1234567-001' },
+  },
+  ig: {
+    signup: [
+      'Go to <a href="https://www.ig.com/uk/demo-account" target="_blank" class="text-brand-400 hover:underline">IG Demo Account</a> for practice, or <a href="https://www.ig.com/en/create-account" target="_blank" class="text-brand-400 hover:underline">IG Live</a> for real trading',
+      'Complete the application form and verify your email',
+      'For live: complete identity verification and fund your account',
+      'Once registered, switch to <strong>"I have an account"</strong> to get your API key',
+    ],
+    login: [
+      'Go to <a href="https://www.ig.com/uk/myig/settings/api-keys" target="_blank" class="text-brand-400 hover:underline">IG API Keys</a> page (log in if prompted)',
+      'For demo: switch to your <strong>Demo account</strong> at the top of the page',
+      'Click <strong>"Create Web API Demo Credentials"</strong> (demo) or <strong>"Create API key"</strong> (live)',
+      'Copy the <strong>API key</strong> — make sure its status shows <strong class="text-green-400">Enabled</strong>',
+      'Your <strong>Username</strong> = your IG login username',
+      'Your <strong>Password</strong> = your IG login password',
+    ],
+    note: 'IG requires API Key + Username + Password. Account ID is optional (auto-detects CFD). Ensure API key status is Enabled.',
+    fields: { api_key: 'API Key from IG API Keys page', api_secret: 'Your IG login password', account_id: 'Your IG login username' },
+  },
+  ibkr: {
+    signup: [
+      'Go to <a href="https://www.interactivebrokers.com/en/trading/individual.php" target="_blank" class="text-brand-400 hover:underline">Interactive Brokers</a> and open an account',
+      'Complete the application and fund your account',
+      'Download and install <strong>Trader Workstation (TWS)</strong> or <strong>IB Gateway</strong>',
+      'Once installed, follow the <strong>"I have an account"</strong> steps to enable API access',
+    ],
+    login: [
+      'Open <strong>TWS</strong> or <strong>IB Gateway</strong> and log in',
+      'Go to <strong>Edit > Global Configuration > API > Settings</strong>',
+      'Check <strong>"Enable ActiveX and Socket Clients"</strong>',
+      'Set Socket port: <strong>7497</strong> (paper) or <strong>7496</strong> (live)',
+      'Uncheck "Read-Only API" if you want to place orders',
+      'Your <strong>Account ID</strong> is in the top-right of TWS (e.g. U1234567) — paste it below',
+    ],
+    note: 'IBKR uses a local socket connection (no API key). TWS or IB Gateway must be running.',
+    fields: { account_id: 'Account ID from TWS (e.g. U1234567)' },
+  },
+}
+
+const brokerGuideKey = computed(() => {
+  if (!modalBroker.value) return null
+  const name = modalBroker.value.name.toLowerCase()
+  if (name.includes('oanda')) return 'oanda'
+  if (name.includes('ig')) return 'ig'
+  if (name.includes('interactive')) return 'ibkr'
+  return null
+})
 
 const filteredBrokers = computed(() => {
   if (activeTab.value === 'active') return brokers.value.filter(b => b.active)

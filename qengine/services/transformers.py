@@ -403,6 +403,42 @@ def _extract_trades_summary_metrics(results: dict) -> list:
     return metrics
 
 
+def _extract_risk_metrics(results_json) -> dict:
+    """Extract risk metrics (P(ruin), P(bust), etc.) from Monte Carlo results."""
+    try:
+        results = json.loads(results_json) if isinstance(results_json, str) else results_json
+        if not results:
+            return None
+
+        # risk_metrics is at confidence_analysis.risk_metrics
+        ca = results.get('confidence_analysis')
+        if not ca or not isinstance(ca, dict):
+            return None
+
+        rm = ca.get('risk_metrics')
+        if not rm or not isinstance(rm, dict):
+            # Also check summary.risk_metrics as fallback
+            summary = ca.get('summary', {})
+            rm = summary.get('risk_metrics') if isinstance(summary, dict) else None
+
+        if not rm or not isinstance(rm, dict):
+            return None
+
+        return {
+            'p_ruin': rm.get('p_ruin', 0),
+            'p_bust': rm.get('p_bust', 0),
+            'bust_threshold': rm.get('bust_threshold', 25.0),
+            'ruin_threshold': rm.get('ruin_threshold', -98),
+            'ruin_count': rm.get('ruin_count', 0),
+            'bust_count': rm.get('bust_count', 0),
+            'num_simulations': rm.get('num_simulations', 0),
+            'avg_max_consecutive_losses': rm.get('avg_max_consecutive_losses', 0),
+            'p95_max_consecutive_losses': rm.get('p95_max_consecutive_losses', 0),
+        }
+    except Exception:
+        return None
+
+
 def get_monte_carlo_session_for_load_more(session: MonteCarloSession) -> dict:
     """
     Transform a MonteCarloSession model instance with full data for detailed view
@@ -418,6 +454,7 @@ def get_monte_carlo_session_for_load_more(session: MonteCarloSession) -> dict:
             'num_scenarios': trades_session.num_scenarios,
             'completed_scenarios': trades_session.completed_scenarios,
             'summary_metrics': _extract_trades_summary_metrics(trades_session.results) if trades_session.results else [],
+            'risk_metrics': _extract_risk_metrics(trades_session.results) if trades_session.results else None,
             'logs': trades_session.logs,
             'exception': trades_session.exception,
             'traceback': trades_session.traceback,
@@ -436,6 +473,7 @@ def get_monte_carlo_session_for_load_more(session: MonteCarloSession) -> dict:
             'exception': candles_session.exception,
             'traceback': candles_session.traceback,
             'summary_metrics': _extract_candles_summary_metrics(candles_session.results) if candles_session.results else [],
+            'risk_metrics': _extract_risk_metrics(candles_session.results) if candles_session.results else None,
         }
         # Sanitize nested NaN/Inf across entire candles_data structure
         candles_data = jh.clean_nan_values(candles_data)

@@ -1,49 +1,5 @@
 <template>
   <div>
-    <!-- Sticky Global Progress Banner (visible from any tab / scroll position) -->
-    <div v-if="running" class="sticky top-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-2 mb-3 bg-surface-900/90 backdrop-blur-md border-b border-surface-700/50">
-      <div class="flex items-center gap-3">
-        <!-- Mini circular gauge -->
-        <div class="relative w-9 h-9 flex-shrink-0">
-          <svg class="w-9 h-9 -rotate-90" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="10" class="text-surface-800" />
-            <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="10"
-              class="text-brand-500 transition-all duration-500 ease-out"
-              stroke-linecap="round"
-              :stroke-dasharray="2 * Math.PI * 52"
-              :stroke-dashoffset="2 * Math.PI * 52 * (1 - progress.current / 100)" />
-          </svg>
-          <div class="absolute inset-0 flex items-center justify-center">
-            <span class="text-[9px] font-bold text-surface-200 tabular-nums">{{ Math.round(progress.current) }}%</span>
-          </div>
-        </div>
-        <!-- Info -->
-        <div class="flex-1 min-w-0 flex items-center gap-3 overflow-x-auto">
-          <span class="text-xs font-medium text-surface-300 truncate shrink-0">
-            {{ form.routes[0]?.strategy || 'Backtest' }} &middot; {{ form.routes[0]?.symbol || '' }}
-          </span>
-          <span v-if="progress.currentDate" class="text-[11px] text-surface-400 tabular-nums hidden sm:inline shrink-0">
-            {{ formatProgressDate(progress.currentDate) }}
-          </span>
-          <span v-if="progress.equity !== null" class="text-[11px] tabular-nums hidden lg:inline shrink-0"
-            :class="progress.equity >= form.balance ? 'text-green-400' : 'text-red-400'">
-            ${{ progress.equity.toLocaleString(undefined, { maximumFractionDigits: 0 }) }}
-          </span>
-          <span v-if="progress.floatingPnl !== null && progress.floatingPnl !== 0" class="text-[11px] tabular-nums hidden lg:inline shrink-0"
-            :class="progress.floatingPnl >= 0 ? 'text-green-400/70' : 'text-red-400/70'">
-            {{ progress.floatingPnl >= 0 ? '+' : '' }}{{ progress.floatingPnl.toFixed(2) }}
-          </span>
-          <span v-if="progress.session !== null" class="text-[11px] text-surface-500 hidden md:inline shrink-0">S#{{ progress.session }}</span>
-          <span v-if="progress.eta > 0" class="text-[11px] text-surface-500 hidden sm:inline shrink-0">~{{ formatEta(progress.eta) }}</span>
-        </div>
-        <!-- Thin progress track -->
-        <div class="w-32 h-1.5 bg-surface-800 rounded-full overflow-hidden hidden md:block shrink-0">
-          <div class="h-full bg-brand-500 rounded-full transition-all duration-500 ease-out" :style="{ width: progress.current + '%' }"></div>
-        </div>
-        <button @click="cancelBacktest" class="text-[10px] text-surface-500 hover:text-red-400 flex-shrink-0 px-2 py-1 rounded hover:bg-surface-800 transition-colors">Cancel</button>
-      </div>
-    </div>
-
     <!-- Header + Page Tabs -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
       <div>
@@ -457,7 +413,7 @@
               <span v-else>AI Fix</span>
             </button>
           </div>
-          <textarea v-model="strategyCode" class="input w-full font-mono text-xs resize-none min-h-[350px]"></textarea>
+          <CodeEditor v-model="strategyCode" :editable="true" min-height="350px" />
           <p v-if="strategyMsg" class="text-xs mt-2" :class="strategyMsgErr ? 'text-red-400' : 'text-green-400'">{{ strategyMsg }}</p>
         </div>
 
@@ -550,10 +506,11 @@
 
             <!-- Performance metrics -->
             <div class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Performance</h3>
+              <div class="flex items-center justify-between mb-1"><h3 class="text-xs font-semibold text-surface-500">Performance</h3><button @click="showTooltips = !showTooltips" class="text-[10px] px-2 py-0.5 rounded transition-colors" :class="showTooltips ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-700 text-surface-500'">{{ showTooltips ? 'Hints On' : 'Hints Off' }}</button></div>
+              <SectionGuide category="performance" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in performanceMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
@@ -561,10 +518,11 @@
 
             <!-- Hedge Session Stats -->
             <div v-if="hedgeSessionMetrics.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Hedge Session Stats</h3>
+              <h3 class="text-xs font-semibold text-surface-500 mb-1">Hedge Session Stats</h3>
+              <SectionGuide category="hedge" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in hedgeSessionMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
@@ -572,10 +530,11 @@
 
             <!-- Risk metrics -->
             <div class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Risk &amp; Ratios</h3>
+              <h3 class="text-xs font-semibold text-surface-500 mb-1">Risk &amp; Ratios</h3>
+              <SectionGuide category="risk" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in riskMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
@@ -583,10 +542,11 @@
 
             <!-- Trade Stats -->
             <div class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Trade Statistics</h3>
+              <h3 class="text-xs font-semibold text-surface-500 mb-1">Trade Statistics</h3>
+              <SectionGuide category="trades" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in tradeStatsMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
@@ -594,10 +554,11 @@
 
             <!-- Forex/CFD Costs -->
             <div v-if="forexMetrics.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Forex / CFD Costs</h3>
+              <h3 class="text-xs font-semibold text-surface-500 mb-1">Forex / CFD Costs</h3>
+              <SectionGuide category="forex" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in forexMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
@@ -1102,8 +1063,8 @@
                 <option v-for="k in Object.keys(sessionStrategyCodes)" :key="k" :value="k">{{ k }}</option>
               </select>
             </div>
-            <div v-if="currentStrategyCode" class="bg-surface-900 rounded p-3 max-h-[500px] overflow-auto">
-              <pre class="text-xs text-surface-400 whitespace-pre-wrap font-mono">{{ currentStrategyCode }}</pre>
+            <div v-if="currentStrategyCode" class="max-h-[500px] overflow-auto">
+              <CodeEditor :model-value="currentStrategyCode" :editable="false" min-height="200px" />
             </div>
             <div v-else class="text-surface-500 text-sm py-8 text-center">
               {{ sessionId ? 'Click "Load Code" to fetch strategy code.' : 'No strategy code available.' }}
@@ -1124,7 +1085,22 @@
           </div>
           <div class="flex items-center gap-2">
             <button @click="loadSessions" class="text-xs text-brand-400 hover:text-brand-300">Refresh</button>
-            <button v-if="sessions.length > 0" @click="showPurgeConfirm = true" class="text-xs text-red-400 hover:text-red-300">Purge Old</button>
+            <button v-if="sessions.length > 0" @click="showPurgeConfirm = true" class="text-xs text-red-400 hover:text-red-300">Purge</button>
+          </div>
+        </div>
+
+        <!-- Purge Confirm -->
+        <div v-if="showPurgeConfirm" class="mb-4 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+          <p class="text-xs text-red-300 mb-2">Delete sessions older than:</p>
+          <div class="flex items-center gap-2">
+            <select v-model="purgeDays" class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300">
+              <option :value="7">7 days</option>
+              <option :value="30">30 days</option>
+              <option :value="90">90 days</option>
+              <option :value="null">All</option>
+            </select>
+            <button @click="purgeSessions" class="text-xs bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Purge</button>
+            <button @click="showPurgeConfirm = false" class="text-xs text-surface-400 hover:text-surface-200">Cancel</button>
           </div>
         </div>
 
@@ -1300,46 +1276,51 @@
         <div v-if="historyTab === 'summary'">
           <div v-if="selectedSession.metrics">
             <div v-if="hPerf.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Performance</h3>
+              <div class="flex items-center justify-between mb-1"><h3 class="text-xs font-semibold text-surface-500">Performance</h3><button @click="showTooltips = !showTooltips" class="text-[10px] px-2 py-0.5 rounded transition-colors" :class="showTooltips ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-700 text-surface-500'">{{ showTooltips ? 'Hints On' : 'Hints Off' }}</button></div>
+              <SectionGuide category="performance" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in hPerf" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
             </div>
             <div v-if="hHedge.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Hedge Session Stats</h3>
+              <h3 class="text-xs font-semibold text-surface-500 mb-1">Hedge Session Stats</h3>
+              <SectionGuide category="hedge" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in hHedge" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
             </div>
             <div v-if="hRisk.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Risk &amp; Ratios</h3>
+              <h3 class="text-xs font-semibold text-surface-500 mb-1">Risk &amp; Ratios</h3>
+              <SectionGuide category="risk" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in hRisk" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
             </div>
             <div v-if="hTrade.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Trade Statistics</h3>
+              <h3 class="text-xs font-semibold text-surface-500 mb-1">Trade Statistics</h3>
+              <SectionGuide category="trades" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in hTrade" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
             </div>
             <div v-if="hForex.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Forex / CFD Costs</h3>
+              <h3 class="text-xs font-semibold text-surface-500 mb-1">Forex / CFD Costs</h3>
+              <SectionGuide category="forex" />
               <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div v-for="m in hForex" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">{{ m.label }}</div>
+                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
                   <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
                 </div>
               </div>
@@ -1709,31 +1690,26 @@
         </div>
       </div>
 
-      <!-- Purge confirm modal -->
-      <div v-if="showPurgeConfirm" class="card border-red-500/30">
-        <h3 class="text-sm font-semibold text-red-400 mb-2">Purge Old Sessions</h3>
-        <p class="text-xs text-surface-400 mb-3">Delete sessions older than:</p>
-        <div class="flex items-center gap-3">
-          <select v-model.number="purgeDays" class="select text-xs w-auto">
-            <option :value="7">7 days</option>
-            <option :value="30">30 days</option>
-            <option :value="90">90 days</option>
-            <option :value="null">All sessions</option>
-          </select>
-          <button @click="purgeSessions" class="btn-danger btn-sm">Purge</button>
-          <button @click="showPurgeConfirm = false" class="btn-sm bg-surface-700 text-surface-300">Cancel</button>
-        </div>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { api, defaultBrokerId } from '../api'
 import { useWebSocket } from '../useWebSocket'
 import { createChart, ColorType, LineSeries, AreaSeries, BaselineSeries } from 'lightweight-charts'
 import TradeChart from '../components/TradeChart.vue'
+import CodeEditor from '../components/CodeEditor.vue'
+import { useProcessManager } from '../useProcessManager'
+import { useGuides } from '../useGuides'
+import MetricTooltip from '../components/MetricTooltip.vue'
+import SectionGuide from '../components/SectionGuide.vue'
+
+const pm = useProcessManager()
+const currentRoute = useRoute()
+const { showTooltips } = useGuides()
 
 const pageTab = ref('run')  // 'run' or 'history'
 
@@ -2486,6 +2462,7 @@ useWebSocket((msg) => {
         taskToWorkspace.value[id] = activeWorkspaceId.value
         _updateActiveWsTab({ running: true })
         pageTab.value = 'run'
+        if (!pm.get(id)) pm.register(id, { type: 'backtest', label: 'Backtest (resumed)', cancelFn: cancelBacktest, routePath: '/backtest' })
       } else {
         // Active workspace busy — create a new workspace for this orphan task
         wsCounter++
@@ -2496,6 +2473,7 @@ useWebSocket((msg) => {
         workspaceTabs.value.push({ id: newWsId, label: `Backtest ${wsCounter}`, running: true, hasResults: false })
         workspaceCache.value[newWsId] = defaults
         taskToWorkspace.value[id] = newWsId
+        if (!pm.get(id)) pm.register(id, { type: 'backtest', label: `Backtest ${wsCounter}`, cancelFn: cancelBacktest, routePath: '/backtest' })
       }
       // Re-resolve after adoption
       return
@@ -2523,6 +2501,7 @@ useWebSocket((msg) => {
       session: data?.session ?? null,
       trades: data?.trades ?? 0,
     }
+    if (currentTaskId.value) pm.update(currentTaskId.value, { progress: data?.current || 0, eta: data?.estimated_remaining_seconds || 0 })
   } else if (event === 'backtest.equity_curve') {
     if (data) {
       equityCurve.value = data
@@ -2560,6 +2539,7 @@ useWebSocket((msg) => {
     if (!error.value) message.value = 'Backtest completed!'
     progress.value = { current: 100, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
     sessionId.value = currentTaskId.value
+    pm.complete(currentTaskId.value)
     delete taskToWorkspace.value[currentTaskId.value]
     _updateActiveWsTab({ running: false, hasResults: true })
     setTimeout(loadSessions, 1000)
@@ -2578,12 +2558,14 @@ useWebSocket((msg) => {
     errorTrace.value = data?.traceback || ''
     running.value = false
     progress.value = { current: 0, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
+    pm.fail(currentTaskId.value)
     delete taskToWorkspace.value[currentTaskId.value]
     _updateActiveWsTab({ running: false })
   } else if (event === 'backtest.termination') {
     running.value = false
     message.value = 'Backtest was terminated.'
     progress.value = { current: 0, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
+    pm.cancel(currentTaskId.value)
     delete taskToWorkspace.value[currentTaskId.value]
     _updateActiveWsTab({ running: false })
   } else if (event === 'backtest.notification') {
@@ -2609,6 +2591,7 @@ function _handleCachedWsEvent(wsId, event, data, taskId) {
       session: data?.session ?? null,
       trades: data?.trades ?? 0,
     }
+    if (taskId) pm.update(taskId, { progress: data?.current || 0, eta: data?.estimated_remaining_seconds || 0 })
   } else if (event === 'backtest.equity_curve') {
     if (data) snap.equityCurve = data
   } else if (event === 'backtest.floating_pnl_curve') {
@@ -2625,6 +2608,7 @@ function _handleCachedWsEvent(wsId, event, data, taskId) {
     snap.message = 'Backtest completed!'
     snap.progress = { current: 100, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
     snap.sessionId = snap.currentTaskId
+    pm.complete(taskId)
     delete taskToWorkspace.value[taskId]
     _updateWsTab(wsId, { running: false, hasResults: true })
     setTimeout(loadSessions, 1000)
@@ -2639,12 +2623,14 @@ function _handleCachedWsEvent(wsId, event, data, taskId) {
     snap.errorTrace = data?.traceback || ''
     snap.running = false
     snap.progress = { ...emptyProgress }
+    pm.fail(taskId)
     delete taskToWorkspace.value[taskId]
     _updateWsTab(wsId, { running: false })
   } else if (event === 'backtest.termination') {
     snap.running = false
     snap.message = 'Backtest was terminated.'
     snap.progress = { ...emptyProgress }
+    pm.cancel(taskId)
     delete taskToWorkspace.value[taskId]
     _updateWsTab(wsId, { running: false })
   }
@@ -3277,6 +3263,9 @@ async function runBacktest() {
   sessionId.value = null
   taskToWorkspace.value[id] = activeWorkspaceId.value
 
+  const label = `${form.value.routes[0]?.strategy || 'Backtest'} · ${form.value.routes[0]?.symbol || ''}`
+  pm.register(id, { type: 'backtest', label, cancelFn: cancelBacktest, routePath: '/backtest' })
+
   const routes = form.value.routes.map(r => ({
     exchange: form.value.exchange,
     symbol: r.symbol,
@@ -3390,16 +3379,19 @@ function resumeRunningSession(s) {
     activeWorkspaceId.value = wsId
     _restoreWs(defaults)
     delete workspaceCache.value[wsId]
+    if (!pm.get(s.id)) pm.register(s.id, { type: 'backtest', label, cancelFn: cancelBacktest, routePath: '/backtest' })
   } else {
     currentTaskId.value = s.id
     running.value = true
     runStartedAt.value = s.created_at ? new Date(s.created_at).getTime() : Date.now()
     if (s.state) restoreFormFromState(s.state)
     taskToWorkspace.value[s.id] = activeWorkspaceId.value
+    const resumeLabel = `${form.value.routes[0]?.strategy || ''} ${form.value.routes[0]?.symbol || ''}`.trim() || 'Backtest'
     _updateActiveWsTab({
-      label: `${form.value.routes[0]?.strategy || ''} ${form.value.routes[0]?.symbol || ''}`.trim() || 'Backtest',
+      label: resumeLabel,
       running: true,
     })
+    if (!pm.get(s.id)) pm.register(s.id, { type: 'backtest', label: resumeLabel, cancelFn: cancelBacktest, routePath: '/backtest' })
   }
   pageTab.value = 'run'
 }
@@ -4025,6 +4017,7 @@ onMounted(async () => {
     const label1 = `${form.value.routes[0]?.strategy || ''} ${form.value.routes[0]?.symbol || ''}`.trim() || 'Backtest'
     _updateActiveWsTab({ label: label1, running: true })
     taskToWorkspace.value[first.id] = activeWorkspaceId.value
+    if (!pm.get(first.id)) pm.register(first.id, { type: 'backtest', label: label1, cancelFn: cancelBacktest, routePath: '/backtest' })
 
     // Additional running sessions get their own workspaces
     for (let i = 1; i < activeSessions.length; i++) {
@@ -4050,6 +4043,7 @@ onMounted(async () => {
       workspaceTabs.value.push({ id: wsId, label, running: true, hasResults: false })
       workspaceCache.value[wsId] = defaults
       taskToWorkspace.value[s.id] = wsId
+      if (!pm.get(s.id)) pm.register(s.id, { type: 'backtest', label, cancelFn: cancelBacktest, routePath: '/backtest' })
     }
   }
 
@@ -4062,5 +4056,14 @@ onMounted(async () => {
     const llmRes = await api.llmStatus()
     llmConfigured.value = llmRes.configured
   } catch { /* ignore */ }
+
+  // Handle ?session=<id> query param (from process manager "view results")
+  const qSession = currentRoute.query.session
+  if (qSession && !running.value) {
+    pageTab.value = 'history'
+    await loadSessions()
+    const s = sessions.value.find(x => x.id === qSession)
+    if (s) viewSession(s)
+  }
 })
 </script>
