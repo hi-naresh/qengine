@@ -271,7 +271,14 @@ export function getCurrentUser() {
 }
 
 export function isAuthenticated() {
-  return !!localStorage.getItem('te_token')
+  const token = localStorage.getItem('te_token')
+  if (!token) return false
+  // Require both token and user object (clears stale legacy sessions)
+  if (!localStorage.getItem('te_user')) {
+    localStorage.removeItem('te_token')
+    return false
+  }
+  return true
 }
 
 export function isAdmin() {
