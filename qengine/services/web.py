@@ -283,6 +283,7 @@ class MonteCarloRequestJson(BaseModel):
     cpu_cores: int
     pipeline_type: Optional[str] = 'moving_block_bootstrap'
     pipeline_params: Optional[dict] = None
+    risk_config: Optional[dict] = None
     state: dict
 
 

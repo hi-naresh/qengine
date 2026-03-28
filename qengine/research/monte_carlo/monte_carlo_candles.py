@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional, Tuple, Any, TypedDict
 import ray
 from multiprocessing import cpu_count
+import math
 import numpy as np
 import os
 from datetime import datetime
@@ -93,6 +94,8 @@ def _ray_run_scenario_monte_carlo_candles(
             f"Scenario {scenario_index} failed with {error_type}: {error_msg}\n"
             f"{full_traceback}"
         )
+        # Print to stdout so it shows in server logs even if Redis/WebSocket fails
+        print(f"[MC-CANDLE-ERROR] {detailed_error}")
         return {'result': None, 'log': detailed_error, 'error': True}
 
 
@@ -111,6 +114,7 @@ def monte_carlo_candles(
     cpu_cores: Optional[int] = None,
     progress_callback = None,
     result_callback = None,
+    risk_config: Optional[dict] = None,
 ) -> MonteCarloCandlesReturn:
     if cpu_cores is None:
         available_cores = cpu_count()
@@ -131,7 +135,8 @@ def monte_carlo_candles(
             config, routes, data_routes, candles, warmup_candles,
             hyperparameters, fast_mode, num_scenarios,
             progress_bar, candles_pipeline_class, candles_pipeline_kwargs,
-            cpu_cores, ray_started_here, progress_callback, result_callback
+            cpu_cores, ray_started_here, progress_callback, result_callback,
+            risk_config=risk_config
         )
     except Exception as e:
         jh.debug(f"Error during Monte Carlo simulation: {e}")
@@ -181,9 +186,13 @@ def _log_monte_carlo_candles_simulation_summary(valid_results: List[dict], filte
     print(f"Returned {len(valid_results)} valid scenarios out of {num_scenarios} total")
 
 
-def _calculate_confidence_intervals_candles(original_result: dict, simulation_results: list) -> dict:
+def _calculate_confidence_intervals_candles(original_result: dict, simulation_results: list, risk_config: Optional[dict] = None) -> dict:
     if not simulation_results:
         return {'error': 'No simulation results to analyze'}
+    # Extract configurable thresholds
+    rc = risk_config or {}
+    bust_threshold = float(rc.get('bustThreshold', rc.get('bust_threshold', 25.0)))
+    ruin_threshold = float(rc.get('ruinThreshold', rc.get('ruin_threshold', -98)))
 
     # Collect metrics from simulation results (candles scenarios return full backtest results)
     metrics = {
@@ -260,16 +269,64 @@ def _calculate_confidence_intervals_candles(original_result: dict, simulation_re
             'is_significant_1pct': p_value < ALPHA_1_PERCENT
         }
 
+    # ── Risk metrics: P(ruin), P(bust), and max consecutive losses ──
+    ruin_count = 0
+    bust_count = 0
+    max_consec_losses_list = []
+    # Convert ruin_threshold (e.g. -98) to a ratio: -98% means finishing/starting < 0.02
+    ruin_ratio = 1.0 + (ruin_threshold / 100.0)  # e.g. -98 → 0.02
+
+    for result in simulation_results:
+        m = result.get('metrics', {})
+        finishing = m.get('finishing_balance', None)
+        starting = m.get('starting_balance', None)
+        if finishing is not None and starting is not None and starting > 0:
+            if finishing <= 0 or finishing / starting < ruin_ratio:
+                ruin_count += 1
+        dd = m.get('max_drawdown', 0)
+        if isinstance(dd, (int, float)) and abs(dd) >= bust_threshold:
+            bust_count += 1
+
+        # Count actual max consecutive losses from trades in the backtest result
+        trades = result.get('trades', [])
+        if trades:
+            max_streak = 0
+            current_streak = 0
+            for t in trades:
+                # trades from backtest are CompletedTrade.to_dict which has 'PNL' key
+                pnl = t.get('PNL', t.get('pnl', 0))
+                if isinstance(pnl, (int, float)) and pnl < 0:
+                    current_streak += 1
+                    max_streak = max(max_streak, current_streak)
+                else:
+                    current_streak = 0
+            max_consec_losses_list.append(max_streak)
+
+    n_sims = len(simulation_results)
+    risk_metrics = {
+        'p_ruin': ruin_count / n_sims if n_sims > 0 else 0,
+        'p_bust': bust_count / n_sims if n_sims > 0 else 0,
+        'bust_threshold': bust_threshold,
+        'ruin_threshold': ruin_threshold,
+        'ruin_count': ruin_count,
+        'bust_count': bust_count,
+        'num_simulations': n_sims,
+        'avg_max_consecutive_losses': float(np.mean(max_consec_losses_list)) if max_consec_losses_list else 0,
+        'p95_max_consecutive_losses': float(np.percentile(max_consec_losses_list, 95)) if max_consec_losses_list else 0,
+    }
+
     summary = {
-        'num_simulations': len(simulation_results),
+        'num_simulations': n_sims,
         'significant_metrics_5pct': sum(1 for m in confidence_analysis.values() if m.get('is_significant_5pct', False)),
         'significant_metrics_1pct': sum(1 for m in confidence_analysis.values() if m.get('is_significant_1pct', False)),
-        'total_metrics': len(confidence_analysis)
+        'total_metrics': len(confidence_analysis),
+        'risk_metrics': risk_metrics,
     }
 
     return {
         'summary': summary,
         'metrics': confidence_analysis,
+        'risk_metrics': risk_metrics,
         'interpretation': _generate_interpretation_candles(confidence_analysis)
     }
 
@@ -331,7 +388,8 @@ def _run_monte_carlo_candles_simulation(
     config: dict, routes: List[Dict[str, str]], data_routes: List[Dict[str, str]],
     candles: dict, warmup_candles: dict, hyperparameters: dict,
     fast_mode: bool, num_scenarios: int, progress_bar: bool,
-    candles_pipeline_class, candles_pipeline_kwargs: dict, cpu_cores: int, started_ray_here: bool, progress_callback=None, result_callback=None
+    candles_pipeline_class, candles_pipeline_kwargs: dict, cpu_cores: int, started_ray_here: bool, progress_callback=None, result_callback=None,
+    risk_config: Optional[dict] = None
 ) -> dict:
     try:
         pbar = _setup_progress_bar(progress_bar, num_scenarios, "Monte Carlo Candles Scenarios")
@@ -342,9 +400,24 @@ def _run_monte_carlo_candles_simulation(
             num_scenarios, shared_objects, fast_mode,
             candles_pipeline_class, candles_pipeline_kwargs
         )
-        results = _process_scenario_results(scenario_refs, pbar, progress_callback, result_callback)
+        processed = _process_scenario_results(scenario_refs, pbar, progress_callback, result_callback)
+        results = processed['results']
+        scenario_errors = processed['errors']
         if pbar:
             pbar.close()
+
+        # If ALL scenarios failed, dump errors to a diagnostic file
+        if not results and scenario_errors:
+            import os
+            diag_path = os.path.join('storage', 'logs', 'mc_candles_errors.txt')
+            os.makedirs(os.path.dirname(diag_path), exist_ok=True)
+            with open(diag_path, 'w') as f:
+                f.write(f"All {num_scenarios} candle scenarios failed.\n")
+                f.write(f"Unique errors ({len(set(scenario_errors))}):\n\n")
+                for i, err in enumerate(list(dict.fromkeys(scenario_errors))[:5]):
+                    f.write(f"--- Error {i+1} ---\n{err}\n\n")
+            print(f"[MC-CANDLES] Diagnostic errors written to {diag_path}")
+
         valid_results, filtered_count = _filter_valid_results(results)
         _log_monte_carlo_candles_simulation_summary(valid_results, filtered_count, num_scenarios)
 
@@ -353,14 +426,15 @@ def _run_monte_carlo_candles_simulation(
         simulation_results = [r for r in valid_results if r.get('scenario_index', -1) > 0]
 
         # Calculate confidence intervals
-        confidence_analysis = _calculate_confidence_intervals_candles(original_result, simulation_results)
+        confidence_analysis = _calculate_confidence_intervals_candles(original_result, simulation_results, risk_config=risk_config)
 
         return {
             'original': original_result,
             'scenarios': simulation_results,
             'confidence_analysis': confidence_analysis,
             'num_scenarios': len(simulation_results),
-            'total_requested': num_scenarios
+            'total_requested': num_scenarios,
+            'errors': scenario_errors,
         }
     except Exception as e:
         print(f"Error during Monte Carlo candles simulation: {e}")

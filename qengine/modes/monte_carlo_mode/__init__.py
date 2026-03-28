@@ -32,6 +32,7 @@ def run(
     pipeline_type: Optional[str],
     pipeline_params: Optional[dict],
     state: dict,
+    risk_config: Optional[dict] = None,
 ) -> None:
     if jh.python_version() == (3, 13):
         raise ValueError(
@@ -120,7 +121,8 @@ def run(
         fast_mode=fast_mode,
         cpu_cores=cpu_cores,
         pipeline_type=pipeline_type,
-        pipeline_params=pipeline_params
+        pipeline_params=pipeline_params,
+        risk_config=risk_config,
     )
 
     runner.run()

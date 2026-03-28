@@ -46,6 +46,7 @@ class MonteCarloRunner:
         cpu_cores: int,
         pipeline_type: Optional[str],
         pipeline_params: Optional[dict],
+        risk_config: Optional[dict] = None,
     ):
         if jh.python_version() == (3, 13):
             raise ValueError(
@@ -63,6 +64,7 @@ class MonteCarloRunner:
         self.fast_mode = fast_mode
         self.pipeline_type = pipeline_type
         self.pipeline_params = pipeline_params or {}
+        self.risk_config = risk_config or {}
 
         # Validate and set CPU cores
         if cpu_cores < 1:
@@ -221,8 +223,22 @@ class MonteCarloRunner:
             sync_publish('monte_carlo_trades_summary', summary_metrics)
             sync_publish('monte_carlo_trades_results', results)
 
-            # Log completion
-            log_msg = f"Trades simulation completed: {results.get('num_scenarios', 0)} scenarios"
+            # Log completion with details
+            n_ok = results.get('num_scenarios', 0)
+            n_err = len(results.get('errors', []))
+            ca = results.get('confidence_analysis', {})
+            rm = ca.get('risk_metrics', {})
+            log_lines = [f"Trades simulation completed: {n_ok}/{self.num_scenarios} scenarios"]
+            if n_err > 0:
+                log_lines.append(f"  {n_err} scenarios failed")
+            if rm:
+                log_lines.append(f"  P(ruin)={rm.get('p_ruin',0)*100:.2f}%, P(bust)={rm.get('p_bust',0)*100:.2f}% (DD>{rm.get('bust_threshold',25)}%)")
+                log_lines.append(f"  Avg max consec losses={rm.get('avg_max_consecutive_losses',0):.1f}, P95={rm.get('p95_max_consecutive_losses',0):.1f}")
+            if summary_metrics:
+                for m in summary_metrics:
+                    log_lines.append(f"  {m['metric']}: orig={m.get('original','—')}, median={m.get('median','—')}, worst5%={m.get('worst_5','—')}")
+            log_msg = "\n".join(log_lines)
+            logger.log_monte_carlo(log_msg, session_id=self.session_id)
             append_session_logs(self.trades_session_id, 'trades', log_msg)
 
         except Exception as e:
@@ -297,26 +313,64 @@ class MonteCarloRunner:
             # Call monte_carlo_candles from research module with progress tracking
             results = self._run_candles_with_progress(config, pipeline_class, pipeline_kwargs)
             
-            logger.log_monte_carlo(f"Candles simulation returned {len(results.get('scenarios', []))} scenarios", session_id=self.session_id)
+            num_scenarios_ok = len(results.get('scenarios', []))
+            num_requested = results.get('total_requested', self.num_scenarios)
+            logger.log_monte_carlo(f"Candles simulation returned {num_scenarios_ok}/{num_requested} scenarios", session_id=self.session_id)
 
-            # Extract summary metrics for display
-            summary_metrics = self._extract_candles_summary_metrics(results)
+            if num_scenarios_ok == 0:
+                # All scenarios failed — collect error details from results
+                scenario_errors = results.get('errors', [])
+                # Get first unique error for the traceback field
+                unique_errors = list(dict.fromkeys(scenario_errors))[:5]
+                error_detail = "\n---\n".join(unique_errors) if unique_errors else "No error details captured"
+                err_msg = f"All {num_requested} candle scenarios failed."
+                logger.log_monte_carlo(f"ERROR: {err_msg}", session_id=self.session_id)
+                # Log each unique error so it appears in the UI logs
+                for i, err in enumerate(unique_errors):
+                    logger.log_monte_carlo(f"Scenario error [{i+1}]: {err}", session_id=self.session_id)
+                store_session_exception(self.candles_session_id, 'candles', err_msg, error_detail)
+                update_candles_session_status(self.candles_session_id, 'stopped')
+                append_session_logs(self.candles_session_id, 'candles', f"{err_msg}\n{error_detail}")
+                # Still publish so frontend knows candles phase is done
+                sync_publish('candles_progressbar', {
+                    'current': num_requested, 'total': num_requested, 'estimated_remaining_seconds': 0
+                })
+                sync_publish('monte_carlo_candles_summary', [])
+            else:
+                if num_scenarios_ok < num_requested:
+                    warn_msg = f"Warning: only {num_scenarios_ok}/{num_requested} candle scenarios succeeded"
+                    logger.log_monte_carlo(warn_msg, session_id=self.session_id)
+                    append_session_logs(self.candles_session_id, 'candles', warn_msg)
 
-            # Store results
-            update_candles_session_progress(
-                id=self.candles_session_id,
-                completed=results.get('num_scenarios', self.num_scenarios),
-                results=results
-            )
-            update_candles_session_status(self.candles_session_id, 'finished')
+                # Extract summary metrics for display
+                summary_metrics = self._extract_candles_summary_metrics(results)
 
-            # Publish results
-            sync_publish('monte_carlo_candles_summary', summary_metrics)
-            sync_publish('monte_carlo_candles_results', results)
+                # Store results
+                update_candles_session_progress(
+                    id=self.candles_session_id,
+                    completed=num_scenarios_ok,
+                    results=results
+                )
+                update_candles_session_status(self.candles_session_id, 'finished')
 
-            # Log completion
-            log_msg = f"Candles simulation completed: {results.get('num_scenarios', 0)} scenarios"
-            append_session_logs(self.candles_session_id, 'candles', log_msg)
+                # Publish results
+                sync_publish('monte_carlo_candles_summary', summary_metrics)
+
+                n_err = len(results.get('errors', []))
+                ca = results.get('confidence_analysis', {})
+                rm = ca.get('risk_metrics', {})
+                log_lines = [f"Candles simulation completed: {num_scenarios_ok}/{num_requested} scenarios"]
+                if n_err > 0:
+                    log_lines.append(f"  {n_err} scenarios failed")
+                if rm:
+                    log_lines.append(f"  P(ruin)={rm.get('p_ruin',0)*100:.2f}%, P(bust)={rm.get('p_bust',0)*100:.2f}% (DD>{rm.get('bust_threshold',25)}%)")
+                    log_lines.append(f"  Avg max consec losses={rm.get('avg_max_consecutive_losses',0):.1f}, P95={rm.get('p95_max_consecutive_losses',0):.1f}")
+                if summary_metrics:
+                    for m in summary_metrics:
+                        log_lines.append(f"  {m['metric']}: orig={m.get('original','—')}, median={m.get('median','—')}, worst5%={m.get('worst_5','—')}")
+                log_msg = "\n".join(log_lines)
+                logger.log_monte_carlo(log_msg, session_id=self.session_id)
+                append_session_logs(self.candles_session_id, 'candles', log_msg)
 
         except Exception as e:
             error_traceback = traceback.format_exc()
@@ -391,7 +445,8 @@ class MonteCarloRunner:
             progress_bar=False,
             cpu_cores=self.cpu_cores,
             progress_callback=progress_callback,
-            result_callback=None
+            result_callback=None,
+            risk_config=self.risk_config,
         )
         
         # Publish completion
@@ -475,7 +530,8 @@ class MonteCarloRunner:
             candles_pipeline_kwargs=pipeline_kwargs,
             cpu_cores=self.cpu_cores,
             progress_callback=progress_callback,
-            result_callback=None
+            result_callback=None,
+            risk_config=self.risk_config,
         )
         
         # Publish completion

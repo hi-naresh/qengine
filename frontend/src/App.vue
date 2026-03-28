@@ -10,6 +10,7 @@
     </main>
     <BottomNav />
   </div>
+  <ProcessManager />
   <ToastContainer />
 </template>
 
@@ -17,6 +18,7 @@
 import Sidebar from './components/Sidebar.vue'
 import BottomNav from './components/BottomNav.vue'
 import ToastContainer from './components/ToastContainer.vue'
+import ProcessManager from './components/ProcessManager.vue'
 import { useSidebar } from './useSidebar'
 
 const { collapsed } = useSidebar()

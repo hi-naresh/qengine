@@ -109,7 +109,7 @@
           <p class="text-surface-600 text-xs mt-1">This may take 10-30 seconds</p>
         </div>
 
-        <pre v-else-if="code" class="bg-surface-900 rounded-lg p-4 overflow-auto text-xs font-mono text-surface-200 max-h-[600px] whitespace-pre-wrap">{{ code }}</pre>
+        <CodeEditor v-else-if="code" :model-value="code" :editable="false" min-height="300px" style="max-height: 600px;" />
         <div v-else class="text-surface-500 text-sm text-center py-12">
           Generated strategy code will appear here.
         </div>
@@ -121,6 +121,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '../api'
+import CodeEditor from '../components/CodeEditor.vue'
 
 const llmStatus = ref({ configured: false, provider: '', model: '' })
 const code = ref('')

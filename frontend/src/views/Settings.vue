@@ -13,6 +13,7 @@
       </button>
     </div>
 
+
     <!-- LLM Configuration -->
     <div v-if="activeTab === 'LLM'" class="max-w-lg">
       <div class="card">
@@ -44,16 +45,59 @@
             </select>
           </div>
           <div>
-            <label class="label">API Key</label>
+            <div class="flex items-center justify-between">
+              <label class="label">API Key</label>
+              <button @click="showLlmGuide = !showLlmGuide" class="text-[10px] text-brand-400 hover:underline mb-1">
+                {{ showLlmGuide ? 'Hide guide' : 'How to get a key?' }}
+              </button>
+            </div>
+            <div v-if="showLlmGuide && llmGuides[llmForm.provider]" class="mb-2 p-3 bg-surface-800 rounded-lg">
+              <ol class="space-y-1.5">
+                <li v-for="(step, i) in llmGuides[llmForm.provider].steps" :key="i" class="flex gap-2 text-xs text-surface-400">
+                  <span class="text-brand-400/60 shrink-0">{{ i + 1 }}.</span>
+                  <span v-html="step"></span>
+                </li>
+              </ol>
+              <p class="text-[11px] text-surface-500 mt-2 italic">{{ llmGuides[llmForm.provider].note }}</p>
+            </div>
             <input v-model="llmForm.api_key" type="password" class="input" placeholder="Enter API key" />
           </div>
           <div>
             <label class="label">Model (optional)</label>
-            <input v-model="llmForm.model" class="input" :placeholder="defaultModel" />
+            <input v-model="llmForm.model" class="input font-mono" :placeholder="defaultModel" />
+            <div class="flex items-center justify-between mt-1.5">
+              <p class="text-[10px] text-surface-600">e.g. <code class="bg-surface-800 px-1 rounded">{{ modelOptions[0]?.id || defaultModel }}</code></p>
+              <button @click="showModelGuide = !showModelGuide" class="text-[10px] text-brand-400 hover:underline">
+                {{ showModelGuide ? 'Hide models' : 'Which model should I use?' }}
+              </button>
+            </div>
+            <div v-if="showModelGuide" class="mt-2 p-2.5 bg-surface-800 rounded-lg space-y-1.5">
+              <div v-for="m in modelOptions" :key="m.id"
+                class="flex items-start gap-2 text-[11px] px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-surface-700"
+                :class="(llmForm.model === m.id || (!llmForm.model && m.recommended)) ? 'bg-brand-600/10' : ''"
+                @click="llmForm.model = m.id">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <code class="text-brand-400 text-[10px]">{{ m.id }}</code>
+                    <span v-if="m.recommended" class="text-[9px] px-1 py-0.5 rounded bg-brand-600/20 text-brand-400 shrink-0">recommended</span>
+                  </div>
+                  <p class="text-surface-500 mt-0.5">{{ m.desc }}</p>
+                </div>
+              </div>
+              <p class="text-[10px] text-surface-600 pt-1">Click a model to use it, or type any model ID in the field above.</p>
+            </div>
           </div>
           <div>
             <label class="label">Temperature</label>
             <input v-model.number="llmForm.temperature" type="number" step="0.1" min="0" max="1" class="input" />
+            <p class="text-xs text-surface-600 mt-1.5 leading-relaxed">
+              Controls randomness in AI responses. <strong class="text-surface-400">0.0</strong> = deterministic (same input gives same output).
+              <strong class="text-surface-400">1.0</strong> = maximum creativity.
+            </p>
+            <p class="text-[11px] text-surface-500 mt-1">
+              Recommended: <strong class="text-brand-400">0.2–0.4</strong> for strategy generation (consistent, reliable code).
+              Use 0.6+ only if you want more varied/experimental outputs.
+            </p>
           </div>
           <div class="flex gap-2">
             <button @click="saveLLM" class="btn-primary flex-1" :disabled="savingLLM">
@@ -457,6 +501,40 @@
     </div>
 
     <!-- Maintenance -->
+    <!-- Preferences -->
+    <div v-if="activeTab === 'Preferences'" class="max-w-lg space-y-4">
+      <div class="card">
+        <h2 class="text-sm font-semibold mb-4 text-surface-300">Metric Guides &amp; Hints</h2>
+        <p class="text-xs text-surface-500 mb-4">Control whether explanatory tooltips and guides appear alongside backtest and Monte Carlo results. Useful for learning what each metric means. Experts who already know the stats can turn these off for a cleaner UI.</p>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-3 bg-surface-800 rounded-lg">
+            <div>
+              <div class="text-sm text-surface-200">Hover Tooltips</div>
+              <div class="text-xs text-surface-500">Show metric descriptions when hovering over stat labels</div>
+            </div>
+            <button @click="showTooltips = !showTooltips"
+              class="relative w-10 h-5 rounded-full transition-colors"
+              :class="showTooltips ? 'bg-brand-500' : 'bg-surface-600'">
+              <div class="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform"
+                :class="showTooltips ? 'left-5' : 'left-0.5'"></div>
+            </button>
+          </div>
+          <div class="flex items-center justify-between p-3 bg-surface-800 rounded-lg">
+            <div>
+              <div class="text-sm text-surface-200">Section Guides</div>
+              <div class="text-xs text-surface-500">Show collapsible "How to read these stats" blocks in result sections</div>
+            </div>
+            <button @click="showSectionGuides = !showSectionGuides"
+              class="relative w-10 h-5 rounded-full transition-colors"
+              :class="showSectionGuides ? 'bg-brand-500' : 'bg-surface-600'">
+              <div class="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform"
+                :class="showSectionGuides ? 'left-5' : 'left-0.5'"></div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div v-if="activeTab === 'Maintenance'" class="max-w-lg space-y-4">
       <div class="card">
         <h2 class="text-sm font-semibold mb-4 text-surface-300">Storage Overview</h2>
@@ -573,9 +651,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { api, defaultBrokerId } from '../api'
 import { changelog as parsedChangelog } from '../changelog-parser'
+import { useGuides } from '../useGuides'
 
-const activeTab = ref('LLM')
-const tabs = ['LLM', 'Broker Keys', 'Notifications', 'Cost & Randomness', 'Maintenance', 'About']
+const { showTooltips, showSectionGuides } = useGuides()
+
+const activeTab = ref('Preferences')
+const tabs = ['Preferences', 'LLM', 'Broker Keys', 'Notifications', 'Cost & Randomness', 'Maintenance', 'About']
 
 // LLM
 const llmSettings = ref({})
@@ -587,8 +668,29 @@ const llmForm = ref({ provider: 'gemini', api_key: '', model: '', temperature: 0
 const llmConnectionStatus = ref({})
 
 const defaultModel = computed(() => {
-  const models = { gemini: 'gemini-2.0-flash', anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' }
+  const models = { gemini: 'gemini-2.5-flash-lite-preview-06-17', anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' }
   return models[llmForm.value.provider] || ''
+})
+
+const modelOptions = computed(() => {
+  const opts = {
+    gemini: [
+      { id: 'gemini-2.5-flash-lite-preview-06-17', name: 'Gemini 2.5 Flash Lite', desc: 'Fast & free-tier friendly. Best for most use cases.', recommended: true },
+      { id: 'gemini-2.5-flash-preview-05-20', name: 'Gemini 2.5 Flash', desc: 'Smarter than Lite, slightly slower. Good for complex strategies.' },
+      { id: 'gemini-2.5-pro-preview-06-05', name: 'Gemini 2.5 Pro', desc: 'Highest quality. Best for difficult strategy generation. Higher cost.' },
+    ],
+    anthropic: [
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', desc: 'Balanced speed and quality. Best for most use cases.', recommended: true },
+      { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', desc: 'Fastest and cheapest. Good for quick iterations.' },
+      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', desc: 'Most capable. Best for complex strategy logic. Highest cost.' },
+    ],
+    openai: [
+      { id: 'gpt-4o', name: 'GPT-4o', desc: 'Best overall quality and speed balance.', recommended: true },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Faster and cheaper. Good for simple tasks.' },
+      { id: 'o3-mini', name: 'o3-mini', desc: 'Reasoning model. Best for complex logic but slower.' },
+    ],
+  }
+  return opts[llmForm.value.provider] || []
 })
 
 // Broker
@@ -639,6 +741,52 @@ const savingNotif = ref(false)
 const testingNotif = ref(false)
 const notifMessage = ref('')
 const notifError = ref(false)
+
+const showLlmGuide = ref(false)
+const showModelGuide = ref(false)
+
+const llmGuides = {
+  gemini: {
+    name: 'Google Gemini',
+    url: 'https://aistudio.google.com/apikey',
+    signupUrl: 'https://accounts.google.com/signup',
+    steps: [
+      'Go to <a href="https://aistudio.google.com/apikey" target="_blank" class="text-brand-400 hover:underline">Google AI Studio</a> and sign in with your Google account',
+      'Click <strong>"Create API Key"</strong>',
+      'Select a Google Cloud project (or create one — it\'s free)',
+      'Copy the generated API key and paste it below',
+    ],
+    note: 'Gemini offers a generous free tier. No credit card required for basic usage.',
+    models: 'Gemini 2.5 Flash Lite (recommended, free tier), Gemini 2.5 Flash (smarter), Gemini 2.5 Pro (best quality)',
+  },
+  anthropic: {
+    name: 'Anthropic Claude',
+    url: 'https://console.anthropic.com/settings/keys',
+    signupUrl: 'https://console.anthropic.com/',
+    steps: [
+      'Go to <a href="https://console.anthropic.com/" target="_blank" class="text-brand-400 hover:underline">console.anthropic.com</a> and create an account',
+      'Add a payment method (Settings > Billing)',
+      'Go to <a href="https://console.anthropic.com/settings/keys" target="_blank" class="text-brand-400 hover:underline">API Keys</a>',
+      'Click <strong>"Create Key"</strong>, name it, and copy the key',
+    ],
+    note: 'Requires a paid account. Claude is excellent for complex strategy generation.',
+    models: 'claude-sonnet-4-6 (default, balanced), claude-haiku-4-5 (fast & cheap)',
+  },
+  openai: {
+    name: 'OpenAI GPT',
+    url: 'https://platform.openai.com/api-keys',
+    signupUrl: 'https://platform.openai.com/signup',
+    steps: [
+      'Go to <a href="https://platform.openai.com/signup" target="_blank" class="text-brand-400 hover:underline">platform.openai.com</a> and create an account',
+      'Add a payment method (Settings > Billing)',
+      'Go to <a href="https://platform.openai.com/api-keys" target="_blank" class="text-brand-400 hover:underline">API Keys</a>',
+      'Click <strong>"Create new secret key"</strong>, name it, and copy it immediately (shown only once)',
+    ],
+    note: 'Requires a paid account. GPT-4o provides strong general-purpose performance.',
+    models: 'gpt-4o (default, best), gpt-4o-mini (faster & cheaper)',
+  },
+}
+
 
 // About
 const aboutInfo = ref(null)

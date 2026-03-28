@@ -97,6 +97,7 @@ async def monte_carlo(request: Request, request_json: MonteCarloRequestJson, aut
         request_json.pipeline_type,
         request_json.pipeline_params,
         request_json.state,
+        request_json.risk_config,
     )
 
     return JSONResponse({
@@ -186,6 +187,7 @@ async def resume_monte_carlo(request_json: MonteCarloRequestJson, authorization:
         request_json.pipeline_type,
         request_json.pipeline_params,
         request_json.state,
+        request_json.risk_config,
     )
 
     return JSONResponse({
