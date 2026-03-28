@@ -45,6 +45,7 @@ class Database:
             host=ENV_VALUES['POSTGRES_HOST'],
             port=int(ENV_VALUES['POSTGRES_PORT']),
             sslmode=ENV_VALUES.get('POSTGRES_SSLMODE', 'disable'),
+            autorollback=True,
             **options
         )
 
