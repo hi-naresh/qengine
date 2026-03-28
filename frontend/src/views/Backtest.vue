@@ -80,11 +80,15 @@
                       <option v-for="tf in timeframes" :key="tf.value" :value="tf.value">{{ tf.label }}</option>
                     </select>
                   </div>
-                  <div>
-                    <select v-if="strategies.length" v-model="route.strategy" class="select text-xs py-1.5">
-                      <option v-for="s in strategies" :key="s" :value="s">{{ s }}</option>
+                  <div class="flex items-center gap-1">
+                    <select v-if="strategies.length" v-model="route.strategy" class="select text-xs py-1.5 flex-1">
+                      <option v-for="s in strategies" :key="s.name" :value="s.name">{{ s.name }}</option>
                     </select>
-                    <input v-else v-model="route.strategy" class="input text-xs py-1.5" placeholder="Strategy" />
+                    <input v-else v-model="route.strategy" class="input text-xs py-1.5 flex-1" placeholder="Strategy" />
+                    <router-link v-if="route.strategy" :to="'/strategies?edit=' + encodeURIComponent(route.strategy)"
+                      class="w-7 h-7 rounded-md bg-surface-800 text-surface-400 hover:text-brand-400 hover:bg-surface-700 transition-colors flex items-center justify-center flex-shrink-0" title="Edit strategy code">
+                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                    </router-link>
                   </div>
                 </div>
                 <button v-if="form.routes.length > 1" @click="removeRoute(idx)" class="text-surface-500 hover:text-red-400 text-lg mt-1">&times;</button>
@@ -1165,6 +1169,7 @@
                 <tr class="text-surface-500 text-xs border-b border-surface-700">
                   <th class="text-left py-2">Status</th>
                   <th class="text-left py-2">Strategy / Config</th>
+                  <th v-if="showOwnerColumn" class="text-left py-2">Owner</th>
                   <th class="text-right py-2">Return</th>
                   <th class="text-left py-2">Ran At</th>
                   <th class="text-left py-2">Duration</th>
@@ -1189,6 +1194,9 @@
                       </span>
                       <span v-if="s.hyperparameters.length > 4" class="text-[10px] text-surface-600">+{{ s.hyperparameters.length - 4 }}</span>
                     </div>
+                  </td>
+                  <td v-if="showOwnerColumn" class="py-2.5">
+                    <span v-if="s.owner_username" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-medium">{{ s.owner_username }}</span>
                   </td>
                   <td class="py-2.5 text-right">
                     <span v-if="s.net_profit_percentage != null" class="text-xs font-mono" :class="s.net_profit_percentage >= 0 ? 'text-green-400' : 'text-red-400'">
@@ -1697,7 +1705,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, defaultBrokerId } from '../api'
+import { api, defaultBrokerId, isAdmin, isImpersonating } from '../api'
 import { useWebSocket } from '../useWebSocket'
 import { createChart, ColorType, LineSeries, AreaSeries, BaselineSeries } from 'lightweight-charts'
 import TradeChart from '../components/TradeChart.vue'
@@ -2302,6 +2310,7 @@ const currentStrategyCode = computed(() => {
   return sessionStrategyCodes.value[key] || null
 })
 
+const showOwnerColumn = computed(() => isAdmin() && !isImpersonating())
 const runningSessions = computed(() => sessions.value.filter(s => s.is_active))
 
 const filteredSessions = computed(() => {
@@ -2351,7 +2360,7 @@ function _freshDefaults() {
   return {
     form: {
       exchange: form.value.exchange,
-      routes: [{ symbol: 'EUR-USD', timeframe: '1m', strategy: strategies.value[0] || 'ForexMA' }],
+      routes: [{ symbol: 'EUR-USD', timeframe: '1m', strategy: strategies.value[0]?.name || 'ForexMA' }],
       data_routes: [], startDate: '2024-01-01', endDate: '2024-06-01', balance: 10000, warmUpCandles: 240,
       debugMode: true, exportChart: true, exportTradingview: true, exportCsv: true, exportJson: false,
       fastMode: false, benchmark: false, costModel: true,
@@ -3995,7 +4004,7 @@ onMounted(async () => {
     brokers.value = bRes.data || []
     strategies.value = sRes.data || sRes.strategies || []
     form.value.exchange = defaultBrokerId(brokers.value)
-    if (strategies.value.length > 0) form.value.routes[0].strategy = strategies.value[0]
+    if (strategies.value.length > 0) form.value.routes[0].strategy = strategies.value[0].name
   } catch (e) {
     console.error(e)
   }

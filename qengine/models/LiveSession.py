@@ -32,6 +32,9 @@ class LiveSession(peewee.Model):
     exception = peewee.TextField(null=True)
     traceback = peewee.TextField(null=True)
     
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
+
     # Timestamps for session management
     finished_at = peewee.BigIntegerField(null=True)
     created_at = peewee.BigIntegerField()

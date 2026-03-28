@@ -4,11 +4,11 @@ Strategy Playground Controller
 Provides endpoints for generating synthetic market scenarios and running
 quick simulations to test strategy behavior without needing real data.
 """
-from typing import Optional, List, Dict
-from fastapi import APIRouter, Header, Body
+from typing import Optional
+from fastapi import APIRouter, Depends, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, CurrentUser
 from qengine.services.scenario_generator import generate_scenario, SCENARIOS
 from qengine.services.multiprocessing import process_manager
 import qengine.helpers as jh
@@ -48,21 +48,25 @@ class PlaygroundRunRequest(BaseModel):
 
 
 @router.post("/strategy-hyperparams")
-def get_strategy_hyperparams(request_json: dict = Body(...), authorization: Optional[str] = Header(None)):
+def get_strategy_hyperparams(request_json: dict = Body(...), current_user: CurrentUser = Depends(get_current_user)):
     """Extract hyperparameters definition from a strategy's code."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     import re
     name = request_json.get('name', '')
-    if not name:
+    if isinstance(name, dict):
+        name = name.get('name', '')
+    if not name or not isinstance(name, str):
         return JSONResponse({'hyperparameters': []})
     name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
 
     try:
         import ast
         import os
-        path = f'strategies/{name}/__init__.py'
+        from qengine.services.strategy_handler import resolve_strategy_path
+        resolved = resolve_strategy_path(name, current_user.effective_user_id)
+        if not resolved:
+            return JSONResponse({'hyperparameters': []})
+        path = f'{resolved}/__init__.py'
         if not os.path.exists(path):
             return JSONResponse({'hyperparameters': []})
 
@@ -116,21 +120,17 @@ def get_strategy_hyperparams(request_json: dict = Body(...), authorization: Opti
 
 
 @router.get("/scenarios")
-def get_scenarios(authorization: Optional[str] = Header(None)):
+def get_scenarios(current_user: CurrentUser = Depends(get_current_user)):
     """Return the list of available market scenarios."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
     return JSONResponse({'scenarios': SCENARIOS})
 
 
 @router.post("/preview-scenario")
 def preview_scenario(
     request_json: PlaygroundScenarioRequest,
-    authorization: Optional[str] = Header(None)
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """Generate and return synthetic candle data for preview (no simulation)."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     try:
         candles = generate_scenario(
@@ -164,11 +164,9 @@ def preview_scenario(
 @router.post("/run")
 def run_playground(
     request_json: PlaygroundRunRequest,
-    authorization: Optional[str] = Header(None)
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """Run a quick playground simulation with synthetic data."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     try:
         process_manager.add_task(
@@ -196,10 +194,8 @@ def run_playground(
 
 
 @router.post("/cancel")
-def cancel_playground(request_json: dict = Body(...), authorization: Optional[str] = Header(None)):
+def cancel_playground(request_json: dict = Body(...), current_user: CurrentUser = Depends(get_current_user)):
     """Cancel a running playground simulation."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
     process_manager.cancel_process(request_json.get('id', ''))
     return JSONResponse({'message': 'Cancelled'})
 

@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Header, Query, Body
-from typing import Optional, List
-from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Body
+from fastapi.responses import JSONResponse
 import json
 
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
+from qengine.services.quota import check_quota, increment_quota
 from qengine.services.multiprocessing import process_manager
 from qengine.services.web import OptimizationRequestJson, CancelRequestJson, UpdateOptimizationSessionStateRequestJson, UpdateOptimizationSessionStatusRequestJson, TerminateOptimizationRequestJson, UpdateOptimizationSessionNotesRequestJson, GetOptimizationSessionsRequestJson
 from qengine import helpers as jh
@@ -18,14 +18,15 @@ router = APIRouter(prefix="/optimization", tags=["Optimization"])
 
 
 @router.post("")
-async def optimization(request_json: OptimizationRequestJson, authorization: Optional[str] = Header(None)):
+async def optimization(request_json: OptimizationRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Start an optimization process
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     jh.validate_cwd()
+
+    allowed, msg = check_quota(current_user.effective_user_id, 'optimization')
+    if not allowed:
+        return JSONResponse({'message': msg}, status_code=403)
 
     # Check Python version before imports
     if jh.python_version() == (3, 13):
@@ -67,7 +68,10 @@ async def optimization(request_json: OptimizationRequestJson, authorization: Opt
         request_json.fast_mode,
         request_json.cpu_cores,
         request_json.state,
+        current_user.effective_user_id,
     )
+
+    increment_quota(current_user.effective_user_id, 'optimization')
 
     return JSONResponse({
         'message': 'Started optimization...',
@@ -76,12 +80,10 @@ async def optimization(request_json: OptimizationRequestJson, authorization: Opt
 
 
 @router.post("/rerun")
-async def rerun_optimization(request_json: OptimizationRequestJson, authorization: Optional[str] = Header(None)):
+async def rerun_optimization(request_json: OptimizationRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Start an optimization process
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     jh.validate_cwd()
 
@@ -99,6 +101,10 @@ async def rerun_optimization(request_json: OptimizationRequestJson, authorizatio
         return JSONResponse({
             'error': f'Session with ID {request_json.id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # reset the session
     reset_optimization_session(request_json.id)
@@ -118,6 +124,7 @@ async def rerun_optimization(request_json: OptimizationRequestJson, authorizatio
         request_json.fast_mode,
         request_json.cpu_cores,
         request_json.state,
+        current_user.effective_user_id,
     )
 
     return JSONResponse({'message': 'Started optimization...'}, status_code=202)
@@ -125,12 +132,10 @@ async def rerun_optimization(request_json: OptimizationRequestJson, authorizatio
 
 
 @router.post("/cancel")
-def cancel_optimization(request_json: CancelRequestJson, authorization: Optional[str] = Header(None)):
+def cancel_optimization(request_json: CancelRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Cancel an optimization process
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     process_manager.cancel_process(request_json.id)
 
@@ -139,12 +144,10 @@ def cancel_optimization(request_json: CancelRequestJson, authorization: Optional
 
 
 @router.get("/download-log")
-def download_optimization_log(token: str = Query(...)):
+def download_optimization_log(current_user: CurrentUser = Depends(get_current_user)):
     """
     Download optimization log file
     """
-    if not authenticator.is_valid_token(token):
-        return authenticator.unauthorized_response()
 
     from qengine.modes import data_provider
 
@@ -152,12 +155,13 @@ def download_optimization_log(token: str = Query(...)):
 
 
 @router.post("/sessions")
-def get_optimization_sessions(request_json: GetOptimizationSessionsRequestJson = Body(default=GetOptimizationSessionsRequestJson()), authorization: Optional[str] = Header(None)):
+def get_optimization_sessions(request_json: GetOptimizationSessionsRequestJson = Body(default=GetOptimizationSessionsRequestJson()), current_user: CurrentUser = Depends(get_current_user)):
     """
     Get a list of optimization sessions sorted by most recently updated with pagination and filtering
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    # Scope to user unless admin (and not impersonating)
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
 
     # Get sessions from the database with pagination and filters
     sessions = get_sessions(
@@ -165,11 +169,17 @@ def get_optimization_sessions(request_json: GetOptimizationSessionsRequestJson =
         offset=request_json.offset,
         title_search=request_json.title_search,
         status_filter=request_json.status_filter,
-        date_filter=request_json.date_filter
+        date_filter=request_json.date_filter,
+        user_id=user_id,
     )
 
     # Transform the sessions using the transformer
     transformed_sessions = [get_optimization_session(session) for session in sessions]
+
+    # Add owner labels for admin view
+    if not user_id:
+        from qengine.services.transformers import enrich_with_owner
+        enrich_with_owner(transformed_sessions, sessions)
 
     return JSONResponse({
         'sessions': transformed_sessions,
@@ -178,12 +188,10 @@ def get_optimization_sessions(request_json: GetOptimizationSessionsRequestJson =
 
 
 @router.post("/sessions/{session_id}")
-def get_optimization_session_by_id(session_id: str, authorization: Optional[str] = Header(None)):
+def get_optimization_session_by_id(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get a single optimization session by ID
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     # Get the session from the database
     session = get_optimization_session_by_id_from_db(session_id)
@@ -192,6 +200,10 @@ def get_optimization_session_by_id(session_id: str, authorization: Optional[str]
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Transform the session using the transformer
     transformed_session = get_optimization_session_for_load_more(session)
@@ -202,12 +214,15 @@ def get_optimization_session_by_id(session_id: str, authorization: Optional[str]
 
 
 @router.post("/update-state")
-def update_session_state(request_json: UpdateOptimizationSessionStateRequestJson, authorization: Optional[str] = Header(None)):
+def update_session_state(request_json: UpdateOptimizationSessionStateRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Update the state of an optimization session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    session = get_optimization_session_by_id_from_db(request_json.id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     update_optimization_session_state(request_json.id, request_json.state)
 
@@ -217,12 +232,15 @@ def update_session_state(request_json: UpdateOptimizationSessionStateRequestJson
 
 
 @router.post("/terminate")
-def terminate_optimization(request_json: TerminateOptimizationRequestJson, authorization: Optional[str] = Header(None)):
+def terminate_optimization(request_json: TerminateOptimizationRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Terminate an optimization process
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    session = get_optimization_session_by_id_from_db(request_json.id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # First update the status to 'terminated'
     update_optimization_session_status(request_json.id, 'terminated')
@@ -234,12 +252,10 @@ def terminate_optimization(request_json: TerminateOptimizationRequestJson, autho
 
 
 @router.post("/resume")
-async def resume_optimization(request_json: OptimizationRequestJson, authorization: Optional[str] = Header(None)):
+async def resume_optimization(request_json: OptimizationRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Resume an optimization process
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     jh.validate_cwd()
 
@@ -257,6 +273,10 @@ async def resume_optimization(request_json: OptimizationRequestJson, authorizati
         return JSONResponse({
             'error': f'Session with ID {request_json.id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Transform the session using the transformer
     transformed_session = get_optimization_session_for_load_more(session)
@@ -276,6 +296,7 @@ async def resume_optimization(request_json: OptimizationRequestJson, authorizati
         request_json.fast_mode,
         request_json.cpu_cores,
         request_json.state,
+        current_user.effective_user_id,
     )
 
     return JSONResponse({
@@ -284,12 +305,10 @@ async def resume_optimization(request_json: OptimizationRequestJson, authorizati
 
 
 @router.post("/sessions/{session_id}/remove")
-def remove_optimization_session(session_id: str, authorization: Optional[str] = Header(None)):
+def remove_optimization_session(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Remove an optimization session from the database
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_optimization_session_by_id_from_db(session_id)
 
@@ -297,6 +316,10 @@ def remove_optimization_session(session_id: str, authorization: Optional[str] = 
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Delete the session from the database
     result = delete_optimization_session(session_id)
@@ -312,12 +335,10 @@ def remove_optimization_session(session_id: str, authorization: Optional[str] = 
 
 
 @router.post("/sessions/{session_id}/notes")
-def update_session_notes(session_id: str, request_json: UpdateOptimizationSessionNotesRequestJson, authorization: Optional[str] = Header(None)):
+def update_session_notes(session_id: str, request_json: UpdateOptimizationSessionNotesRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Update the notes (title, description, strategy_codes) of an optimization session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_optimization_session_by_id_from_db(session_id)
 
@@ -325,6 +346,10 @@ def update_session_notes(session_id: str, request_json: UpdateOptimizationSessio
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     update_optimization_session_notes(session_id, request_json.title, request_json.description, request_json.strategy_codes)
 
@@ -334,12 +359,10 @@ def update_session_notes(session_id: str, request_json: UpdateOptimizationSessio
 
 
 @router.post("/sessions/{session_id}/get-notes")
-def get_session_notes(session_id: str, authorization: Optional[str] = Header(None)):
+def get_session_notes(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the notes of an optimization session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
     
     session = get_optimization_session_by_id_from_db(session_id)
 
@@ -347,6 +370,10 @@ def get_session_notes(session_id: str, authorization: Optional[str] = Header(Non
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     return JSONResponse({
         'title': session.title,
@@ -355,12 +382,10 @@ def get_session_notes(session_id: str, authorization: Optional[str] = Header(Non
     
 
 @router.post("/sessions/{session_id}/strategy-codes")
-def get_session_strategy_codes(session_id: str, authorization: Optional[str] = Header(None)):
+def get_session_strategy_codes(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the strategy codes of an optimization session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
     
     session = get_optimization_session_by_id_from_db(session_id)
 
@@ -369,17 +394,19 @@ def get_session_strategy_codes(session_id: str, authorization: Optional[str] = H
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
 
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
+
     return JSONResponse({
         'strategy_codes': json.loads(session.strategy_codes) if session.strategy_codes else {}
     })
 
 @router.post("/sessions/{session_id}/logs")
-def get_session_logs(session_id: str, authorization: Optional[str] = Header(None)):
+def get_session_logs(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the logs for an optimization session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     from qengine.modes import data_provider
 
@@ -396,12 +423,10 @@ def get_session_logs(session_id: str, authorization: Optional[str] = Header(None
 
 
 @router.post("/purge-sessions")
-def purge_sessions(request_json: dict = Body(...), authorization: Optional[str] = Header(None)):
+def purge_sessions(request_json: dict = Body(...), current_user: CurrentUser = Depends(require_admin)):
     """
-    Purge optimization sessions older than specified days
+    Purge optimization sessions older than specified days (admin only)
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     days_old = request_json.get('days_old', None)
 
@@ -414,12 +439,10 @@ def purge_sessions(request_json: dict = Body(...), authorization: Optional[str] 
 
 
 @router.get("/running-session")
-def get_running_session(authorization: Optional[str] = Header(None)):
+def get_running_session(current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the running session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     return JSONResponse({
         'session_id': get_running_optimization_session_id()

@@ -396,7 +396,8 @@ def find_by_filters(
     type_filter: str = None,
     side_filter: str = None,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
+    user_id: str = None
 ) -> List[Order]:
     if jh.is_unit_testing():
         return []
@@ -412,6 +413,9 @@ def find_by_filters(
         pass
 
     query = Order.select()
+
+    if user_id:
+        query = query.where(Order.user_id == user_id)
 
     if id_search:
         # UUID fields can't be searched with ILIKE directly; cast to text first.

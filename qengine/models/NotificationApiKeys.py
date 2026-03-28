@@ -10,6 +10,8 @@ class NotificationApiKeys(peewee.Model):
     name = peewee.CharField(unique=True)
     driver = peewee.CharField()  # notification driver (Telegram, Discord, Slack)
     fields = peewee.TextField()  # for storing the fields as a JSON string
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
     created_at = peewee.DateTimeField()
 
     class Meta:

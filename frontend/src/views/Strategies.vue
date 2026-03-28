@@ -98,43 +98,56 @@
     <div v-else-if="!playgroundActive && !editingStrat && !showGuide" class="space-y-3">
       <div class="flex items-center justify-between">
         <p v-if="openEditorTabs.length" class="text-xs text-surface-500">Select a strategy to open in a new tab:</p>
-        <p v-else class="text-xs text-surface-500">{{ strategies.length }} strateg{{ strategies.length === 1 ? 'y' : 'ies' }} available</p>
+        <p v-else class="text-xs text-surface-500">{{ filteredStrategies.length }} strateg{{ filteredStrategies.length === 1 ? 'y' : 'ies' }} available</p>
         <button @click="showGuide = true" class="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1">
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
           Strategy Guide
         </button>
       </div>
-      <div v-for="strat in strategies" :key="strat"
+
+      <!-- Admin: owner tabs -->
+      <div v-if="showAdminTabs && strategyOwnerTabs.length > 1" class="flex gap-1.5 flex-wrap">
+        <button v-for="tab in strategyOwnerTabs" :key="tab.id" @click="strategyTab = tab.id"
+          class="px-3 py-1.5 rounded-lg text-xs transition-colors"
+          :class="strategyTab === tab.id ? 'bg-brand-600/20 text-brand-400 font-medium' : 'bg-surface-800/60 text-surface-500 hover:text-surface-300'">
+          {{ tab.label }} <span class="text-[10px] ml-0.5 opacity-60">{{ tab.count }}</span>
+        </button>
+      </div>
+
+      <div v-for="strat in filteredStrategies" :key="strat.name"
         class="card hover:border-surface-600 transition-colors cursor-pointer"
-        @click="selectStrategy(strat)">
+        @click="selectStrategy(strat.name)">
         <div class="flex items-start justify-between gap-4">
           <div class="flex items-start gap-3 min-w-0">
             <div class="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-mono font-bold"
-              :class="getStratMeta(strat).iconClass || 'bg-surface-800 text-brand-400'">{{ strat.slice(0, 2) }}</div>
+              :class="getStratMeta(strat.name).iconClass || 'bg-surface-800 text-brand-400'">{{ strat.name.slice(0, 2) }}</div>
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="text-sm font-medium text-surface-100">{{ strat }}</span>
-                <span v-for="label in getStratMeta(strat).labels" :key="label.text"
+                <span class="text-sm font-medium text-surface-100">{{ strat.name }}</span>
+                <span v-if="strat.owner === 'shared'" class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-400">shared</span>
+                <span v-else-if="strat.owner === 'admin'" class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-rose-500/10 text-rose-400">admin</span>
+                <span v-else-if="strat.owner_username" class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/15 text-indigo-400">{{ strat.owner_username }}</span>
+                <span v-for="label in getStratMeta(strat.name).labels" :key="label.text"
                   class="px-1.5 py-0.5 rounded text-[10px] font-medium"
                   :class="label.class">{{ label.text }}</span>
               </div>
-              <p class="text-xs text-surface-500 mt-1 line-clamp-2">{{ getStratMeta(strat).description }}</p>
-              <div v-if="getStratMeta(strat).params.length" class="flex flex-wrap gap-1.5 mt-2">
-                <span v-for="p in getStratMeta(strat).params.slice(0, 6)" :key="p"
+              <p class="text-xs text-surface-500 mt-1 line-clamp-2">{{ getStratMeta(strat.name).description }}</p>
+              <div v-if="getStratMeta(strat.name).params.length" class="flex flex-wrap gap-1.5 mt-2">
+                <span v-for="p in getStratMeta(strat.name).params.slice(0, 6)" :key="p"
                   class="px-1.5 py-0.5 bg-surface-800/80 rounded text-[10px] text-surface-500 font-mono">{{ p }}</span>
-                <span v-if="getStratMeta(strat).params.length > 6" class="text-[10px] text-surface-600">+{{ getStratMeta(strat).params.length - 6 }} more</span>
+                <span v-if="getStratMeta(strat.name).params.length > 6" class="text-[10px] text-surface-600">+{{ getStratMeta(strat.name).params.length - 6 }} more</span>
               </div>
             </div>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0 pt-1">
-            <button @click.stop="openPlayground(strat)" class="px-2.5 py-1.5 rounded-md bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors flex items-center gap-1.5 text-xs font-medium" title="Playground">
+            <button @click.stop="openPlayground(strat.name)" class="px-2.5 py-1.5 rounded-md bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors flex items-center gap-1.5 text-xs font-medium" title="Playground">
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 00.659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-1.47 4.41a2.25 2.25 0 01-2.133 1.59H8.603a2.25 2.25 0 01-2.133-1.59L5 14.5m14 0H5" /></svg>
               Playground
             </button>
-            <button @click.stop="editStrategy(strat)" class="w-7 h-7 rounded-md bg-surface-800 text-surface-400 hover:text-brand-400 hover:bg-surface-700 transition-colors flex items-center justify-center" title="Edit">
+            <button @click.stop="editStrategy(strat.name)" class="w-7 h-7 rounded-md bg-surface-800 text-surface-400 hover:text-brand-400 hover:bg-surface-700 transition-colors flex items-center justify-center" title="Edit">
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" /></svg>
             </button>
-            <button @click.stop="confirmDelete(strat)" class="w-7 h-7 rounded-md bg-surface-800 text-surface-400 hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center justify-center" title="Delete">
+            <button @click.stop="confirmDelete(strat.name)" class="w-7 h-7 rounded-md bg-surface-800 text-surface-400 hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center justify-center" title="Delete">
               <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
             </button>
           </div>
@@ -544,7 +557,8 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
-import { api } from '../api'
+import { useRoute } from 'vue-router'
+import { api, isAdmin, isImpersonating } from '../api'
 import { useWebSocket } from '../useWebSocket'
 import ProgressBar from '../components/ProgressBar.vue'
 import TradeChart from '../components/TradeChart.vue'
@@ -573,6 +587,37 @@ const refineInput = ref('')
 const aiRefining = ref(false)
 const deletingStrat = ref(null)
 const showGuide = ref(false)
+
+// Admin strategy tabs
+const showAdminTabs = computed(() => isAdmin() && !isImpersonating())
+const strategyTab = ref('all')
+const strategyOwnerTabs = computed(() => {
+  if (!showAdminTabs.value) return []
+  const tabs = [{ id: 'all', label: 'All', count: strategies.value.length }]
+  const shared = strategies.value.filter(s => s.owner === 'shared')
+  if (shared.length) tabs.push({ id: 'shared', label: 'Shared', count: shared.length })
+  const admin = strategies.value.filter(s => s.owner === 'admin')
+  if (admin.length) tabs.push({ id: 'admin', label: 'Admin', count: admin.length })
+  // Group by user
+  const userMap = {}
+  for (const s of strategies.value) {
+    if (s.owner && s.owner !== 'shared' && s.owner !== 'admin') {
+      const label = s.owner_username || s.owner.slice(0, 8)
+      if (!userMap[label]) userMap[label] = { id: s.owner, label, count: 0 }
+      userMap[label].count++
+    }
+  }
+  for (const u of Object.values(userMap).sort((a, b) => a.label.localeCompare(b.label))) {
+    tabs.push(u)
+  }
+  return tabs
+})
+const filteredStrategies = computed(() => {
+  if (!showAdminTabs.value || strategyTab.value === 'all') return strategies.value
+  if (strategyTab.value === 'shared') return strategies.value.filter(s => s.owner === 'shared')
+  if (strategyTab.value === 'admin') return strategies.value.filter(s => s.owner === 'admin')
+  return strategies.value.filter(s => s.owner === strategyTab.value)
+})
 
 // Editor tabs
 const openEditorTabs = ref([])
@@ -1110,8 +1155,16 @@ onBeforeUnmount(() => {
 })
 
 // ── Lifecycle ──
+const route = useRoute()
+
 onMounted(async () => {
   await loadStrategies()
   try { const res = await api.llmStatus(); llmConfigured.value = res.configured } catch {}
+  // Auto-open strategy from ?edit=Name query param
+  if (route.query.edit) {
+    const name = route.query.edit
+    const exists = strategies.value.find(s => s.name === name)
+    if (exists) editStrategy(name)
+  }
 })
 </script>

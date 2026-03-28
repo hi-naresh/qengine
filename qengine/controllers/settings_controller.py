@@ -1,14 +1,25 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 import qengine.helpers as jh
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
+
+# Shared settings ID for all admin users — admin configs are global, not per-admin
+ADMIN_SETTINGS_ID = '00000000-0000-0000-0000-000000000000'
+
+
+def _settings_uid(current_user) -> str:
+    """Return the settings user_id: shared admin ID for admins, personal ID for regular users."""
+    if current_user.is_admin:
+        return ADMIN_SETTINGS_ID
+    return current_user.effective_user_id
 
 
 class BrokerSettingsRequestJson(BaseModel):
@@ -26,32 +37,32 @@ class LLMSettingsRequestJson(BaseModel):
     temperature: float = 0.3
 
 
-def _get_settings_from_db() -> dict:
-    """Load settings from the Option table."""
+def _get_settings_from_db(user_id: str) -> dict:
+    """Load settings from the Option table for a specific user."""
     from qengine.services.db import database
     from qengine.models.Option import Option
     import peewee
 
     database.open_connection()
     try:
-        o = Option.get(Option.type == 'app_settings')
+        o = Option.get((Option.type == 'app_settings') & (Option.user_id == user_id))
         data = json.loads(o.json)
     except peewee.DoesNotExist:
-        data = {'brokers': {}, 'llm': {}}
+        data = {}
     finally:
         database.close_connection()
     return data
 
 
-def _save_settings_to_db(data: dict) -> None:
-    """Persist settings to the Option table."""
+def _save_settings_to_db(data: dict, user_id: str) -> None:
+    """Persist settings to the Option table for a specific user."""
     from qengine.services.db import database
     from qengine.models.Option import Option
     import peewee
 
     database.open_connection()
     try:
-        o = Option.get(Option.type == 'app_settings')
+        o = Option.get((Option.type == 'app_settings') & (Option.user_id == user_id))
         o.json = json.dumps(data)
         o.updated_at = jh.now(True)
         o.save()
@@ -60,7 +71,8 @@ def _save_settings_to_db(data: dict) -> None:
             'id': jh.generate_unique_id(),
             'updated_at': jh.now(True),
             'type': 'app_settings',
-            'json': json.dumps(data)
+            'json': json.dumps(data),
+            'user_id': user_id
         })
         o.save(force_insert=True)
     finally:
@@ -70,12 +82,10 @@ def _save_settings_to_db(data: dict) -> None:
 # ── Broker Settings ──
 
 @router.get("/brokers")
-def get_broker_settings(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_broker_settings(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get all saved broker configurations (keys are masked)."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
     broker_settings = settings.get('brokers', {})
 
     # Mask sensitive fields
@@ -96,13 +106,11 @@ def get_broker_settings(authorization: Optional[str] = Header(None)) -> JSONResp
 @router.post("/brokers")
 def save_broker_settings(
     request_json: BrokerSettingsRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Save broker API credentials."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
     if 'brokers' not in settings:
         settings['brokers'] = {}
 
@@ -113,18 +121,16 @@ def save_broker_settings(
         'additional_fields': request_json.additional_fields or {},
     }
 
-    _save_settings_to_db(settings)
+    _save_settings_to_db(settings, uid)
 
     return JSONResponse({'message': f'Broker {request_json.broker} settings saved'}, status_code=200)
 
 
 @router.delete("/brokers/{broker_id}")
-def delete_broker_settings(broker_id: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def delete_broker_settings(broker_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Remove broker settings."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
     brokers = settings.get('brokers', {})
 
     if broker_id not in brokers:
@@ -132,7 +138,7 @@ def delete_broker_settings(broker_id: str, authorization: Optional[str] = Header
 
     del brokers[broker_id]
     settings['brokers'] = brokers
-    _save_settings_to_db(settings)
+    _save_settings_to_db(settings, uid)
 
     return JSONResponse({'message': f'Broker {broker_id} settings removed'}, status_code=200)
 
@@ -140,12 +146,10 @@ def delete_broker_settings(broker_id: str, authorization: Optional[str] = Header
 # ── LLM Settings ──
 
 @router.get("/llm")
-def get_llm_settings(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_llm_settings(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get LLM configuration (key masked)."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
     llm_conf = settings.get('llm', {})
 
     return JSONResponse({
@@ -162,20 +166,18 @@ def get_llm_settings(authorization: Optional[str] = Header(None)) -> JSONRespons
 @router.post("/llm")
 def save_llm_settings(
     request_json: LLMSettingsRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Save LLM configuration and apply it to the engine."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
     settings['llm'] = {
         'provider': request_json.provider,
         'api_key': request_json.api_key,
         'model': request_json.model or '',
         'temperature': request_json.temperature,
     }
-    _save_settings_to_db(settings)
+    _save_settings_to_db(settings, uid)
 
     # Apply to running LLM engine
     from qengine.services.llm_engine import llm_engine
@@ -190,14 +192,12 @@ def save_llm_settings(
 
 
 @router.delete("/llm")
-def delete_llm_settings(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def delete_llm_settings(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Remove LLM configuration."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
     settings['llm'] = {}
-    _save_settings_to_db(settings)
+    _save_settings_to_db(settings, uid)
 
     return JSONResponse({'message': 'LLM settings removed'}, status_code=200)
 
@@ -205,12 +205,10 @@ def delete_llm_settings(authorization: Optional[str] = Header(None)) -> JSONResp
 # ── General Settings ──
 
 @router.get("/all")
-def get_all_settings(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_all_settings(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get all application settings."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
 
     # Mask sensitive data
     result = {
@@ -245,12 +243,10 @@ class BacktestSettingsRequestJson(BaseModel):
 
 
 @router.get("/backtest/{broker_id}")
-def get_backtest_settings(broker_id: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_backtest_settings(broker_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get backtest cost/randomness settings for a specific broker."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
     bt_all = settings.get('backtest_brokers', {})
     bt = bt_all.get(broker_id, settings.get('backtest', _default_backtest_settings()))
     return JSONResponse({'data': bt}, status_code=200)
@@ -259,13 +255,11 @@ def get_backtest_settings(broker_id: str, authorization: Optional[str] = Header(
 @router.post("/backtest")
 def save_backtest_settings(
     request_json: BacktestSettingsRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Save backtest cost/randomness settings for a specific broker."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
-    settings = _get_settings_from_db()
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
     if 'backtest_brokers' not in settings:
         settings['backtest_brokers'] = {}
 
@@ -277,7 +271,7 @@ def save_backtest_settings(
         'swap_enabled': request_json.swap_enabled,
         'commission_per_lot': request_json.commission_per_lot,
     }
-    _save_settings_to_db(settings)
+    _save_settings_to_db(settings, uid)
 
     return JSONResponse({'message': f'Backtest settings saved for {request_json.broker_id}'}, status_code=200)
 
@@ -293,10 +287,10 @@ def _default_backtest_settings() -> dict:
     }
 
 
-def get_backtest_cost_settings(broker_id: str = None) -> dict:
-    """Public helper: load backtest cost settings from DB for a specific broker."""
+def get_backtest_cost_settings(broker_id: str = None, user_id: str = None) -> dict:
+    """Public helper: load backtest cost settings from DB for a specific broker and user."""
     try:
-        settings = _get_settings_from_db()
+        settings = _get_settings_from_db(user_id or ADMIN_SETTINGS_ID)
         if broker_id:
             bt_all = settings.get('backtest_brokers', {})
             if broker_id in bt_all:
@@ -327,12 +321,9 @@ class TestBrokerConnectionRequest(BaseModel):
 @router.post("/test-broker")
 def test_broker_connection(
     request_json: TestBrokerConnectionRequest,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Test broker API connection with provided credentials."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     broker = request_json.broker
     api_key = request_json.api_key
     account_id = request_json.account_id
@@ -341,7 +332,7 @@ def test_broker_connection(
 
     # If no credentials provided, use stored ones for retest
     if not api_key:
-        settings = _get_settings_from_db()
+        settings = _get_settings_from_db(_settings_uid(current_user))
         stored = settings.get('brokers', {}).get(broker, {})
         api_key = stored.get('api_key', '')
         api_secret = api_secret or stored.get('api_secret', '')
@@ -350,7 +341,7 @@ def test_broker_connection(
             additional_fields = stored.get('additional_fields', {})
 
     try:
-        result = _test_broker(broker, api_key, api_secret, account_id, additional_fields)
+        result = _test_broker(broker, api_key, api_secret, account_id, additional_fields, user_id=_settings_uid(current_user))
         return JSONResponse({'data': result}, status_code=200)
     except Exception as e:
         return JSONResponse({
@@ -361,12 +352,9 @@ def test_broker_connection(
 @router.post("/test-llm")
 def test_llm_connection(
     request_json: LLMSettingsRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Test LLM provider connection with provided credentials."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     try:
         result = _test_llm(
             request_json.provider,
@@ -380,7 +368,7 @@ def test_llm_connection(
         }, status_code=200)
 
 
-def _test_broker(broker: str, api_key: str, api_secret: str, account_id: str, additional_fields: dict = None) -> dict:
+def _test_broker(broker: str, api_key: str, api_secret: str, account_id: str, additional_fields: dict = None, user_id: str = None) -> dict:
     """Test broker connection. Returns {connected, error, details}."""
     import requests
     import socket
@@ -444,7 +432,7 @@ def _test_broker(broker: str, api_key: str, api_secret: str, account_id: str, ad
             ig_account_id = os.environ.get('IG_ACCOUNT_ID', ENV_VALUES.get('IG_ACCOUNT_ID', ''))
         if not ig_account_id:
             try:
-                stored = _get_settings_from_db().get('brokers', {}).get(broker, {})
+                stored = _get_settings_from_db(user_id).get('brokers', {}).get(broker, {})
                 ig_account_id = stored.get('additional_fields', {}).get('ig_account_id', '')
             except Exception:
                 pass

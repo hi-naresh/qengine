@@ -33,6 +33,10 @@ class MonteCarloSession(peewee.Model):
     title = peewee.CharField(max_length=255, null=True)
     description = peewee.TextField(null=True)
     strategy_codes = peewee.TextField(null=True)
+
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
+
     created_at = peewee.BigIntegerField()
     updated_at = peewee.BigIntegerField()
 
@@ -213,12 +217,16 @@ def get_monte_carlo_session_by_id(id: str):
         return None
 
 
-def get_monte_carlo_sessions(limit: int = 50, offset: int = 0, title_search: str = None, status_filter: str = None, date_filter: str = None):
+def get_monte_carlo_sessions(limit: int = 50, offset: int = 0, title_search: str = None, status_filter: str = None, date_filter: str = None, user_id: str = None):
     """
     Returns a list of MonteCarloSession objects sorted by most recently updated.
-    Excludes draft sessions by default.
+    Excludes draft sessions by default. Filters by user_id if provided.
     """
     query = MonteCarloSession.select().where(MonteCarloSession.status != 'draft').order_by(MonteCarloSession.updated_at.desc())
+
+    # User scoping
+    if user_id:
+        query = query.where(MonteCarloSession.user_id == user_id)
     
     # Apply title filter (case-insensitive)
     if title_search:
@@ -247,7 +255,7 @@ def get_monte_carlo_sessions(limit: int = 50, offset: int = 0, title_search: str
     return list(query.limit(limit).offset(offset))
 
 
-def store_monte_carlo_session(id: str, status: str, state: dict = None, strategy_codes: dict = None) -> None:
+def store_monte_carlo_session(id: str, status: str, state: dict = None, strategy_codes: dict = None, user_id: str = None) -> None:
     if isinstance(state, dict) and 'form' in state and isinstance(state['form'], dict):
         for key in ['debug_mode', 'export_chart', 'export_tradingview', 'export_csv', 'export_json', 'fast_mode', 'benchmark']:
             if key in state['form']:
@@ -262,7 +270,10 @@ def store_monte_carlo_session(id: str, status: str, state: dict = None, strategy
     
     if strategy_codes is not None:
         d['strategy_codes'] = json.dumps(strategy_codes)
-    
+
+    if user_id:
+        d['user_id'] = user_id
+
     MonteCarloSession.insert(**d).execute()
 
 

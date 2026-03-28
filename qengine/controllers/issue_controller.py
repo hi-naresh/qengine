@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 import qengine.helpers as jh
 
 router = APIRouter()
@@ -56,13 +57,15 @@ class CommentDeleteRequest(BaseModel):
 
 
 @router.post('/issues/list')
-async def list_issues(req: IssueListRequest, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def list_issues(req: IssueListRequest, current_user: CurrentUser = Depends(get_current_user)):
     from qengine.models.Issue import Issue
 
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
+
     query = Issue.select().order_by(Issue.created_at.desc())
+
+    if user_id:
+        query = query.where(Issue.user_id == user_id)
 
     if req.status:
         query = query.where(Issue.status == req.status)
@@ -89,6 +92,11 @@ async def list_issues(req: IssueListRequest, authorization: Optional[str] = Head
         d['comment_count'] = comment_counts.get(str(i.id), 0)
         result.append(d)
 
+    # Add owner labels for admin view
+    if not user_id:
+        from qengine.services.transformers import enrich_with_owner
+        enrich_with_owner(result, issues)
+
     return {
         'issues': result,
         'total': total,
@@ -96,10 +104,7 @@ async def list_issues(req: IssueListRequest, authorization: Optional[str] = Head
 
 
 @router.post('/issues/create')
-async def create_issue(req: IssueCreateRequest, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def create_issue(req: IssueCreateRequest, current_user: CurrentUser = Depends(get_current_user)):
     from qengine.models.Issue import Issue
     import uuid
 
@@ -113,24 +118,39 @@ async def create_issue(req: IssueCreateRequest, authorization: Optional[str] = H
         author=req.author,
         priority=req.priority,
         labels=','.join(req.labels) if req.labels else None,
+        user_id=current_user.effective_user_id,
         created_at=now,
         updated_at=now,
     )
+
+    # Notify admins in real-time
+    try:
+        from qengine.services.redis import publish_admin_notification
+        publish_admin_notification({
+            'type': 'new_issue',
+            'title': req.title,
+            'priority': req.priority,
+            'username': current_user.username,
+        })
+    except Exception:
+        pass
 
     return {'status': 'ok', 'issue': issue.to_dict()}
 
 
 @router.post('/issues/update')
-async def update_issue(req: IssueUpdateRequest, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def update_issue(req: IssueUpdateRequest, current_user: CurrentUser = Depends(get_current_user)):
     from qengine.models.Issue import Issue
 
     try:
         issue = Issue.get_by_id(req.id)
     except Issue.DoesNotExist:
         return {'status': 'error', 'message': 'Issue not found'}
+
+    # Verify ownership for non-admin users
+    if not current_user.is_admin or current_user.is_impersonating:
+        if str(issue.user_id) != str(current_user.effective_user_id):
+            return {'status': 'error', 'message': 'Issue not found'}
 
     if req.title is not None:
         issue.title = req.title
@@ -152,52 +172,70 @@ async def update_issue(req: IssueUpdateRequest, authorization: Optional[str] = H
 
 
 @router.post('/issues/delete')
-async def delete_issue(req: IssueDeleteRequest, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def delete_issue(req: IssueDeleteRequest, current_user: CurrentUser = Depends(get_current_user)):
     from qengine.models.Issue import Issue
 
     try:
         issue = Issue.get_by_id(req.id)
-        issue.delete_instance()
-        return {'status': 'ok'}
     except Issue.DoesNotExist:
         return {'status': 'error', 'message': 'Issue not found'}
 
+    # Verify ownership for non-admin users
+    if not current_user.is_admin or current_user.is_impersonating:
+        if str(issue.user_id) != str(current_user.effective_user_id):
+            return {'status': 'error', 'message': 'Issue not found'}
+
+    issue.delete_instance()
+    return {'status': 'ok'}
+
 
 @router.post('/issues/clear')
-async def clear_issues(req: IssueClearRequest, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def clear_issues(req: IssueClearRequest, current_user: CurrentUser = Depends(get_current_user)):
     from qengine.models.Issue import Issue
 
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
+
+    query = Issue.delete()
+
+    if user_id:
+        query = query.where(Issue.user_id == user_id)
+
     if req.status:
-        count = Issue.delete().where(Issue.status == req.status).execute()
-    else:
-        count = Issue.delete().execute()
+        query = query.where(Issue.status == req.status)
+
+    count = query.execute()
 
     return {'status': 'ok', 'deleted': count}
 
 
 @router.post('/issues/active-count')
-async def active_issue_count(authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def active_issue_count(current_user: CurrentUser = Depends(get_current_user)):
     from qengine.models.Issue import Issue
 
-    count = Issue.select().where(Issue.status != 'done').count()
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
+
+    query = Issue.select().where(Issue.status != 'done')
+
+    if user_id:
+        query = query.where(Issue.user_id == user_id)
+
+    count = query.count()
     return {'count': count}
 
 
 @router.post('/issues/comments/list')
-async def list_comments(req: CommentListRequest, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def list_comments(req: CommentListRequest, current_user: CurrentUser = Depends(get_current_user)):
+    from qengine.models.Issue import Issue
     from qengine.models.IssueComment import IssueComment
+
+    # Verify user owns the issue (non-admin)
+    if not current_user.is_admin or current_user.is_impersonating:
+        try:
+            issue = Issue.get_by_id(req.issue_id)
+            if str(issue.user_id) != str(current_user.effective_user_id):
+                return {'comments': []}
+        except Issue.DoesNotExist:
+            return {'comments': []}
 
     comments = list(
         IssueComment.select()
@@ -209,10 +247,7 @@ async def list_comments(req: CommentListRequest, authorization: Optional[str] = 
 
 
 @router.post('/issues/comments/create')
-async def create_comment(req: CommentCreateRequest, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def create_comment(req: CommentCreateRequest, current_user: CurrentUser = Depends(get_current_user)):
     from qengine.models.IssueComment import IssueComment
     import uuid
 
@@ -224,6 +259,7 @@ async def create_comment(req: CommentCreateRequest, authorization: Optional[str]
         parent_id=req.parent_id,
         author=req.author,
         body=req.body,
+        user_id=current_user.effective_user_id,
         created_at=now,
         updated_at=now,
     )
@@ -232,17 +268,20 @@ async def create_comment(req: CommentCreateRequest, authorization: Optional[str]
 
 
 @router.post('/issues/comments/delete')
-async def delete_comment(req: CommentDeleteRequest, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+async def delete_comment(req: CommentDeleteRequest, current_user: CurrentUser = Depends(get_current_user)):
     from qengine.models.IssueComment import IssueComment
 
     try:
         comment = IssueComment.get_by_id(req.id)
-        # Also delete replies to this comment
-        IssueComment.delete().where(IssueComment.parent_id == req.id).execute()
-        comment.delete_instance()
-        return {'status': 'ok'}
     except IssueComment.DoesNotExist:
         return {'status': 'error', 'message': 'Comment not found'}
+
+    # Verify ownership for non-admin users
+    if not current_user.is_admin or current_user.is_impersonating:
+        if str(comment.user_id) != str(current_user.effective_user_id):
+            return {'status': 'error', 'message': 'Comment not found'}
+
+    # Also delete replies to this comment
+    IssueComment.delete().where(IssueComment.parent_id == req.id).execute()
+    comment.delete_instance()
+    return {'status': 'ok'}

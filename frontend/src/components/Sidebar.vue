@@ -58,6 +58,16 @@
     </nav>
 
     <div class="border-t border-white/[0.06] space-y-1" :class="collapsed ? 'p-2' : 'p-4'">
+      <!-- User profile -->
+      <div v-if="currentUser" class="flex items-center gap-2 mb-2" :class="collapsed ? 'justify-center' : 'px-3 py-2'">
+        <div class="w-7 h-7 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center text-xs font-bold flex-shrink-0" :title="collapsed ? (currentUser.name || currentUser.username) : ''">
+          {{ (currentUser.name || currentUser.username || '?').charAt(0).toUpperCase() }}
+        </div>
+        <div v-if="!collapsed" class="min-w-0 flex-1">
+          <div class="text-sm font-medium text-surface-200 truncate">{{ currentUser.name || currentUser.username }}</div>
+          <div v-if="currentUser.name" class="text-[10px] text-surface-500 truncate">@{{ currentUser.username }}</div>
+        </div>
+      </div>
       <button @click="toggleSidebar" class="flex items-center gap-2 w-full rounded-lg text-sm text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-colors"
         :class="collapsed ? 'justify-center px-0 py-2' : 'px-3 py-2'" :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 transition-transform duration-200" :class="collapsed ? 'rotate-180' : ''">
@@ -81,8 +91,8 @@
 
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
-import { logout, api } from '../api'
-import { h, ref, onMounted } from 'vue'
+import { logout, api, isAdmin, getCurrentUser, hasFeature } from '../api'
+import { h, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useSidebar } from '../useSidebar'
 
 const router = useRouter()
@@ -91,8 +101,12 @@ const { collapsed, toggle: toggleSidebar } = useSidebar()
 
 const isDark = ref(document.documentElement.classList.contains('dark'))
 const activeIssueCount = ref(0)
+const currentUser = ref(getCurrentUser())
+
+let issueCountInterval = null
 
 async function loadActiveIssueCount() {
+  if (!getCurrentUser()) return
   try {
     const res = await api.getActiveIssueCount()
     activeIssueCount.value = res.count || 0
@@ -101,8 +115,11 @@ async function loadActiveIssueCount() {
 
 onMounted(() => {
   loadActiveIssueCount()
-  // Refresh count every 30s
-  setInterval(loadActiveIssueCount, 30000)
+  issueCountInterval = setInterval(loadActiveIssueCount, 30000)
+})
+
+onBeforeUnmount(() => {
+  if (issueCountInterval) clearInterval(issueCountInterval)
 })
 
 function toggleTheme() {
@@ -117,6 +134,7 @@ function toggleTheme() {
 }
 
 function handleLogout() {
+  if (!confirm('Are you sure you want to logout?')) return
   logout()
   router.push('/login')
 }
@@ -140,30 +158,44 @@ const ImportIcon = icon(['M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 00
 const LLMIcon = icon(['M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z'])
 const SettingsIcon = icon(['M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.431.992a7.723 7.723 0 010 .255c-.007.38.138.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z', 'M15 12a3 3 0 11-6 0 3 3 0 016 0z'])
 const IssuesIcon = icon(['M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z'])
+const AdminIcon = icon(['M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z'])
+const HelpIcon = icon(['M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z'])
 const LogoutIcon = icon(['M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9'])
 const SunIcon = icon(['M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z'])
 const MoonIcon = icon(['M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z'])
 
-const overviewItems = [
-  { to: '/', label: 'Dashboard', icon: DashIcon, hint: 'Activity & system status' },
-  { to: '/brokers', label: 'Brokers', icon: BrokerIcon, hint: 'Connected exchanges' },
+// Feature-to-route mapping
+const featureRoute = { dashboard: '/', brokers: '/brokers', strategies: '/strategies', backtest: '/backtest', optimization: '/optimization', monte_carlo: '/monte-carlo', live: '/live', import_data: '/import', tools: '/tools', llm_studio: '/llm', issues: '/issues', settings: '/settings' }
+
+const allOverviewItems = [
+  { to: '/', label: 'Dashboard', icon: DashIcon, hint: 'Activity & system status', feature: 'dashboard' },
+  { to: '/brokers', label: 'Brokers', icon: BrokerIcon, hint: 'Connected exchanges', feature: 'brokers' },
 ]
 
-const tradingItems = [
-  { to: '/strategies', label: 'Strategies', icon: StratIcon, hint: 'Create & test strategies' },
-  { to: '/backtest', label: 'Backtest', icon: BacktestIcon, hint: 'Test on historical data' },
-  { to: '/optimization', label: 'Optimization', icon: OptimizeIcon, hint: 'Tune hyperparameters' },
-  { to: '/monte-carlo', label: 'Monte Carlo', icon: MonteCarloIcon, hint: 'Stress-test robustness' },
-  { to: '/live', label: 'Live / Paper', icon: LiveIcon, hint: 'Trade live or simulate' },
-  { to: '/import', label: 'Import Data', icon: ImportIcon, hint: 'Download OHLCV candles' },
+const allTradingItems = [
+  { to: '/strategies', label: 'Strategies', icon: StratIcon, hint: 'Create & test strategies', feature: 'strategies' },
+  { to: '/backtest', label: 'Backtest', icon: BacktestIcon, hint: 'Test on historical data', feature: 'backtest' },
+  { to: '/optimization', label: 'Optimization', icon: OptimizeIcon, hint: 'Tune hyperparameters', feature: 'optimization' },
+  { to: '/monte-carlo', label: 'Monte Carlo', icon: MonteCarloIcon, hint: 'Stress-test robustness', feature: 'monte_carlo' },
+  { to: '/live', label: 'Live / Paper', icon: LiveIcon, hint: 'Trade live or simulate', feature: 'live' },
+  { to: '/import', label: 'Import Data', icon: ImportIcon, hint: 'Download OHLCV candles', feature: 'import_data' },
 ]
 
-const toolItems = [
-  { to: '/tools', label: 'Tools', icon: InstrIcon, hint: 'Instruments & calculators' },
-  { to: '/llm', label: 'LLM Studio', icon: LLMIcon, hint: 'AI strategy generation' },
-  { to: '/issues', label: 'Issues', icon: IssuesIcon, hint: 'Bugs & feature requests' },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon, hint: 'API keys & config' },
-]
+const overviewItems = computed(() => allOverviewItems.filter(i => hasFeature(i.feature)))
+const tradingItems = computed(() => allTradingItems.filter(i => hasFeature(i.feature)))
+
+const toolItems = computed(() => {
+  const items = []
+  if (hasFeature('tools')) items.push({ to: '/tools', label: 'Tools', icon: InstrIcon, hint: 'Instruments & calculators' })
+  if (hasFeature('llm_studio')) items.push({ to: '/llm', label: 'LLM Studio', icon: LLMIcon, hint: 'AI strategy generation' })
+  if (hasFeature('issues')) items.push({ to: '/issues', label: 'Issues', icon: IssuesIcon, hint: 'Bugs & feature requests' })
+  items.push({ to: '/help', label: 'Help', icon: HelpIcon, hint: 'Testing guide & FAQ' })
+  if (isAdmin()) {
+    items.push({ to: '/admin', label: 'Admin', icon: AdminIcon, hint: 'User management' })
+  }
+  if (hasFeature('settings')) items.push({ to: '/settings', label: 'Settings', icon: SettingsIcon, hint: 'API keys & config' })
+  return items
+})
 </script>
 
 <style scoped>

@@ -13,6 +13,8 @@ class ExchangeApiKeys(peewee.Model):
     api_key = peewee.CharField()
     api_secret = peewee.CharField()
     additional_fields = peewee.TextField()
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
     created_at = peewee.DateTimeField()
 
     class Meta:

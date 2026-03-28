@@ -34,19 +34,23 @@ def get_live_sessions(
     title_search: str = None,
     status_filter: str = None,
     date_filter: str = None,
-    mode_filter: str = None
+    mode_filter: str = None,
+    user_id: str = None
 ) -> List[LiveSession]:
     """
     Returns a list of LiveSession objects sorted by most recently updated with pagination and filters.
-    Excludes draft sessions by default.
+    Excludes draft sessions by default. Filters by user_id if provided.
     """
     if jh.is_unit_testing():
         return []
-    
+
     _ensure_db_open()
-    
-    
+
     query = LiveSession.select().where(LiveSession.status != live_session_statuses.DRAFT).order_by(LiveSession.updated_at.desc())
+
+    # User scoping
+    if user_id:
+        query = query.where(LiveSession.user_id == user_id)
     
     # Apply title filter (case-insensitive)
     if title_search:
@@ -84,7 +88,8 @@ def store_live_session(
     status: str,
     session_mode: str,
     exchange: str,
-    state: dict = None
+    state: dict = None,
+    user_id: str = None
 ) -> None:
     """
     Create or update a live session record
@@ -116,6 +121,8 @@ def store_live_session(
                         state['form'][key] = jh.normalize_bool(state['form'].get(key))
             d['state'] = json.dumps(state)
 
+        if user_id:
+            d['user_id'] = user_id
         LiveSession.update(**d).where(LiveSession.id == id).execute()
     else:
         # Create a new session
@@ -128,13 +135,15 @@ def store_live_session(
             'created_at': jh.now_to_timestamp(True),
             'updated_at': jh.now_to_timestamp(True)
         }
+        if user_id:
+            d['user_id'] = user_id
         if state:
             if isinstance(state, dict) and 'form' in state and isinstance(state['form'], dict):
                 for key in ['debug_mode', 'export_chart', 'export_tradingview', 'export_csv', 'export_json', 'fast_mode', 'benchmark']:
                     if key in state['form']:
                         state['form'][key] = jh.normalize_bool(state['form'].get(key))
             d['state'] = json.dumps(state)
-        
+
         LiveSession.insert(**d).execute()
 
 

@@ -30,6 +30,8 @@ class ClosedTrade(peewee.Model):
     updated_at = peewee.BigIntegerField()
     session_mode = peewee.CharField()
     soft_deleted_at = peewee.BigIntegerField(null=True)
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
 
     class Meta:
         from qengine.services.db import database

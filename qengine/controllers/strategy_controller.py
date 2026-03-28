@@ -1,10 +1,11 @@
 from typing import Optional
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
 import requests
 import re
 
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 from qengine.services.web import (
     NewStrategyRequestJson,
     GetStrategyRequestJson,
@@ -21,72 +22,60 @@ router = APIRouter(prefix="/strategy", tags=["Strategy"])
 
 
 @router.post("/make")
-def make_strategy(json_request: NewStrategyRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def make_strategy(json_request: NewStrategyRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Create a new strategy
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services import strategy_handler
-    return strategy_handler.generate(json_request.name)
+    return strategy_handler.generate(json_request.name, user_id=current_user.effective_user_id)
 
 
 @router.get("/all")
-def get_strategies(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_strategies(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Get all strategies
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services import strategy_handler
-    return strategy_handler.get_strategies()
+    return strategy_handler.get_strategies(
+        user_id=current_user.effective_user_id if not (current_user.is_admin and not current_user.is_impersonating) else None,
+        is_admin=current_user.is_admin,
+    )
 
 
 @router.post("/get")
 def get_strategy(
         json_request: GetStrategyRequestJson,
-        authorization: Optional[str] = Header(None)
+        current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """
     Get a specific strategy
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services import strategy_handler
-    return strategy_handler.get_strategy(json_request.name)
+    return strategy_handler.get_strategy(json_request.name, user_id=current_user.effective_user_id, is_admin=current_user.is_admin)
 
 
 @router.post("/save")
 def save_strategy(
         json_request: SaveStrategyRequestJson,
-        authorization: Optional[str] = Header(None)
+        current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """
     Save a strategy
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services import strategy_handler
-    return strategy_handler.save_strategy(json_request.name, json_request.content)
+    return strategy_handler.save_strategy(json_request.name, json_request.content, user_id=current_user.effective_user_id, is_admin=current_user.is_admin)
 
 
 @router.post("/delete")
 def delete_strategy(
         json_request: DeleteStrategyRequestJson,
-        authorization: Optional[str] = Header(None)
+        current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """
     Delete a strategy
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services import strategy_handler
-    return strategy_handler.delete_strategy(json_request.name)
+    return strategy_handler.delete_strategy(json_request.name, user_id=current_user.effective_user_id, is_admin=current_user.is_admin)
 
 
 @router.get("/index")
@@ -95,15 +84,12 @@ async def index_marketplace_strategies(
         sort_by: str = Query("Sharpe Ratio"),
         submitted_after: Optional[str] = Query(None),
         submitted_before: Optional[str] = Query(None),
-        authorization: Optional[str] = Header(None),
+        current_user: CurrentUser = Depends(get_current_user),
         marketplace_token: Optional[str] = Header(None, alias="X-Marketplace-Token")
 ) -> JSONResponse:
     """
     Browse strategies from qengine.trade
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     try:
         headers = {}
         if marketplace_token:
@@ -138,14 +124,11 @@ async def index_marketplace_strategies(
 
 @router.get("/periods")
 async def get_marketplace_periods(
-        authorization: Optional[str] = Header(None)
+        current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """
     Get available trading periods from qengine.trade
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     try:
         response = requests.get(
             f'{QENGINE_API2_URL}/strategies/periods',
@@ -169,15 +152,12 @@ async def get_marketplace_periods(
 @router.get("/marketplace/{slug}")
 async def get_marketplace_strategy(
         slug: str,
-        authorization: Optional[str] = Header(None),
+        current_user: CurrentUser = Depends(get_current_user),
         marketplace_token: Optional[str] = Header(None, alias="X-Marketplace-Token")
 ) -> JSONResponse:
     """
     Get a specific strategy from qengine.trade
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     try:
         headers = {}
         if marketplace_token:
@@ -209,15 +189,12 @@ async def get_marketplace_strategy_metrics(
         period: str = Query(...),
         symbol: str = Query(...),
         timeframe: str = Query(...),
-        authorization: Optional[str] = Header(None),
+        current_user: CurrentUser = Depends(get_current_user),
         marketplace_token: Optional[str] = Header(None, alias="X-Marketplace-Token")
 ) -> JSONResponse:
     """
     Get metrics for a specific strategy from qengine.trade
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     try:
         headers = {}
         if marketplace_token:
@@ -247,15 +224,12 @@ async def get_marketplace_strategy_metrics(
 @router.post("/import")
 async def import_strategy(
         json_request: ImportStrategyRequestJson,
-        authorization: Optional[str] = Header(None),
+        current_user: CurrentUser = Depends(get_current_user),
         marketplace_token: Optional[str] = Header(None, alias="X-Marketplace-Token")
 ) -> JSONResponse:
     """
     Import a strategy from qengine.trade
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     try:
         # Fetch the strategy from qengine.trade
         headers = {}
@@ -298,7 +272,8 @@ async def import_strategy(
         from qengine.services import strategy_handler
         return strategy_handler.import_strategy(
             name=class_name,
-            code=code
+            code=code,
+            user_id=current_user.effective_user_id,
         )
 
     except requests.exceptions.RequestException as e:
@@ -311,16 +286,14 @@ async def import_strategy(
 @router.post("/ai/generate")
 def ai_generate_strategy(
     json_request: AIGenerateAndSaveRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Generate a strategy using LLM and optionally save it to disk."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services.llm_engine import llm_engine
+    from qengine.controllers.settings_controller import _settings_uid
 
     if not llm_engine.is_configured:
-        llm_engine.configure_from_env()
+        llm_engine.configure_from_env(user_id=_settings_uid(current_user))
     if not llm_engine.is_configured:
         return JSONResponse(
             {'error': 'LLM not configured. Set API key in Settings or environment.'},
@@ -350,7 +323,7 @@ def ai_generate_strategy(
     saved = False
     if json_request.save:
         from qengine.services import strategy_handler
-        strategy_handler.import_strategy(name=name, code=result['code'])
+        strategy_handler.import_strategy(name=name, code=result['code'], user_id=current_user.effective_user_id)
         saved = True
 
     return JSONResponse({
@@ -366,26 +339,27 @@ def ai_generate_strategy(
 @router.post("/ai/refine")
 def ai_refine_strategy(
     json_request: AIRefineAndSaveRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Refine an existing strategy using LLM feedback and save it."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services.llm_engine import llm_engine
     from qengine.services import strategy_handler
+    from qengine.controllers.settings_controller import _settings_uid
 
     if not llm_engine.is_configured:
-        llm_engine.configure_from_env()
+        llm_engine.configure_from_env(user_id=_settings_uid(current_user))
     if not llm_engine.is_configured:
         return JSONResponse(
             {'error': 'LLM not configured. Set API key in Settings or environment.'},
             status_code=400,
         )
 
-    # Read current strategy code directly from file
+    # Read current strategy code via resolve_strategy_path
     import os
-    strategy_path = f'strategies/{json_request.name}/__init__.py'
+    resolved = strategy_handler.resolve_strategy_path(json_request.name, current_user.effective_user_id)
+    if not resolved:
+        return JSONResponse({'error': f'Strategy {json_request.name} not found or empty.'}, status_code=404)
+    strategy_path = f'{resolved}/__init__.py'
     if not os.path.isfile(strategy_path):
         return JSONResponse({'error': f'Strategy {json_request.name} not found or empty.'}, status_code=404)
 
@@ -402,7 +376,7 @@ def ai_refine_strategy(
     )
 
     if result['valid']:
-        strategy_handler.save_strategy(json_request.name, result['code'])
+        strategy_handler.save_strategy(json_request.name, result['code'], user_id=current_user.effective_user_id)
 
     return JSONResponse({
         'status': 'ok' if result['valid'] else 'error',

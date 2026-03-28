@@ -11,6 +11,8 @@ class LiveEquitySnapshot(peewee.Model):
     timestamp = peewee.BigIntegerField()
     currency = peewee.CharField()
     equity = peewee.DoubleField()
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
 
     class Meta:
         from qengine.services.db import database

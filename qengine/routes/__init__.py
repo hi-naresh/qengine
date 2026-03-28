@@ -6,6 +6,25 @@ from qengine import exceptions
 from qengine.models.Route import Route
 from qengine import exceptions
 
+def _find_strategy_exists(strategy_name: str) -> bool:
+    """Check if a strategy exists in any user directory or shared directory."""
+    import os
+    strategies_base = 'strategies'
+    if not os.path.isdir(strategies_base):
+        return False
+    # Check legacy flat path first (pre-migration)
+    if jh.file_exists(f'{strategies_base}/{strategy_name}/__init__.py'):
+        return True
+    # Check all subdirectories (user dirs and _shared)
+    for item in os.listdir(strategies_base):
+        item_path = os.path.join(strategies_base, item)
+        if os.path.isdir(item_path):
+            candidate = os.path.join(item_path, strategy_name, '__init__.py')
+            if os.path.isfile(candidate):
+                return True
+    return False
+
+
 class RouterClass:
     def __init__(self) -> None:
         self.routes: List[Route] = []
@@ -91,7 +110,8 @@ class RouterClass:
                         strategies_dir = f'{sys.path[0]}/qengine/strategies'
                     exists = jh.file_exists(f"{strategies_dir}/{strategy_name}/__init__.py")
                 else:
-                    exists = jh.file_exists(f'strategies/{strategy_name}/__init__.py')
+                    # Check user-scoped and shared strategy directories
+                    exists = _find_strategy_exists(strategy_name)
             else:
                 exists = True
 

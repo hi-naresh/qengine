@@ -42,6 +42,9 @@ class BacktestSession(peewee.Model):
     # Execution metrics
     execution_duration = peewee.FloatField(null=True)
 
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
+
     # Timestamps for session management
     created_at = peewee.BigIntegerField()
     updated_at = peewee.BigIntegerField()
@@ -243,11 +246,12 @@ def get_backtest_session_by_id(id: str):
 
 def store_backtest_session(
     id: str,
-    status: str
+    status: str,
+    user_id: str = None
 ) -> None:
     # Check if session already exists
     existing_session = get_backtest_session_by_id(id)
-    
+
     if existing_session:
         # Update existing session - reset it to fresh state
         d = {
@@ -264,6 +268,8 @@ def store_backtest_session(
             'execution_duration': None,
             'updated_at': jh.now_to_timestamp(True)
         }
+        if user_id:
+            d['user_id'] = user_id
         BacktestSession.update(**d).where(BacktestSession.id == id).execute()
     else:
         # Create a new session
@@ -273,6 +279,8 @@ def store_backtest_session(
             'created_at': jh.now_to_timestamp(True),
             'updated_at': jh.now_to_timestamp(True)
         }
+        if user_id:
+            d['user_id'] = user_id
         BacktestSession.insert(**d).execute()
     
 
@@ -348,12 +356,16 @@ def update_backtest_session_results(
     BacktestSession.update(**d).where(BacktestSession.id == id).execute()
 
 
-def get_backtest_sessions(limit: int = 50, offset: int = 0, title_search: str = None, status_filter: str = None, date_filter: str = None) -> list:
+def get_backtest_sessions(limit: int = 50, offset: int = 0, title_search: str = None, status_filter: str = None, date_filter: str = None, user_id: str = None) -> list:
     """
     Returns a list of BacktestSession objects sorted by most recently updated.
-    Excludes draft sessions by default.
+    Excludes draft sessions by default. Filters by user_id if provided.
     """
     query = BacktestSession.select().where(BacktestSession.status != 'draft').order_by(BacktestSession.updated_at.desc())
+
+    # User scoping
+    if user_id:
+        query = query.where(BacktestSession.user_id == user_id)
     
     # Apply title filter (case-insensitive)
     if title_search:
@@ -428,7 +440,7 @@ def purge_backtest_sessions(days_old: int = None) -> int:
         return 0
 
 
-def update_backtest_session_state(id: str, state: dict) -> None:
+def update_backtest_session_state(id: str, state: dict, user_id: str = None) -> None:
     """
     Update or create (upsert) backtest session state. If session doesn't exist, creates as draft.
     """
@@ -437,7 +449,7 @@ def update_backtest_session_state(id: str, state: dict) -> None:
             if key in state['form']:
                 state['form'][key] = jh.normalize_bool(state['form'].get(key))
     existing = BacktestSession.select().where(BacktestSession.id == id).first()
-    
+
     if existing:
         # Update existing session's state
         d = {
@@ -454,6 +466,8 @@ def update_backtest_session_state(id: str, state: dict) -> None:
             'created_at': jh.now_to_timestamp(True),
             'updated_at': jh.now_to_timestamp(True)
         }
+        if user_id:
+            d['user_id'] = user_id
         BacktestSession.insert(**d).execute()
 
 

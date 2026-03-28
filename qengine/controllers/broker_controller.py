@@ -1,9 +1,10 @@
 from typing import Optional
-from fastapi import APIRouter, Header, Body
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 from qengine.info import broker_info, backtesting_exchanges, live_trading_exchanges
 from qengine.enums import brokers
 
@@ -11,10 +12,8 @@ router = APIRouter(prefix="/broker", tags=["Broker"])
 
 
 @router.get("/list")
-def get_brokers(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_brokers(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return all available brokers with metadata."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     result = []
     for key, info in broker_info.items():
@@ -59,14 +58,13 @@ _BROKER_GROUPS = {
 
 
 @router.get("/grouped")
-def get_brokers_grouped(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_brokers_grouped(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return brokers grouped (demo+live under one entry) with connection status."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     # Load saved broker credentials from DB
-    from qengine.controllers.settings_controller import _get_settings_from_db
-    settings = _get_settings_from_db()
+    from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
+    uid = ADMIN_SETTINGS_ID if current_user.is_admin else current_user.effective_user_id
+    settings = _get_settings_from_db(uid)
     saved_brokers = settings.get('brokers', {})
 
     result = []
@@ -110,13 +108,12 @@ def get_brokers_grouped(authorization: Optional[str] = Header(None)) -> JSONResp
 
 
 @router.get("/connected")
-def get_connected_brokers(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_connected_brokers(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return only broker environments that have API keys configured."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
-    from qengine.controllers.settings_controller import _get_settings_from_db
-    settings = _get_settings_from_db()
+    from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
+    uid = ADMIN_SETTINGS_ID if current_user.is_admin else current_user.effective_user_id
+    settings = _get_settings_from_db(uid)
     saved_brokers = settings.get('brokers', {})
 
     result = []
@@ -144,10 +141,8 @@ def get_connected_brokers(authorization: Optional[str] = Header(None)) -> JSONRe
 
 
 @router.get("/backtesting")
-def get_backtesting_brokers(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_backtesting_brokers(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return brokers available for backtesting."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     result = []
     for key in backtesting_exchanges:
@@ -163,10 +158,8 @@ def get_backtesting_brokers(authorization: Optional[str] = Header(None)) -> JSON
 
 
 @router.get("/live-trading")
-def get_live_trading_brokers(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_live_trading_brokers(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return brokers available for live trading."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     result = []
     for key in live_trading_exchanges:
@@ -182,10 +175,8 @@ def get_live_trading_brokers(authorization: Optional[str] = Header(None)) -> JSO
 
 
 @router.get("/info/{broker_id}")
-def get_broker_info(broker_id: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_broker_info(broker_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return detailed info for a specific broker."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     # Find broker by ID (which is the broker_info key)
     info = broker_info.get(broker_id)
@@ -210,10 +201,8 @@ def get_broker_info(broker_id: str, authorization: Optional[str] = Header(None))
 
 
 @router.get("/asset-classes")
-def get_asset_classes(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_asset_classes(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return all supported asset classes across all brokers."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     all_classes = set()
     for info in broker_info.values():
@@ -224,10 +213,8 @@ def get_asset_classes(authorization: Optional[str] = Header(None)) -> JSONRespon
 
 
 @router.get("/asset-classes/{broker_id}")
-def get_broker_asset_classes(broker_id: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_broker_asset_classes(broker_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return asset classes supported by a specific broker."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     info = broker_info.get(broker_id)
     if not info:
@@ -237,10 +224,8 @@ def get_broker_asset_classes(broker_id: str, authorization: Optional[str] = Head
 
 
 @router.get("/cost-model/{broker_id}")
-def get_cost_model(broker_id: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_cost_model(broker_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return cost model settings for a broker (leverage, fees, swap rates)."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     info = broker_info.get(broker_id)
     if not info:
@@ -282,11 +267,9 @@ class UpdateCostModelRequest(BaseModel):
 @router.post("/cost-model/update")
 def update_cost_model(
     json_request: UpdateCostModelRequest,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Update cost model settings for a broker."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     info = broker_info.get(json_request.broker_id)
     if not info:
@@ -315,10 +298,8 @@ def update_cost_model(
 
 
 @router.get("/exchange-types")
-def get_exchange_types(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_exchange_types(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return all supported exchange/asset types."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     return JSONResponse({
         'data': [

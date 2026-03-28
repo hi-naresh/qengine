@@ -4,15 +4,18 @@ import qengine.helpers as jh
 from qengine.services import transformers
 
 
-def get_notification_api_keys() -> JSONResponse:
+def get_notification_api_keys(user_id: str = None) -> JSONResponse:
     from qengine.services.db import database
     database.open_connection()
 
     from qengine.models.NotificationApiKeys import NotificationApiKeys
 
     try:
-        # fetch all the notification api keys
-        api_keys = NotificationApiKeys.select()
+        # fetch notification api keys, filtered by user_id if provided
+        query = NotificationApiKeys.select()
+        if user_id:
+            query = query.where(NotificationApiKeys.user_id == user_id)
+        api_keys = query
     except Exception as e:
         database.close_connection()
         return JSONResponse({
@@ -33,7 +36,8 @@ def get_notification_api_keys() -> JSONResponse:
 def store_notification_api_keys(
         name: str,
         driver: str,
-        fields: dict
+        fields: dict,
+        user_id: str = None,
 ) -> JSONResponse:
     from qengine.services.db import database
     database.open_connection()
@@ -55,6 +59,7 @@ def store_notification_api_keys(
             name=name,
             driver=driver,
             fields=json.dumps(fields),
+            user_id=user_id,
             created_at=jh.now_to_datetime()
         )
     except ValueError as e:
@@ -79,15 +84,18 @@ def store_notification_api_keys(
     }, status_code=200)
 
 
-def delete_notification_api_keys(notification_api_key_id: str) -> JSONResponse:
+def delete_notification_api_keys(notification_api_key_id: str, user_id: str = None) -> JSONResponse:
     from qengine.services.db import database
     database.open_connection()
 
     from qengine.models.NotificationApiKeys import NotificationApiKeys
 
     try:
-        # delete the record
-        NotificationApiKeys.delete().where(NotificationApiKeys.id == notification_api_key_id).execute()
+        # delete the record, scoped to user if user_id provided
+        query = NotificationApiKeys.delete().where(NotificationApiKeys.id == notification_api_key_id)
+        if user_id:
+            query = query.where(NotificationApiKeys.user_id == user_id)
+        query.execute()
     except Exception as e:
         database.close_connection()
         return JSONResponse({

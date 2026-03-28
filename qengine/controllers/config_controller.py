@@ -1,8 +1,7 @@
-from typing import Optional
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 from qengine.services.web import ConfigRequestJson
 import qengine.helpers as jh
 
@@ -10,13 +9,10 @@ router = APIRouter(prefix="/config", tags=["Configuration"])
 
 
 @router.post("/get")
-def get_config(json_request: ConfigRequestJson, authorization: Optional[str] = Header(None)):
+def get_config(json_request: ConfigRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the current configuration
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.modes.data_provider import get_config as gc
 
     return JSONResponse({
@@ -25,13 +21,10 @@ def get_config(json_request: ConfigRequestJson, authorization: Optional[str] = H
 
 
 @router.post("/update")
-def update_config(json_request: ConfigRequestJson, authorization: Optional[str] = Header(None)):
+def update_config(json_request: ConfigRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Update the configuration
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.modes.data_provider import update_config as uc
 
     uc(json_request.current_config)

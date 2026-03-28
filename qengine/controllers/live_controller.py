@@ -1,8 +1,10 @@
 from typing import Optional
-from fastapi import APIRouter, Header, Body
+from fastapi import APIRouter, Body, Depends
 from fastapi.responses import JSONResponse
 
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
+from qengine.services.quota import check_quota, increment_quota
 from qengine.services.multiprocessing import process_manager
 from qengine.services.web import (
     LiveRequestJson,
@@ -29,9 +31,10 @@ def _is_demo_broker(exchange: str) -> bool:
 
 
 @router.post("")
-def live(request_json: LiveRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def live(request_json: LiveRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
+    allowed, msg = check_quota(current_user.effective_user_id, 'live')
+    if not allowed:
+        return JSONResponse({'message': msg}, status_code=403)
 
     jh.validate_cwd()
 
@@ -58,6 +61,7 @@ def live(request_json: LiveRequestJson, authorization: Optional[str] = Header(No
                 'hyperparameters': request_json.hyperparameters,
             }
         },
+        user_id=current_user.effective_user_id,
     )
 
     from qengine.modes import forex_live_mode
@@ -73,16 +77,22 @@ def live(request_json: LiveRequestJson, authorization: Optional[str] = Header(No
         request_json.data_routes,
         trading_mode,
         request_json.hyperparameters,
+        current_user.effective_user_id,
     )
+
+    increment_quota(current_user.effective_user_id, 'live')
 
     mode = 'paper' if is_paper else 'live'
     return JSONResponse({'message': f"Started {mode} trading..."}, status_code=202)
 
 
 @router.post("/cancel")
-def cancel_live(request_json: LiveCancelRequestJson, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def cancel_live(request_json: LiveCancelRequestJson, current_user: CurrentUser = Depends(get_current_user)):
+
+    session = live_session_repository.get_live_session_by_id(request_json.id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Mark as stopping immediately so frontend sees the state change
     live_session_repository.update_live_session_status(request_json.id, live_session_statuses.STOPPING)
@@ -93,9 +103,7 @@ def cancel_live(request_json: LiveCancelRequestJson, authorization: Optional[str
 
 
 @router.post('/logs')
-def get_logs(json_request: GetLogsRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def get_logs(json_request: GetLogsRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
 
     from qengine.modes.forex_live_mode import get_live_logs
     arr = get_live_logs(json_request.id, json_request.type, json_request.start_time)
@@ -107,9 +115,7 @@ def get_logs(json_request: GetLogsRequestJson, authorization: Optional[str] = He
 
 
 @router.post('/orders')
-def get_orders(json_request: GetOrdersRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def get_orders(json_request: GetOrdersRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
 
     from qengine.modes.forex_live_mode import get_live_orders
     arr = get_live_orders(json_request.session_id)
@@ -121,9 +127,7 @@ def get_orders(json_request: GetOrdersRequestJson, authorization: Optional[str] 
 
 
 @router.post('/positions')
-def get_positions(json_request: dict = Body(...), authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def get_positions(json_request: dict = Body(...), current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
 
     session_id = json_request.get('session_id', json_request.get('id', ''))
     from qengine.modes.forex_live_mode import get_live_positions
@@ -136,16 +140,17 @@ def get_positions(json_request: dict = Body(...), authorization: Optional[str] =
 
 
 @router.get('/state/{session_id}')
-def get_session_state(session_id: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_session_state(session_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get comprehensive live session state (account, positions, orders, strategies)."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     from qengine.modes.forex_live_mode import get_live_state
     state = get_live_state(session_id)
 
     # Also get session metadata from DB
     session = live_session_repository.get_live_session_by_id(session_id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
     meta = {}
     if session:
         t = transformers.get_live_session(session)
@@ -167,10 +172,13 @@ def get_session_state(session_id: str, authorization: Optional[str] = Header(Non
 
 
 @router.get('/report/{session_id}')
-def get_session_report(session_id: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_session_report(session_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get post-execution analysis report for a completed session."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    session = live_session_repository.get_live_session_by_id(session_id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     from qengine.modes.forex_live_mode import get_session_report as _get_report
     report = _get_report(session_id)
@@ -181,10 +189,11 @@ def get_session_report(session_id: str, authorization: Optional[str] = Header(No
 @router.post("/sessions")
 def get_live_sessions(
     request_json: GetLiveSessionsRequestJson = Body(default=GetLiveSessionsRequestJson()),
-    authorization: Optional[str] = Header(None)
+    current_user: CurrentUser = Depends(get_current_user)
 ):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    # Admins see all sessions (unless impersonating); regular users see only their own
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
 
     sessions = live_session_repository.get_live_sessions(
         limit=request_json.limit,
@@ -192,10 +201,15 @@ def get_live_sessions(
         title_search=request_json.title_search,
         status_filter=request_json.status_filter,
         date_filter=request_json.date_filter,
-        mode_filter=request_json.mode_filter
+        mode_filter=request_json.mode_filter,
+        user_id=user_id,
     )
 
     transformed_sessions = [transformers.get_live_session(session) for session in sessions]
+
+    # Add owner labels for admin view
+    if not user_id:
+        transformers.enrich_with_owner(transformed_sessions, sessions)
 
     return JSONResponse({
         'sessions': transformed_sessions,
@@ -204,9 +218,7 @@ def get_live_sessions(
 
 
 @router.post("/sessions/{session_id}")
-def get_live_session_by_id(session_id: str, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def get_live_session_by_id(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
 
     session = live_session_repository.get_live_session_by_id(session_id)
 
@@ -214,6 +226,10 @@ def get_live_session_by_id(session_id: str, authorization: Optional[str] = Heade
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     transformed_session = transformers.get_live_session(session)
 
@@ -223,9 +239,7 @@ def get_live_session_by_id(session_id: str, authorization: Optional[str] = Heade
 
 
 @router.post("/sessions/{session_id}/remove")
-def remove_live_session(session_id: str, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def remove_live_session(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
 
     session = live_session_repository.get_live_session_by_id(session_id)
 
@@ -233,6 +247,10 @@ def remove_live_session(session_id: str, authorization: Optional[str] = Header(N
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     result = live_session_repository.delete_live_session(session_id)
 
@@ -250,10 +268,8 @@ def remove_live_session(session_id: str, authorization: Optional[str] = Header(N
 def update_session_notes(
     session_id: str,
     request_json: UpdateLiveSessionNotesRequestJson,
-    authorization: Optional[str] = Header(None)
+    current_user: CurrentUser = Depends(get_current_user)
 ):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = live_session_repository.get_live_session_by_id(session_id)
 
@@ -261,6 +277,10 @@ def update_session_notes(
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     live_session_repository.update_live_session_notes(
         session_id,
@@ -275,9 +295,12 @@ def update_session_notes(
 
 
 @router.post("/update-state")
-def update_state(request_json: UpdateLiveSessionStateRequestJson, authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def update_state(request_json: UpdateLiveSessionStateRequestJson, current_user: CurrentUser = Depends(get_current_user)):
+
+    session = live_session_repository.get_live_session_by_id(request_json.id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     live_session_repository.upsert_live_session_state(request_json.id, request_json.state)
 
@@ -287,9 +310,7 @@ def update_state(request_json: UpdateLiveSessionStateRequestJson, authorization:
 
 
 @router.post("/purge-sessions")
-def purge_sessions(request_json: dict = Body(...), authorization: Optional[str] = Header(None)):
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def purge_sessions(request_json: dict = Body(...), current_user: CurrentUser = Depends(require_admin)):
 
     days_old = request_json.get('days_old', None)
 
@@ -308,16 +329,18 @@ def get_equity_curve(
     to_ms: Optional[int] = None,
     timeframe: str = 'auto',
     max_points: int = 1000,
-    authorization: Optional[str] = Header(None)
+    current_user: CurrentUser = Depends(get_current_user)
 ) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     from qengine.repositories import live_equity_repository
 
+    session = live_session_repository.get_live_session_by_id(session_id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
+
     try:
         if from_ms is None:
-            session = live_session_repository.get_live_session_by_id(session_id)
             if session and getattr(session, 'created_at', None):
                 from_ms = session.created_at
             else:

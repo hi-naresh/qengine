@@ -1,11 +1,11 @@
 import os
 import shutil
-from typing import Optional
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 from qengine.services.web import FeedbackRequestJson, ReportExceptionRequestJson, HelpSearchRequestJson
 from qengine.services.multiprocessing import process_manager
 import qengine.helpers as jh
@@ -19,26 +19,20 @@ class TestNotificationRequestJson(BaseModel):
 
 
 @router.post("/feedback")
-def feedback(json_request: FeedbackRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def feedback(json_request: FeedbackRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Send feedback to the QEngine team
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services import upstream_api
     return upstream_api.feedback(json_request.description, json_request.email)
 
 
 @router.post("/report-exception")
 def report_exception(json_request: ReportExceptionRequestJson,
-                     authorization: Optional[str] = Header(None)) -> JSONResponse:
+                     current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Report an exception to the QEngine team
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services import upstream_api
     
     return upstream_api.report_exception(
@@ -53,13 +47,10 @@ def report_exception(json_request: ReportExceptionRequestJson,
 
 
 @router.post("/general-info")
-def general_info(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def general_info(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Get general information about the system
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services.general_info import get_general_info
 
     try:
@@ -77,26 +68,20 @@ def general_info(authorization: Optional[str] = Header(None)) -> JSONResponse:
 
 
 @router.post("/active-workers")
-def active_workers(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def active_workers(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Get a list of active workers
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     return JSONResponse({
         'data': list(process_manager.active_workers)
     }, status_code=200)
 
 
 @router.post("/help-search")
-def help_search(json_request: HelpSearchRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def help_search(json_request: HelpSearchRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Proxy endpoint for help center search to avoid CORS issues
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-    
     import requests
     from qengine.info import QENGINE_API_URL
     from qengine.services.auth import get_access_token
@@ -128,10 +113,7 @@ def help_search(json_request: HelpSearchRequestJson, authorization: Optional[str
 
 
 @router.post("/clear-cache")
-def clear_cache(authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+def clear_cache(current_user: CurrentUser = Depends(require_admin)) -> JSONResponse:
     from qengine.services.cache import cache
     cache.flush()
 
@@ -142,10 +124,7 @@ def clear_cache(authorization: Optional[str] = Header(None)) -> JSONResponse:
 
 
 @router.post("/flush-redis")
-def flush_redis(authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+def flush_redis(current_user: CurrentUser = Depends(require_admin)) -> JSONResponse:
     try:
         from qengine.services.redis import sync_redis
         if sync_redis:
@@ -169,10 +148,7 @@ def flush_redis(authorization: Optional[str] = Header(None)) -> JSONResponse:
 
 
 @router.post("/clear-logs")
-def clear_logs(authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+def clear_logs(current_user: CurrentUser = Depends(require_admin)) -> JSONResponse:
     log_dirs = [
         'storage/logs/backtest-mode',
         'storage/logs/optimize-mode',
@@ -201,10 +177,7 @@ def clear_logs(authorization: Optional[str] = Header(None)) -> JSONResponse:
 
 
 @router.get("/storage-info")
-def storage_info(authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+def storage_info(current_user: CurrentUser = Depends(require_admin)) -> JSONResponse:
     def dir_size(path):
         total = 0
         if os.path.isdir(path):
@@ -251,10 +224,7 @@ def storage_info(authorization: Optional[str] = Header(None)) -> JSONResponse:
 
 @router.post("/test-notification")
 def test_notification(json_request: TestNotificationRequestJson,
-                      authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
+                      current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     import requests as http_requests
 
     driver = json_request.driver

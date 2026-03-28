@@ -49,7 +49,8 @@ def run(
         fast_mode: bool = False,
         benchmark: bool = False,
         hyperparameters: dict = None,
-        cost_model: bool = True
+        cost_model: bool = True,
+        user_id: str = None
 ) -> None:
     if not jh.is_unit_testing():
         # at every second, we check to see if it's time to execute stuff
@@ -73,7 +74,7 @@ def run(
 
     _execute_backtest(
         client_id, debug_mode, user_config, exchange, routes, data_routes, start_date, finish_date, candles, chart,
-        tradingview, csv, json, fast_mode, benchmark, hyperparameters
+        tradingview, csv, json, fast_mode, benchmark, hyperparameters, user_id=user_id
     )
 
 
@@ -93,7 +94,8 @@ def _execute_backtest(
         json: bool = False,
         fast_mode: bool = False,
         benchmark: bool = False,
-        hyperparameters: dict = None
+        hyperparameters: dict = None,
+        user_id: str = None
 ):
     """
     Executes the backtest that has been initiated from within the dashboard. The purpose of extracting these
@@ -133,7 +135,8 @@ def _execute_backtest(
         from qengine.models.BacktestSession import store_backtest_session, update_backtest_session_state
         store_backtest_session(
             id=client_id,
-            status='running'
+            status='running',
+            user_id=user_id
         )
         # Persist route/config info so history labels show strategy/symbol/dates
         try:
@@ -209,7 +212,7 @@ def _execute_backtest(
             # retry the backtest simulation
             _execute_backtest(
                 client_id, debug_mode, user_config, exchange, routes, data_routes, start_date, finish_date, candles,
-                chart, tradingview, csv, json, fast_mode, benchmark, hyperparameters
+                chart, tradingview, csv, json, fast_mode, benchmark, hyperparameters, user_id=user_id
             )
             return
         else:
@@ -243,8 +246,9 @@ def _execute_backtest(
             key = f"{r.exchange}-{r.symbol}"
             if key not in strategy_codes:
                 try:
-                    strategy_path = f'strategies/{r.strategy_name}/__init__.py'
-                    if os.path.exists(strategy_path):
+                    from qengine.services.strategy_handler import find_strategy_file
+                    strategy_path = find_strategy_file(r.strategy_name)
+                    if strategy_path and os.path.exists(strategy_path):
                         with open(strategy_path, 'r') as f:
                             content = f.read()
                         strategy_codes[key] = content

@@ -1,8 +1,7 @@
-from typing import Optional
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from starlette.responses import JSONResponse
 from qengine.repositories import candle_repository
-from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 from qengine.services.multiprocessing import process_manager
 from qengine.services.web import ImportCandlesRequestJson, CancelRequestJson, GetCandlesRequestJson, DeleteCandlesRequestJson
 import qengine.helpers as jh
@@ -11,14 +10,11 @@ router = APIRouter(prefix="/candles", tags=["Candles"])
 
 
 @router.post("/import")
-def import_candles(request_json: ImportCandlesRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def import_candles(request_json: ImportCandlesRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Import candles for a specific exchange and symbol
     """
     jh.validate_cwd()
-
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     from qengine.modes import import_candles_mode
 
@@ -38,13 +34,10 @@ def import_candles(request_json: ImportCandlesRequestJson, authorization: Option
 
 
 @router.post("/cancel-import")
-def cancel_import_candles(request_json: CancelRequestJson, authorization: Optional[str] = Header(None)):
+def cancel_import_candles(request_json: CancelRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Cancel an import candles process
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     process_manager.cancel_process(request_json.id)
 
     return JSONResponse({'message': f'Candles process with ID of {request_json.id} was requested for termination'},
@@ -52,13 +45,10 @@ def cancel_import_candles(request_json: CancelRequestJson, authorization: Option
 
 
 @router.post("/clear-cache")
-def clear_candles_database_cache(authorization: Optional[str] = Header(None)):
+def clear_candles_database_cache(current_user: CurrentUser = Depends(require_admin)):
     """
     Clear the candles database cache
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     from qengine.services.cache import cache
     cache.flush()
 
@@ -69,13 +59,10 @@ def clear_candles_database_cache(authorization: Optional[str] = Header(None)):
 
 
 @router.post("/get")
-def get_candles(json_request: GetCandlesRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_candles(json_request: GetCandlesRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Get candles for a specific exchange, symbol, and timeframe
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     jh.validate_cwd()
 
     from qengine.modes.data_provider import get_candles as gc
@@ -89,13 +76,10 @@ def get_candles(json_request: GetCandlesRequestJson, authorization: Optional[str
 
 
 @router.post("/existing")
-def get_existing_candles(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_existing_candles(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Get all existing candles in the database
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-    
     try:
         data = candle_repository.get_existing_candles()
         return JSONResponse({'data': data}, status_code=200)
@@ -106,13 +90,10 @@ def get_existing_candles(authorization: Optional[str] = Header(None)) -> JSONRes
 
 
 @router.post("/delete")
-def delete_candles(json_request: DeleteCandlesRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def delete_candles(json_request: DeleteCandlesRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
     Delete candles for a specific exchange and symbol
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     try:
         candle_repository.delete_candles_from_db(json_request.exchange, json_request.symbol)
         return JSONResponse({'message': 'Candles deleted successfully'}, status_code=200)
@@ -121,13 +102,10 @@ def delete_candles(json_request: DeleteCandlesRequestJson, authorization: Option
 
 
 @router.post("/delete-all")
-def delete_all_candles(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def delete_all_candles(current_user: CurrentUser = Depends(require_admin)) -> JSONResponse:
     """
     Delete ALL imported candle data from the database.
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     try:
         from qengine.models.Candle import Candle
         count = Candle.select().count()

@@ -11,6 +11,8 @@ class Option(peewee.Model):
     updated_at = peewee.BigIntegerField()
     type = peewee.CharField()
     json = peewee.TextField()
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
 
     class Meta:
         from qengine.services.db import database

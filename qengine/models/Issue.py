@@ -14,6 +14,8 @@ class Issue(peewee.Model):
     author = peewee.CharField(max_length=255, null=True)
     priority = peewee.CharField(default='medium')  # low, medium, high, critical
     labels = peewee.TextField(null=True)  # comma-separated labels
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
     created_at = peewee.BigIntegerField()
     updated_at = peewee.BigIntegerField()
 

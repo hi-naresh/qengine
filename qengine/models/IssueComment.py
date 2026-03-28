@@ -12,6 +12,8 @@ class IssueComment(peewee.Model):
     parent_id = peewee.UUIDField(null=True)  # null = top-level comment, set = reply
     author = peewee.CharField(max_length=255, null=True)
     body = peewee.TextField()
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
     created_at = peewee.BigIntegerField()
     updated_at = peewee.BigIntegerField()
 

@@ -48,6 +48,7 @@ def run(
     data_routes: List[Dict[str, str]],
     trading_mode: str,
     hyperparameters: dict = None,
+    user_id: str = None,
 ) -> None:
     """Main entry point for forex live/paper trading."""
     # Demo brokers route orders to the broker's practice API, so they must
@@ -93,7 +94,7 @@ def run(
 
         # Get the live driver for price streaming and (in live mode) order execution
         _log(client_id, f'Loading live driver for {exchange}...')
-        driver = _get_live_driver(exchange, exchange_api_key_id)
+        driver = _get_live_driver(exchange, exchange_api_key_id, user_id=user_id)
         _log(client_id, f'Driver loaded: {type(driver).__name__}, is_demo={getattr(driver, "_is_demo", "?")}')
         _log(client_id, f'REST URL: {getattr(driver, "_rest_url", "?")}')
 
@@ -209,7 +210,7 @@ def _ensure_notifications_config(user_config: dict):
         config['env']['notifications']['events'] = defaults['events']
 
 
-def _get_live_driver(exchange_name: str, api_key_id: str):
+def _get_live_driver(exchange_name: str, api_key_id: str, user_id: str = None):
     """Instantiate and configure the appropriate live driver."""
     from qengine.live_drivers import live_drivers
 
@@ -241,7 +242,7 @@ def _get_live_driver(exchange_name: str, api_key_id: str):
     # Also try loading from DB-stored broker settings (set via UI)
     db_settings = {}
     try:
-        from qengine.controllers.settings_controller import _get_settings_from_db
+        from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
         from qengine.enums import brokers as broker_enums
         # Map exchange name to broker enum ID
         _name_to_id = {
@@ -251,7 +252,7 @@ def _get_live_driver(exchange_name: str, api_key_id: str):
         }
         broker_id = _name_to_id.get(exchange_name)
         if broker_id:
-            db_settings = _get_settings_from_db().get('brokers', {}).get(broker_id, {})
+            db_settings = _get_settings_from_db(ADMIN_SETTINGS_ID).get('brokers', {}).get(broker_id, {})
             if db_settings.get('api_key'):
                 api_key = api_key or db_settings['api_key']
                 account_id = account_id or db_settings.get('account_id', '')
