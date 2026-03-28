@@ -51,6 +51,21 @@ def sync_publish(event: str, msg, compression: bool = False):
         jh.terminal_debug(f"Redis publish error: {e}")
 
 
+def publish_admin_notification(notification: dict):
+    """Publish a notification event for admin users. Does not depend on app_mode()."""
+    try:
+        sync_redis.publish(
+            f"{ENV_VALUES['APP_PORT']}:channel:1", json.dumps({
+                'id': os.getpid(),
+                'event': 'system.admin_notification',
+                'is_compressed': False,
+                'data': notification
+            }, ignore_nan=True, cls=NpEncoder)
+        )
+    except Exception as e:
+        jh.terminal_debug(f"Redis admin notification error: {e}")
+
+
 async def async_publish(event: str, msg, compression: bool = False):
     if jh.is_unit_testing():
         raise EnvironmentError('async_publish() should be NOT called during testing. There must be something wrong')

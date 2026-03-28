@@ -13,6 +13,28 @@ import math
 import qengine.helpers as jh
 
 
+def enrich_with_owner(items: list, sessions) -> list:
+    """Add owner_username to a list of transformed dicts by bulk-resolving user_ids.
+    `sessions` should be the original model instances (same order as items)."""
+    user_ids = set()
+    for s in sessions:
+        uid = getattr(s, 'user_id', None)
+        if uid:
+            user_ids.add(str(uid))
+
+    if not user_ids:
+        return items
+
+    from qengine.models.User import get_users_by_ids
+    user_map = get_users_by_ids(list(user_ids))
+
+    for item, session in zip(items, sessions):
+        uid = str(session.user_id) if getattr(session, 'user_id', None) else None
+        item['owner_username'] = user_map.get(uid) if uid else None
+
+    return items
+
+
 def get_exchange_api_key(exchange_api_key: ExchangeApiKeys) -> dict:
     result = {
         'id': str(exchange_api_key.id),
@@ -61,6 +83,7 @@ def get_optimization_session(session: OptimizationSession) -> dict:
     """
     return {
         'id': str(session.id),
+        'user_id': str(session.user_id) if getattr(session, 'user_id', None) else None,
         'status': session.status,
         'completed_trials': session.completed_trials,
         'total_trials': session.total_trials,
@@ -179,6 +202,7 @@ def get_backtest_session(session: BacktestSession) -> dict:
 
     result = {
         'id': str(session.id),
+        'user_id': str(session.user_id) if getattr(session, 'user_id', None) else None,
         'status': status or session.status,
         'is_active': is_active,
         'created_at': session.created_at,
@@ -272,6 +296,7 @@ def get_live_session(session: LiveSession) -> dict:
 
     result = {
         'id': str(session.id),
+        'user_id': str(session.user_id) if getattr(session, 'user_id', None) else None,
         'status': status or session.status,
         'is_active': is_active,
         'session_mode': session.session_mode,
@@ -299,6 +324,7 @@ def get_monte_carlo_session(session: MonteCarloSession) -> dict:
     
     return {
         'id': str(session.id),
+        'user_id': str(session.user_id) if getattr(session, 'user_id', None) else None,
         'status': session.status,
         'has_trades': trades_session is not None,
         'has_candles': candles_session is not None,

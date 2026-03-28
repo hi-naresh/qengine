@@ -65,10 +65,9 @@ class OandaMain(CandleExchange):
     def _load_from_db(self, field: str) -> str:
         """Load broker credential from DB settings (set via UI)."""
         try:
-            from qengine.controllers.settings_controller import _get_settings_from_db
-            settings = _get_settings_from_db()
+            from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
+            settings = _get_settings_from_db(ADMIN_SETTINGS_ID)
             brokers = settings.get('brokers', {})
-            # Check both OANDA and OANDA Demo
             for broker_id in ('OANDA', 'OANDA Demo'):
                 conf = brokers.get(broker_id, {})
                 val = conf.get(field, '')

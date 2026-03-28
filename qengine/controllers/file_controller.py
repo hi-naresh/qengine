@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Query, Header, UploadFile, Form, File
-from typing import Optional
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, CurrentUser
 from qengine.modes import data_provider
 from qengine.services.web import ImportApiKeyRequestJson, LoginRequestJson
 from qengine.services.env import ENV_VALUES
@@ -14,6 +15,7 @@ def download(mode: str, file_type: str, session_id: str, token: str = Query(...)
     """
     Download files such as logs or other generated files.
     Log files require session_id because there is one log per each session. Except for the optimize mode.
+    Note: Uses query-param token (not header) because browser downloads can't set headers.
     """
     if not authenticator.is_valid_token(token):
         return authenticator.unauthorized_response()
@@ -24,13 +26,11 @@ def download(mode: str, file_type: str, session_id: str, token: str = Query(...)
 @router.post("/download-api-keys")
 def download_api_keys(
     request_json: LoginRequestJson,
-    authorization: Optional[str] = Header(None)
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Download exchange API Keys - requires password verification
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     # Verify password for this sensitive operation
     if request_json.password != ENV_VALUES['PASSWORD']:
@@ -44,13 +44,11 @@ def download_api_keys(
 @router.post("/import-api-keys")
 async def import_api_keys(
     request_json: ImportApiKeyRequestJson,
-    authorization: Optional[str] = Header(None)
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """
     Import exchange API keys from CSV text received in the request body.
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     try:
         # remove leading/trailing whitespace
@@ -64,7 +62,7 @@ async def import_api_keys(
             }
 
         # import exchange API keys
-        result = data_provider.import_api_keys_from_csv(csv_content)
+        result = data_provider.import_api_keys_from_csv(csv_content, user_id=current_user.effective_user_id)
 
         return result
     except Exception as e:

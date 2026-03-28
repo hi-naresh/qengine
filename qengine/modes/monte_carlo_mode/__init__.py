@@ -33,6 +33,7 @@ def run(
     pipeline_params: Optional[dict],
     state: dict,
     risk_config: Optional[dict] = None,
+    user_id: Optional[str] = None,
 ) -> None:
     if jh.python_version() == (3, 13):
         raise ValueError(
@@ -77,8 +78,9 @@ def run(
         key = f"{r.exchange}-{r.symbol}"
         if key not in strategy_codes:
             try:
-                strategy_path = f'strategies/{r.strategy_name}/__init__.py'
-                if os.path.exists(strategy_path):
+                from qengine.services.strategy_handler import find_strategy_file
+                strategy_path = find_strategy_file(r.strategy_name)
+                if strategy_path and os.path.exists(strategy_path):
                     with open(strategy_path, 'r') as f:
                         content = f.read()
                     strategy_codes[key] = content
@@ -97,7 +99,8 @@ def run(
             id=session_id,
             status='running',
             state=state,
-            strategy_codes=strategy_codes if strategy_codes else None
+            strategy_codes=strategy_codes if strategy_codes else None,
+            user_id=user_id,
         )
         if jh.is_debugging():
             jh.debug(f"Created new Monte Carlo session with ID: {session_id}")

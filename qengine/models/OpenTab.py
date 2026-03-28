@@ -18,7 +18,10 @@ class OpenTab(peewee.Model):
     
     # Order index for tab ordering within the module
     order_index = peewee.IntegerField()
-    
+
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
+
     # Timestamps
     created_at = peewee.BigIntegerField()
     updated_at = peewee.BigIntegerField()

@@ -1,11 +1,25 @@
+import time
 from typing import List, Dict, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 fastapi_app = FastAPI()
+
+
+@fastapi_app.on_event("startup")
+def _migrate_strategies_on_startup():
+    """Run one-time strategy directory migration and ensure shared examples exist."""
+    try:
+        from qengine.services.strategy_handler import migrate_existing_strategies, ensure_shared_example
+        migrate_existing_strategies()
+        ensure_shared_example()
+    except Exception:
+        pass  # Non-fatal: migration can be retried
+
 
 origins = [
     "http://localhost:9000",
@@ -21,6 +35,53 @@ fastapi_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log every HTTP request with user context extracted from JWT."""
+
+    # Paths that are too noisy to log at info level
+    _SKIP_PATHS = {'/ws', '/favicon.ico'}
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000
+
+        path = request.url.path
+        if path in self._SKIP_PATHS:
+            return response
+
+        # Extract user from JWT (cheap — no DB call)
+        user_id = None
+        username = None
+        token = request.headers.get('authorization', '')
+        if token:
+            try:
+                from qengine.services import auth as authenticator
+                payload = authenticator.decode_jwt(token)
+                if payload:
+                    user_id = payload.get('user_id')
+                    username = payload.get('username')
+            except Exception:
+                pass
+
+        ip = request.client.host if request.client else None
+
+        from qengine.services.audit_logger import log_request
+        log_request(
+            method=request.method,
+            path=path,
+            status=response.status_code,
+            duration_ms=duration_ms,
+            user_id=user_id,
+            username=username,
+            ip=ip,
+        )
+        return response
+
+
+fastapi_app.add_middleware(RequestLoggingMiddleware)
 
 
 class BacktestRequestJson(BaseModel):
@@ -140,6 +201,41 @@ class ConfigRequestJson(BaseModel):
 
 class LoginRequestJson(BaseModel):
     password: str
+    username: Optional[str] = None
+
+
+class RegisterRequestJson(BaseModel):
+    username: str
+    password: str
+    name: Optional[str] = ''
+
+
+class UpdateProfileRequestJson(BaseModel):
+    name: Optional[str] = None
+    password: Optional[str] = None
+    current_password: Optional[str] = None
+
+
+class DeleteAccountRequestJson(BaseModel):
+    password: str
+    delete_data: bool = True
+
+
+class ImpersonateRequestJson(BaseModel):
+    user_id: str
+
+
+class UpdateUserQuotaRequestJson(BaseModel):
+    user_id: str
+    feature: str
+    max_runs: int
+
+
+class UpdateUserRequestJson(BaseModel):
+    user_id: str
+    is_active: Optional[bool] = None
+    role: Optional[str] = None
+    allowed_features: Optional[list] = None
 
 
 class LoginMarketplaceRequestJson(BaseModel):
@@ -381,3 +477,32 @@ class AIRefineAndSaveRequestJson(BaseModel):
     name: str  # strategy name (folder name)
     feedback: str
     backtest_results: Optional[dict] = None
+
+
+class AdminCreateUserRequestJson(BaseModel):
+    username: str
+    password: str
+    role: str = 'user'
+
+
+class AdminDeleteUserRequestJson(BaseModel):
+    user_id: str
+    delete_data: bool = True
+
+
+class AdminResetPasswordRequestJson(BaseModel):
+    user_id: str
+    new_password: str
+
+
+class QuotaRequestJson(BaseModel):
+    feature: str
+    requested_runs: int
+    reason: str = ''
+
+
+class ReviewQuotaRequestJson(BaseModel):
+    request_id: str
+    status: str  # 'approved' or 'denied'
+    admin_note: str = ''
+    approved_runs: Optional[int] = None  # admin can set different limit than requested

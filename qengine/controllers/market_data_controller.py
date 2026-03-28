@@ -1,8 +1,8 @@
 from typing import Optional
-from fastapi import APIRouter, Header, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
-from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, CurrentUser
 from qengine.core.market_hours import market_hours
 from qengine.core.instruments import instrument_registry
 import qengine.helpers as jh
@@ -11,10 +11,8 @@ router = APIRouter(prefix="/market-data", tags=["Market Data"])
 
 
 @router.get("/session")
-def get_current_session(authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_current_session(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return the current forex trading session."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     now_ms = jh.now(force_fresh=True)
     session = market_hours.current_session(now_ms)
@@ -28,10 +26,8 @@ def get_current_session(authorization: Optional[str] = Header(None)) -> JSONResp
 
 
 @router.get("/market-hours/{symbol}")
-def get_market_hours(symbol: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_market_hours(symbol: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return market open/close status and session info for a symbol."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     now_ms = jh.now(force_fresh=True)
     is_open = market_hours.is_market_open(symbol, now_ms)
@@ -54,10 +50,8 @@ def get_market_hours(symbol: str, authorization: Optional[str] = Header(None)) -
 
 
 @router.get("/instrument/{symbol}")
-def get_instrument_info(symbol: str, authorization: Optional[str] = Header(None)) -> JSONResponse:
+def get_instrument_info(symbol: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return instrument metadata (pip size, contract size, etc.)."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     inst = instrument_registry.get(symbol)
     if inst:
@@ -102,11 +96,9 @@ def get_instrument_info(symbol: str, authorization: Optional[str] = Header(None)
 @router.get("/instruments")
 def list_instruments(
     asset_class: Optional[str] = Query(None),
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """List all registered instruments, optionally filtered by asset class."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     instruments = []
     for symbol, inst in instrument_registry._instruments.items():
@@ -128,11 +120,9 @@ def list_instruments(
 def get_pip_value(
     symbol: str,
     lot_size: float = Query(default=1.0),
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Calculate pip value for a given symbol and lot size."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     pip_size = instrument_registry.get_pip_size(symbol)
     contract_size = instrument_registry.get_contract_size(symbol)
@@ -164,11 +154,9 @@ class CalculatorRequest(BaseModel):
 @router.post("/calculate")
 def calculate(
     req: CalculatorRequest,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Trading calculator: pip value, margin, position size, risk/reward."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     from qengine.info import broker_info
 

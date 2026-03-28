@@ -14,3 +14,5 @@ from .ExchangeApiKeys import ExchangeApiKeys
 from .BacktestSession import BacktestSession
 from .OpenTab import OpenTab
 from .LiveEquitySnapshot import LiveEquitySnapshot
+from .User import User
+from .UserQuota import UserQuota

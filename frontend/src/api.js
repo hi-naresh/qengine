@@ -45,7 +45,9 @@ async function request(method, path, body = null) {
 
 export const api = {
   // Auth
-  login: (password) => request('POST', '/auth', { password }),
+  login: (username, password) => request('POST', '/auth', { username, password }),
+  register: (username, password, name) => request('POST', '/auth/register', { username, password, name }),
+  getMe: () => request('GET', '/auth/me'),
 
   // System
   getGeneralInfo: () => request('POST', '/system/general-info'),
@@ -221,6 +223,26 @@ export const api = {
   runPlayground: (data) => request('POST', '/playground/run', data),
   cancelPlayground: (id) => request('POST', '/playground/cancel', { id }),
 
+  // Profile / Account
+  updateProfile: (data) => request('POST', '/auth/update-profile', data),
+  deleteMyData: (password) => request('POST', '/auth/delete-my-data', { password }),
+  deleteAccount: (password, deleteData = true) => request('POST', '/auth/delete-account', { password, delete_data: deleteData }),
+
+  // Admin / Users
+  getUsers: () => request('GET', '/auth/users'),
+  updateUser: (data) => request('POST', '/auth/users/update', data),
+  updateUserQuota: (data) => request('POST', '/auth/users/quota', data),
+  impersonate: (userId) => request('POST', '/auth/impersonate', { user_id: userId }),
+  stopImpersonate: () => request('POST', '/auth/stop-impersonate'),
+  adminCreateUser: (data) => request('POST', '/auth/users/create', data),
+  adminDeleteUser: (userId, deleteData = true) => request('POST', '/auth/users/delete', { user_id: userId, delete_data: deleteData }),
+  adminResetPassword: (userId, newPassword) => request('POST', '/auth/users/reset-password', { user_id: userId, new_password: newPassword }),
+
+  // Quota Requests
+  submitQuotaRequest: (data) => request('POST', '/auth/quota-request', data),
+  getQuotaRequests: () => request('GET', '/auth/quota-requests'),
+  reviewQuotaRequest: (data) => request('POST', '/auth/quota-requests/review', data),
+
   // Issues
   getIssues: (params) => request('POST', '/issues/list', params || {}),
   createIssue: (data) => request('POST', '/issues/create', data),
@@ -237,12 +259,47 @@ export function setToken(token) {
   localStorage.setItem('te_token', token)
 }
 
+export function setAuth(token, user) {
+  localStorage.setItem('te_token', token)
+  if (user) localStorage.setItem('te_user', JSON.stringify(user))
+}
+
+export function getCurrentUser() {
+  try {
+    return JSON.parse(localStorage.getItem('te_user') || 'null')
+  } catch { return null }
+}
+
 export function isAuthenticated() {
   return !!localStorage.getItem('te_token')
 }
 
+export function isAdmin() {
+  const user = getCurrentUser()
+  return user?.role === 'admin'
+}
+
+export function isImpersonating() {
+  const user = getCurrentUser()
+  return !!user?.impersonating
+}
+
+export function getUserFeatures() {
+  const user = getCurrentUser()
+  if (!user) return []
+  if (user.role === 'admin') return null // null = all features
+  return user.allowed_features || ['dashboard', 'strategies', 'backtest', 'settings', 'issues']
+}
+
+export function hasFeature(feature) {
+  const features = getUserFeatures()
+  if (features === null) return true // admin
+  return features.includes(feature)
+}
+
 export function logout() {
   localStorage.removeItem('te_token')
+  localStorage.removeItem('te_user')
 }
 
 /**

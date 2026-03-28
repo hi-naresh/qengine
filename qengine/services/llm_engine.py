@@ -26,7 +26,7 @@ class LLMEngine:
         self.model = model
         self.temperature = temperature
 
-    def configure_from_env(self) -> bool:
+    def configure_from_env(self, user_id: str = None) -> bool:
         """Auto-configure from environment variables, .env file, or DB settings (UI)."""
         from qengine.services.env import ENV_VALUES
 
@@ -57,8 +57,8 @@ class LLMEngine:
 
         # Fallback: check DB-stored LLM settings (configured via UI)
         try:
-            from qengine.controllers.settings_controller import _get_settings_from_db
-            settings = _get_settings_from_db()
+            from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
+            settings = _get_settings_from_db(user_id or ADMIN_SETTINGS_ID)
             llm_conf = settings.get('llm', {})
             if llm_conf.get('api_key') and llm_conf.get('provider'):
                 self.provider = llm_conf['provider']

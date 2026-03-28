@@ -6,15 +6,18 @@ import qengine.helpers as jh
 from qengine.services import transformers
 
 
-def get_exchange_api_keys() -> JSONResponse:
+def get_exchange_api_keys(user_id: str = None) -> JSONResponse:
     from qengine.services.db import database
     database.open_connection()
 
     from qengine.models.ExchangeApiKeys import ExchangeApiKeys
 
     try:
-        # fetch all the api keys
-        api_keys = ExchangeApiKeys.select()
+        # fetch api keys, filtered by user_id if provided
+        query = ExchangeApiKeys.select()
+        if user_id:
+            query = query.where(ExchangeApiKeys.user_id == user_id)
+        api_keys = query
     except Exception as e:
         database.close_connection()
         return JSONResponse({
@@ -40,6 +43,7 @@ def store_exchange_api_keys(
         additional_fields: Optional[dict] = None,
         general_notifications_id: Optional[str] = None,
         error_notifications_id: Optional[str] = None,
+        user_id: str = None,
 ) -> JSONResponse:
     # validate the exchange
     if exchange not in live_trading_exchanges:
@@ -74,6 +78,7 @@ def store_exchange_api_keys(
             api_key=api_key,
             api_secret=api_secret,
             additional_fields=json.dumps(additional_fields),
+            user_id=user_id,
             created_at=jh.now_to_datetime(),
             general_notifications_id=general_notifications_id if general_notifications_id else None,
             error_notifications_id=error_notifications_id if error_notifications_id else None
@@ -100,15 +105,18 @@ def store_exchange_api_keys(
     }, status_code=200)
 
 
-def delete_exchange_api_keys(exchange_api_key_id: str) -> JSONResponse:
+def delete_exchange_api_keys(exchange_api_key_id: str, user_id: str = None) -> JSONResponse:
     from qengine.services.db import database
     database.open_connection()
 
     from qengine.models.ExchangeApiKeys import ExchangeApiKeys
 
     try:
-        # delete the record
-        ExchangeApiKeys.delete().where(ExchangeApiKeys.id == exchange_api_key_id).execute()
+        # delete the record, scoped to user if user_id provided
+        query = ExchangeApiKeys.delete().where(ExchangeApiKeys.id == exchange_api_key_id)
+        if user_id:
+            query = query.where(ExchangeApiKeys.user_id == user_id)
+        query.execute()
     except Exception as e:
         database.close_connection()
         return JSONResponse({

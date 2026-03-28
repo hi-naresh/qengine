@@ -1,16 +1,13 @@
-from typing import Optional
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from qengine.helpers import get_os
-from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, CurrentUser
 from qengine.services.lsp import LSP_DEFAULT_PORT
 
 router = APIRouter(prefix='/lsp-config', tags=['LSP Configuration'])
 
 @router.get("")
-def get_lsp_config(authorization: Optional[str] = Header(None))->JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def get_lsp_config(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
 
     from qengine.services.env import ENV_VALUES
 

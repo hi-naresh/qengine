@@ -2,7 +2,7 @@
   <div>
     <div class="text-center mb-6">
       <h1 class="text-2xl font-bold">Settings</h1>
-      <p class="text-sm text-surface-500 mt-1">LLM providers, broker API keys, and application configuration</p>
+      <p class="text-sm text-surface-500 mt-1">Engine configuration, broker connectivity, AI providers, and system preferences</p>
     </div>
 
     <!-- Settings Tabs -->
@@ -13,6 +13,130 @@
       </button>
     </div>
 
+
+    <!-- My Profile -->
+    <div v-if="activeTab === 'My Profile'" class="max-w-lg space-y-4">
+      <!-- Profile Info -->
+      <div class="card">
+        <div class="flex items-center gap-4 mb-5">
+          <div class="w-14 h-14 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center text-xl font-bold flex-shrink-0">
+            {{ (profileUser.name || profileUser.username || '?').charAt(0).toUpperCase() }}
+          </div>
+          <div>
+            <div class="text-base font-semibold text-surface-100">{{ profileUser.name || profileUser.username }}</div>
+            <div class="text-xs text-surface-500">@{{ profileUser.username }}</div>
+            <div class="flex items-center gap-2 mt-1">
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                :class="profileUser.role === 'admin' ? 'bg-amber-500/10 text-amber-400' : 'bg-brand-500/10 text-brand-400'">
+                {{ profileUser.role }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <h2 class="text-sm font-semibold mb-3 text-surface-300">Edit Profile</h2>
+        <div class="space-y-3">
+          <div>
+            <label class="label">Display Name</label>
+            <input v-model="profileForm.name" type="text" class="input" placeholder="Your name" />
+          </div>
+          <div class="border-t border-surface-700 pt-3">
+            <label class="label">Current Password</label>
+            <input v-model="profileForm.currentPassword" type="password" class="input" placeholder="Required to change password" />
+          </div>
+          <div>
+            <label class="label">New Password</label>
+            <input v-model="profileForm.newPassword" type="password" class="input" placeholder="Leave blank to keep current" />
+          </div>
+          <div v-if="profileForm.newPassword">
+            <label class="label">Confirm New Password</label>
+            <input v-model="profileForm.confirmPassword" type="password" class="input" placeholder="Confirm new password" />
+          </div>
+        </div>
+        <div class="flex items-center gap-3 mt-4">
+          <button @click="saveProfile" class="btn-primary" :disabled="savingProfile">
+            {{ savingProfile ? 'Saving...' : 'Save Changes' }}
+          </button>
+          <span v-if="profileMsg" class="text-xs" :class="profileErr ? 'text-red-400' : 'text-green-400'">{{ profileMsg }}</span>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="card border border-red-500/20">
+        <h2 class="text-sm font-semibold mb-1 text-red-400">Danger Zone</h2>
+        <p class="text-xs text-surface-500 mb-4">These actions are irreversible. Issues and comments are always preserved.</p>
+
+        <div class="space-y-3">
+          <!-- Delete My Data -->
+          <div class="flex items-center justify-between p-3 bg-surface-800 rounded-lg">
+            <div>
+              <div class="text-sm text-surface-200">Delete My Data</div>
+              <div class="text-xs text-surface-500">Remove all sessions, trades, orders, settings. Keep account.</div>
+            </div>
+            <button @click="deleteAccountMode = deleteAccountMode === 'data-only' ? null : 'data-only'"
+              class="btn-sm bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">
+              {{ deleteAccountMode === 'data-only' ? 'Cancel' : 'Delete Data' }}
+            </button>
+          </div>
+
+          <!-- Delete Account -->
+          <div class="flex items-center justify-between p-3 bg-surface-800 rounded-lg">
+            <div>
+              <div class="text-sm text-surface-200">Delete Account + Data</div>
+              <div class="text-xs text-surface-500">Permanently delete your account and all associated data.</div>
+            </div>
+            <button @click="deleteAccountMode = deleteAccountMode === 'with-data' ? null : 'with-data'"
+              class="btn-sm bg-red-500/10 text-red-400 hover:bg-red-500/20"
+              :disabled="profileUser.role === 'admin'">
+              {{ deleteAccountMode === 'with-data' ? 'Cancel' : 'Delete All' }}
+            </button>
+          </div>
+
+          <!-- Delete Account Only -->
+          <div class="flex items-center justify-between p-3 bg-surface-800 rounded-lg">
+            <div>
+              <div class="text-sm text-surface-200">Delete Account Only</div>
+              <div class="text-xs text-surface-500">Remove your account but keep data (admin can reassign).</div>
+            </div>
+            <button @click="deleteAccountMode = deleteAccountMode === 'without-data' ? null : 'without-data'"
+              class="btn-sm bg-red-500/10 text-red-400 hover:bg-red-500/20"
+              :disabled="profileUser.role === 'admin'">
+              {{ deleteAccountMode === 'without-data' ? 'Cancel' : 'Delete Account' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Confirmation panel -->
+        <div v-if="deleteAccountMode" class="mt-4 p-4 bg-red-500/5 border border-red-500/20 rounded-lg">
+          <p class="text-xs text-red-300 mb-3">
+            <template v-if="deleteAccountMode === 'data-only'">
+              This will delete all your sessions, trades, orders, broker keys, and settings. Your account and issues will remain.
+            </template>
+            <template v-else-if="deleteAccountMode === 'with-data'">
+              This will permanently delete your account and ALL data (sessions, trades, orders, strategies, settings). Issues are preserved.
+            </template>
+            <template v-else>
+              This will delete your account but keep your data in the system. An admin can reassign it later.
+            </template>
+            Enter your password to confirm.
+          </p>
+          <div class="flex items-center gap-2">
+            <input v-model="deletePassword" type="password" class="input flex-1" placeholder="Your password" />
+            <button v-if="deleteAccountMode === 'data-only'" @click="doDeleteData"
+              class="btn-sm bg-amber-600 text-white hover:bg-amber-500 whitespace-nowrap"
+              :disabled="deletingData">
+              {{ deletingData ? 'Deleting...' : 'Confirm Delete Data' }}
+            </button>
+            <button v-else @click="doDeleteAccount(deleteAccountMode === 'with-data')"
+              class="btn-sm bg-red-600 text-white hover:bg-red-500 whitespace-nowrap"
+              :disabled="deletingAccount">
+              {{ deletingAccount ? 'Deleting...' : 'Confirm Delete' }}
+            </button>
+          </div>
+          <p v-if="deleteMsg" class="text-xs mt-2" :class="deleteErr ? 'text-red-400' : 'text-green-400'">{{ deleteMsg }}</p>
+        </div>
+      </div>
+    </div>
 
     <!-- LLM Configuration -->
     <div v-if="activeTab === 'LLM'" class="max-w-lg">
@@ -345,6 +469,85 @@
 
     </div>
 
+    <!-- Usage & Quotas (non-admin only) -->
+    <div v-if="activeTab === 'Usage & Quotas'" class="max-w-lg space-y-4">
+      <div class="card">
+        <h2 class="text-sm font-semibold mb-4 text-surface-300">Your Usage Limits</h2>
+        <div v-if="!userQuotas.length" class="text-xs text-surface-500">No quotas configured.</div>
+        <div v-else class="space-y-3">
+          <div v-for="q in userQuotas" :key="q.feature" class="bg-surface-800/60 rounded-lg px-4 py-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-medium text-surface-200 capitalize">{{ q.feature.replace('_', ' ') }}</span>
+              <span class="text-xs text-surface-400">{{ q.used_runs }}/{{ q.max_runs }} <span class="text-surface-600">per {{ q.period }}</span></span>
+            </div>
+            <div class="h-1.5 bg-surface-700 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all"
+                :class="quotaUsagePercent(q) > 80 ? 'bg-red-400' : quotaUsagePercent(q) > 50 ? 'bg-amber-400' : 'bg-brand-400'"
+                :style="{ width: quotaUsagePercent(q) + '%' }"></div>
+            </div>
+            <div class="flex items-center justify-between mt-2">
+              <span class="text-[10px] text-surface-600">
+                {{ q.max_runs - q.used_runs > 0 ? (q.max_runs - q.used_runs) + ' remaining' : 'Limit reached' }}
+              </span>
+              <button v-if="!hasPendingQuotaRequest(q.feature)"
+                @click="openQuotaRequestModal(q)"
+                class="text-[10px] text-brand-400 hover:text-brand-300 transition-colors">
+                Request more
+              </button>
+              <span v-else class="text-[10px] text-amber-400">Request pending</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Requests -->
+      <div v-if="userQuotaRequests.length" class="card">
+        <h2 class="text-sm font-semibold mb-3 text-surface-300">Your Requests</h2>
+        <div class="space-y-2">
+          <div v-for="r in userQuotaRequests" :key="r.id" class="flex items-center gap-3 bg-surface-800/60 rounded-lg px-3 py-2">
+            <span class="text-xs font-medium text-surface-300 capitalize w-24">{{ r.feature.replace('_', ' ') }}</span>
+            <span class="text-xs text-surface-400 flex-1">{{ r.requested_runs }} runs</span>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+              :class="r.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400' : r.status === 'denied' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'">
+              {{ r.status }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Request Modal -->
+      <div v-if="showQuotaRequestModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showQuotaRequestModal = false">
+        <div class="card w-full max-w-sm mx-4">
+          <h2 class="text-base font-semibold mb-4">Request More Quota</h2>
+          <div class="space-y-3">
+            <div>
+              <label class="label">Feature</label>
+              <input :value="quotaRequestForm.feature.replace('_', ' ')" disabled class="input capitalize opacity-60" />
+            </div>
+            <div>
+              <label class="label">Current Limit</label>
+              <input :value="quotaRequestForm.currentLimit + ' per ' + quotaRequestForm.period" disabled class="input opacity-60" />
+            </div>
+            <div>
+              <label class="label">Requested Runs</label>
+              <input v-model.number="quotaRequestForm.requestedRuns" type="number" min="1" class="input" placeholder="e.g. 20" />
+            </div>
+            <div>
+              <label class="label">Reason (optional)</label>
+              <textarea v-model="quotaRequestForm.reason" class="input" rows="2" placeholder="Why do you need more?"></textarea>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 mt-4">
+            <button @click="submitQuotaRequest" class="btn-primary btn-sm" :disabled="submittingQuotaRequest">
+              {{ submittingQuotaRequest ? 'Submitting...' : 'Submit Request' }}
+            </button>
+            <button @click="showQuotaRequestModal = false" class="btn-sm bg-surface-700 text-surface-400">Cancel</button>
+            <span v-if="quotaRequestMsg" class="text-xs" :class="quotaRequestErr ? 'text-red-400' : 'text-green-400'">{{ quotaRequestMsg }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- About -->
     <div v-if="activeTab === 'About'" class="max-w-2xl">
       <!-- About Sub-tabs -->
@@ -361,11 +564,10 @@
         <div class="card">
           <h2 class="text-sm font-semibold mb-3 text-surface-300">About QEngine</h2>
           <p class="text-xs text-surface-400 leading-relaxed mb-3">
-            QEngine is a multi-asset algorithmic trading platform purpose-built for Forex, Commodities, and CFD trading with realistic cost modelling, true hedging, and native broker connectivity. It was forked from
-            <a href="https://github.com/jesse-ai/jesse" target="_blank" class="text-brand-400 hover:underline">Jesse</a>, an open-source crypto trading framework, and rebuilt from the ground up to serve professional CFD traders.
+            QEngine is a multi-asset quant engine for analysis and production pipelines for trading systems with intelligence. Built from scratch using quantitative techniques and methods designed to create AI-driven trading systems &mdash; not just LLM-tuned, but engineered from first principles. Supports Forex, Commodities, Indices, and CFDs with realistic cost modelling, true hedging, and native broker connectivity.
           </p>
           <div class="flex flex-wrap gap-1.5">
-            <span v-for="tag in ['Forex','Commodities','Indices','CFDs','Crypto','Live Trading','AI/LLM']" :key="tag"
+            <span v-for="tag in ['Quant Engine','Multi-Asset','Forex','Commodities','Indices','CFDs','Production Pipelines','AI Intelligence','Live Trading']" :key="tag"
               class="text-[10px] px-2 py-0.5 bg-brand-600/15 text-brand-400 rounded-full">{{ tag }}</span>
           </div>
         </div>
@@ -649,14 +851,95 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { api, defaultBrokerId } from '../api'
+import { useRouter } from 'vue-router'
+import { api, defaultBrokerId, isAdmin, getCurrentUser, setAuth, logout } from '../api'
 import { changelog as parsedChangelog } from '../changelog-parser'
 import { useGuides } from '../useGuides'
 
 const { showTooltips, showSectionGuides } = useGuides()
+const router = useRouter()
 
-const activeTab = ref('Preferences')
-const tabs = ['Preferences', 'LLM', 'Broker Keys', 'Notifications', 'Cost & Randomness', 'Maintenance', 'About']
+const activeTab = ref('My Profile')
+const allTabs = ['My Profile', 'Preferences', 'LLM', 'Broker Keys', 'Notifications', 'Cost & Randomness', 'Usage & Quotas', 'Maintenance', 'About']
+const adminOnlyTabs = ['Maintenance']
+
+// Profile
+const profileUser = ref(getCurrentUser() || {})
+const profileForm = ref({ name: '', currentPassword: '', newPassword: '', confirmPassword: '' })
+const savingProfile = ref(false)
+const profileMsg = ref('')
+const profileErr = ref(false)
+const deletePassword = ref('')
+const deletingData = ref(false)
+const deletingAccount = ref(false)
+const deleteMsg = ref('')
+const deleteErr = ref(false)
+const deleteAccountMode = ref(null) // null, 'data-only', 'with-data', 'without-data'
+
+function initProfileForm() {
+  const u = getCurrentUser() || {}
+  profileForm.value = { name: u.name || '', currentPassword: '', newPassword: '', confirmPassword: '' }
+  profileUser.value = u
+}
+
+async function saveProfile() {
+  profileMsg.value = ''; profileErr.value = false
+  const data = {}
+  if (profileForm.value.name !== (profileUser.value.name || '')) {
+    data.name = profileForm.value.name
+  }
+  if (profileForm.value.newPassword) {
+    if (profileForm.value.newPassword !== profileForm.value.confirmPassword) {
+      profileMsg.value = 'New passwords do not match'; profileErr.value = true; return
+    }
+    if (!profileForm.value.currentPassword) {
+      profileMsg.value = 'Current password is required to change password'; profileErr.value = true; return
+    }
+    data.password = profileForm.value.newPassword
+    data.current_password = profileForm.value.currentPassword
+  }
+  if (!Object.keys(data).length) { profileMsg.value = 'No changes to save'; return }
+  savingProfile.value = true
+  try {
+    const res = await api.updateProfile(data)
+    if (res.auth_token) setAuth(res.auth_token, res.user)
+    profileUser.value = res.user || getCurrentUser()
+    profileForm.value.currentPassword = ''; profileForm.value.newPassword = ''; profileForm.value.confirmPassword = ''
+    profileMsg.value = 'Profile updated'
+  } catch (e) { profileMsg.value = e.message; profileErr.value = true }
+  finally { savingProfile.value = false }
+}
+
+async function doDeleteData() {
+  deleteMsg.value = ''; deleteErr.value = false
+  if (!deletePassword.value) { deleteMsg.value = 'Password required'; deleteErr.value = true; return }
+  deletingData.value = true
+  try {
+    const res = await api.deleteMyData(deletePassword.value)
+    deleteMsg.value = res.message || 'Data deleted'
+    deletePassword.value = ''; deleteAccountMode.value = null
+  } catch (e) { deleteMsg.value = e.message; deleteErr.value = true }
+  finally { deletingData.value = false }
+}
+
+async function doDeleteAccount(withData) {
+  deleteMsg.value = ''; deleteErr.value = false
+  if (!deletePassword.value) { deleteMsg.value = 'Password required'; deleteErr.value = true; return }
+  deletingAccount.value = true
+  try {
+    await api.deleteAccount(deletePassword.value, withData)
+    logout()
+    router.push('/login')
+  } catch (e) { deleteMsg.value = e.message; deleteErr.value = true }
+  finally { deletingAccount.value = false }
+}
+const userOnlyTabs = ['Usage & Quotas']
+const tabs = computed(() => {
+  let filtered = allTabs
+  if (isAdmin()) filtered = filtered.filter(t => !userOnlyTabs.includes(t))
+  else filtered = filtered.filter(t => !adminOnlyTabs.includes(t))
+  return filtered
+})
 
 // LLM
 const llmSettings = ref({})
@@ -790,7 +1073,8 @@ const llmGuides = {
 
 // About
 const aboutInfo = ref(null)
-const aboutSubTabs = ['Overview', 'Origin', "What's New", 'Changelog', 'Engine Changes']
+const allAboutSubTabs = ['Overview', 'Origin', "What's New", 'Changelog', 'Engine Changes']
+const aboutSubTabs = computed(() => isAdmin() ? allAboutSubTabs : ['Overview', "What's New"])
 const aboutSubTab = ref('Overview')
 const modFilter = ref('All')
 const modFilterMap = { NEW: 'new', MAJOR: 'major', MODIFIED: 'mod' }
@@ -1334,6 +1618,68 @@ async function loadSettings() {
   }
 }
 
+// Usage & Quotas
+const userQuotas = ref([])
+const userQuotaRequests = ref([])
+const showQuotaRequestModal = ref(false)
+const submittingQuotaRequest = ref(false)
+const quotaRequestMsg = ref('')
+const quotaRequestErr = ref(false)
+const quotaRequestForm = ref({ feature: '', currentLimit: 0, period: '', requestedRuns: 10, reason: '' })
+
+function quotaUsagePercent(q) {
+  if (!q.max_runs || q.max_runs <= 0) return 0
+  return Math.min(100, Math.round((q.used_runs / q.max_runs) * 100))
+}
+
+function hasPendingQuotaRequest(feature) {
+  return userQuotaRequests.value.some(r => r.feature === feature && r.status === 'pending')
+}
+
+function openQuotaRequestModal(q) {
+  quotaRequestForm.value = {
+    feature: q.feature,
+    currentLimit: q.max_runs,
+    period: q.period,
+    requestedRuns: q.max_runs * 2,
+    reason: '',
+  }
+  quotaRequestMsg.value = ''
+  showQuotaRequestModal.value = true
+}
+
+async function loadUserQuotas() {
+  try {
+    const me = await api.getMe()
+    userQuotas.value = me.quotas || []
+  } catch (e) { console.error(e) }
+  try {
+    const res = await api.getQuotaRequests()
+    userQuotaRequests.value = res.requests || []
+  } catch (e) { console.error(e) }
+}
+
+async function submitQuotaRequest() {
+  quotaRequestMsg.value = ''; quotaRequestErr.value = false
+  if (!quotaRequestForm.value.requestedRuns || quotaRequestForm.value.requestedRuns < 1) {
+    quotaRequestMsg.value = 'Enter a valid number'; quotaRequestErr.value = true; return
+  }
+  submittingQuotaRequest.value = true
+  try {
+    await api.submitQuotaRequest({
+      feature: quotaRequestForm.value.feature,
+      requested_runs: quotaRequestForm.value.requestedRuns,
+      reason: quotaRequestForm.value.reason,
+    })
+    showQuotaRequestModal.value = false
+    await loadUserQuotas()
+  } catch (e) {
+    quotaRequestMsg.value = e.message || 'Failed'; quotaRequestErr.value = true
+  } finally {
+    submittingQuotaRequest.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     const [brokersRes, typesRes] = await Promise.all([
@@ -1349,6 +1695,10 @@ onMounted(async () => {
   } catch (e) {
     console.error(e)
   }
-  await Promise.all([loadSettings(), loadNotifKeys(), loadStorageInfo(), loadAboutInfo()])
+  initProfileForm()
+  const loads = [loadSettings(), loadNotifKeys(), loadAboutInfo()]
+  if (isAdmin()) loads.push(loadStorageInfo())
+  else loads.push(loadUserQuotas())
+  await Promise.all(loads)
 })
 </script>

@@ -39,6 +39,8 @@ class Order(Model):
     fee = FloatField(null=True)
     # CFD mode: links this order to a specific CFDTicket
     ticket_id = CharField(null=True)
+    # User ownership
+    user_id = UUIDField(null=True)
 
     class Meta:
         from qengine.services.db import database

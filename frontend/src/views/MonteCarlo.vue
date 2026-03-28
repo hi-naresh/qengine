@@ -70,10 +70,16 @@
 
             <div>
               <label class="label">Strategy</label>
-              <select v-if="strategies.length" v-model="form.strategy" class="select">
-                <option v-for="s in strategies" :key="s" :value="s">{{ s }}</option>
-              </select>
-              <input v-else v-model="form.strategy" class="input" placeholder="ForexMA" />
+              <div class="flex items-center gap-1">
+                <select v-if="strategies.length" v-model="form.strategy" class="select flex-1">
+                  <option v-for="s in strategies" :key="s.name" :value="s.name">{{ s.name }}</option>
+                </select>
+                <input v-else v-model="form.strategy" class="input flex-1" placeholder="ForexMA" />
+                <router-link v-if="form.strategy" :to="'/strategies?edit=' + encodeURIComponent(form.strategy)"
+                  class="w-8 h-8 rounded-md bg-surface-800 text-surface-400 hover:text-brand-400 hover:bg-surface-700 transition-colors flex items-center justify-center flex-shrink-0" title="Edit strategy code">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                </router-link>
+              </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -581,6 +587,7 @@
               <tr class="text-surface-500 text-xs border-b border-surface-700">
                 <th class="text-left py-2 px-2 font-medium">Status</th>
                 <th class="text-left py-2 px-2 font-medium">Strategy / Config</th>
+                <th v-if="showOwnerColumn" class="text-left py-2 px-2 font-medium">Owner</th>
                 <th class="text-left py-2 px-2 font-medium">Type</th>
                 <th class="text-left py-2 px-2 font-medium">Date</th>
                 <th class="text-right py-2 px-2 font-medium"></th>
@@ -597,6 +604,9 @@
                 <td class="py-2.5 px-2">
                   <div class="text-surface-200 font-medium">{{ sessionStrategy(s) }}</div>
                   <div class="text-surface-500 text-[10px] mt-0.5">{{ sessionExchange(s) }} {{ s.state?.form?.symbol ? '/ ' + s.state.form.symbol : '' }}</div>
+                </td>
+                <td v-if="showOwnerColumn" class="py-2.5 px-2">
+                  <span v-if="s.owner_username" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-medium">{{ s.owner_username }}</span>
                 </td>
                 <td class="py-2.5 px-2 text-surface-400">
                   <span v-if="s.has_trades" class="text-[10px] px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 mr-1">Trades</span>
@@ -629,7 +639,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, defaultBrokerId } from '../api'
+import { api, defaultBrokerId, isAdmin, isImpersonating } from '../api'
 import { useWebSocket } from '../useWebSocket'
 import { useGuides } from '../useGuides'
 import MetricTooltip from '../components/MetricTooltip.vue'
@@ -746,6 +756,7 @@ const dataRange = computed(() => {
   }
 })
 
+const showOwnerColumn = computed(() => isAdmin() && !isImpersonating())
 const filteredSessions = computed(() => {
   let list = sessions.value
   if (sessionsStatusFilter.value !== 'all') {
@@ -1026,7 +1037,7 @@ function _freshDefaults() {
   return {
     form: {
       exchange: form.value.exchange, symbol: 'EUR-USD', timeframe: '1h',
-      strategy: strategies.value[0] || 'ForexMA',
+      strategy: strategies.value[0]?.name || 'ForexMA',
       startDate: '2024-01-01', finishDate: '2024-09-01',
       balance: 10000, numScenarios: 50,
       cpuCores: Math.min(6, maxCpuCores.value),
@@ -1595,7 +1606,7 @@ onMounted(async () => {
     strategies.value = sRes.data || sRes.strategies || []
     if (sysRes.cpu_cores) maxCpuCores.value = sysRes.cpu_cores
     form.value.exchange = defaultBrokerId(brokers.value)
-    if (strategies.value.length > 0) form.value.strategy = strategies.value[0]
+    if (strategies.value.length > 0) form.value.strategy = strategies.value[0].name
     form.value.cpuCores = Math.max(1, Math.min(form.value.cpuCores, maxCpuCores.value))
   } catch (e) {
     console.error(e)

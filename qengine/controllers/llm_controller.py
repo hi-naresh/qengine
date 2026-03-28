@@ -1,10 +1,7 @@
-import os
-from typing import Optional
-
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, CurrentUser
 from qengine.services.llm_engine import llm_engine
 from qengine.services.web import (
     GenerateStrategyRequestJson,
@@ -16,14 +13,14 @@ from qengine.services.web import (
 router = APIRouter(prefix="/llm", tags=["LLM Strategy Engine"])
 
 
-def _ensure_llm_configured():
-    """Try to configure LLM from DB settings, then env vars."""
-    if llm_engine.is_configured:
-        return
-    # Try DB settings first
+def _ensure_llm_configured(current_user=None):
+    """Configure LLM from the current user's settings (admin uses shared, users use their own)."""
+    llm_engine.provider = None
+    llm_engine.api_key = None
     try:
-        from qengine.controllers.settings_controller import _get_settings_from_db
-        settings = _get_settings_from_db()
+        from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
+        uid = ADMIN_SETTINGS_ID if (current_user and current_user.is_admin) else (current_user.effective_user_id if current_user else ADMIN_SETTINGS_ID)
+        settings = _get_settings_from_db(uid)
         llm_conf = settings.get('llm', {})
         if llm_conf.get('api_key') and llm_conf.get('provider'):
             llm_engine.configure(
@@ -35,20 +32,16 @@ def _ensure_llm_configured():
             return
     except Exception:
         pass
-    # Fall back to env vars
-    llm_engine.configure_from_env()
 
 
 @router.post("/generate")
 def generate_strategy(
     request_json: GenerateStrategyRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """Generate a new strategy from natural language description."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
-    _ensure_llm_configured()
+    _ensure_llm_configured(current_user)
 
     if not llm_engine.is_configured:
         return JSONResponse(
@@ -73,13 +66,11 @@ def generate_strategy(
 @router.post("/refine")
 def refine_strategy(
     request_json: RefineStrategyRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """Refine existing strategy with feedback."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
-    _ensure_llm_configured()
+    _ensure_llm_configured(current_user)
 
     if not llm_engine.is_configured:
         return JSONResponse(
@@ -104,11 +95,9 @@ def refine_strategy(
 @router.post("/validate")
 def validate_strategy(
     request_json: ValidateStrategyRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """Validate strategy code syntax and structure."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     try:
         result = llm_engine.validate_strategy(request_json.code)
@@ -123,11 +112,9 @@ def validate_strategy(
 @router.post("/configure")
 def configure_llm(
     request_json: ConfigureLLMRequestJson,
-    authorization: Optional[str] = Header(None),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     """Configure the LLM engine with provider and API key."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     llm_engine.configure(
         provider=request_json.provider,
@@ -139,12 +126,10 @@ def configure_llm(
 
 
 @router.get("/status")
-def llm_status(authorization: Optional[str] = Header(None)):
+def llm_status(current_user: CurrentUser = Depends(get_current_user)):
     """Check LLM configuration status."""
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
-    _ensure_llm_configured()
+    _ensure_llm_configured(current_user)
 
     return JSONResponse(content={
         'configured': llm_engine.is_configured,

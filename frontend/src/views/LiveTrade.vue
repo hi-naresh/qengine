@@ -33,10 +33,15 @@
             </div>
             <div>
               <label class="label">Strategy</label>
-              <select v-if="strategies.length" v-model="form.strategy" class="select">
-                <option v-for="s in strategies" :key="s" :value="s">{{ s }}</option>
-              </select>
-              <input v-else v-model="form.strategy" class="input" placeholder="ForexMA" />
+              <div class="flex items-center gap-1">
+                <select v-if="strategies.length" v-model="form.strategy" class="select flex-1">
+                  <option v-for="s in strategies" :key="s.name" :value="s.name">{{ s.name }}</option>
+                </select>
+                <input v-else v-model="form.strategy" class="input flex-1" placeholder="ForexMA" />
+                <router-link v-if="form.strategy" :to="'/strategies?edit=' + encodeURIComponent(form.strategy)" class="p-1.5 text-surface-400 hover:text-indigo-400 transition-colors" title="Edit strategy">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </router-link>
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-4">
@@ -662,6 +667,7 @@
                 </span>
                 <span class="text-sm text-surface-200">{{ s.title || s.exchange }}</span>
                 <span class="text-xs text-surface-500">{{ routeSummary(s) }}</span>
+                <span v-if="s.owner_username && showOwnerLabel" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-medium">{{ s.owner_username }}</span>
               </div>
               <div class="flex items-center gap-2" @click.stop>
                 <button v-if="s.status === 'running'" @click="stopSession(s.id)"
@@ -836,7 +842,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { api, defaultBrokerId } from '../api'
+import { api, defaultBrokerId, isAdmin, isImpersonating } from '../api'
 
 const showStart = ref(false)
 const starting = ref(false)
@@ -964,6 +970,7 @@ const availableTabs = computed(() => {
   return tabs
 })
 function togglePositionExpand(symbol) { expandedPositions.value[symbol] = !expandedPositions.value[symbol] }
+const showOwnerLabel = computed(() => isAdmin() && !isImpersonating())
 const filteredSessions = computed(() => {
   if (statusFilter.value === 'all') return sessions.value
   return sessions.value.filter(s => s.status === statusFilter.value)
@@ -1316,7 +1323,7 @@ onMounted(async () => {
     brokers.value = bRes.data || []; strategies.value = sRes.data || sRes.strategies || []
     instruments.value = iRes.data || []
     form.value.exchange = defaultBrokerId(brokers.value)
-    if (strategies.value.length > 0) form.value.strategy = strategies.value[0]
+    if (strategies.value.length > 0) form.value.strategy = strategies.value[0].name
     if (instruments.value.length > 0) {
       const match = instruments.value.find(i => i.symbol === form.value.symbol)
       if (!match) form.value.symbol = instruments.value[0].symbol

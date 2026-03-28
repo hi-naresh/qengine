@@ -35,6 +35,9 @@ class OptimizationSession(peewee.Model):
     description = peewee.TextField(null=True)
     strategy_codes = peewee.TextField(null=True)
 
+    # User ownership
+    user_id = peewee.UUIDField(null=True)
+
     # Timestamps for session management
     created_at = peewee.BigIntegerField()
     updated_at = peewee.BigIntegerField()
@@ -183,7 +186,8 @@ def reset_optimization_session(id: str):
 def store_optimization_session(
     id: str,
     status: str,
-    strategy_codes: dict = None
+    strategy_codes: dict = None,
+    user_id: str = None
 ) -> None:
     # Create a new session
     d = {
@@ -193,10 +197,13 @@ def store_optimization_session(
         'created_at': jh.now_to_timestamp(True),
         'updated_at': jh.now_to_timestamp(True)
     }
-    
+
     if strategy_codes is not None:
         d['strategy_codes'] = json.dumps(strategy_codes)
-    
+
+    if user_id:
+        d['user_id'] = user_id
+
     # Save to database
     OptimizationSession.insert(**d).execute()
     
@@ -257,12 +264,16 @@ def get_optimization_session(id: str) -> dict:
     }
 
 
-def get_optimization_sessions(limit: int = 50, offset: int = 0, title_search: str = None, status_filter: str = None, date_filter: str = None) -> list:
+def get_optimization_sessions(limit: int = 50, offset: int = 0, title_search: str = None, status_filter: str = None, date_filter: str = None, user_id: str = None) -> list:
     """
     Returns a list of OptimizationSession objects sorted by most recently updated.
-    Excludes draft sessions by default.
+    Excludes draft sessions by default. Filters by user_id if provided.
     """
     query = OptimizationSession.select().where(OptimizationSession.status != 'draft').order_by(OptimizationSession.updated_at.desc())
+
+    # User scoping
+    if user_id:
+        query = query.where(OptimizationSession.user_id == user_id)
     
     # Apply title filter (case-insensitive)
     if title_search:

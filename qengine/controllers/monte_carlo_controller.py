@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Header, Request
-from typing import Optional
+from fastapi import APIRouter, Request, Depends
+
 from fastapi.responses import JSONResponse
 import json
 
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
+from qengine.services.quota import check_quota, increment_quota
 from qengine.services.multiprocessing import process_manager
 from qengine.services.web import (
     MonteCarloRequestJson,
@@ -32,12 +34,13 @@ router = APIRouter(prefix="/monte-carlo", tags=["Monte Carlo"])
 
 
 @router.post("")
-async def monte_carlo(request: Request, request_json: MonteCarloRequestJson, authorization: Optional[str] = Header(None)):
+async def monte_carlo(request: Request, request_json: MonteCarloRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Start a Monte Carlo simulation
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+    allowed, msg = check_quota(current_user.effective_user_id, 'monte_carlo')
+    if not allowed:
+        return JSONResponse({'message': msg}, status_code=403)
 
     jh.validate_cwd()
 
@@ -98,7 +101,10 @@ async def monte_carlo(request: Request, request_json: MonteCarloRequestJson, aut
         request_json.pipeline_params,
         request_json.state,
         request_json.risk_config,
+        current_user.effective_user_id,
     )
+
+    increment_quota(current_user.effective_user_id, 'monte_carlo')
 
     return JSONResponse({
         'message': 'Started Monte Carlo simulation...',
@@ -107,12 +113,15 @@ async def monte_carlo(request: Request, request_json: MonteCarloRequestJson, aut
 
 
 @router.post("/cancel")
-def cancel_monte_carlo(request_json: CancelMonteCarloRequestJson, authorization: Optional[str] = Header(None)):
+def cancel_monte_carlo(request_json: CancelMonteCarloRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Cancel a Monte Carlo simulation
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    session = get_monte_carlo_session_by_id(request_json.id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     process_manager.cancel_process(request_json.id)
 
@@ -123,12 +132,15 @@ def cancel_monte_carlo(request_json: CancelMonteCarloRequestJson, authorization:
 
 
 @router.post("/terminate")
-def terminate_monte_carlo(request_json: TerminateMonteCarloRequestJson, authorization: Optional[str] = Header(None)):
+def terminate_monte_carlo(request_json: TerminateMonteCarloRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Terminate a Monte Carlo simulation
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    session = get_monte_carlo_session_by_id(request_json.id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # First update the status to 'terminated'
     update_monte_carlo_session_status(request_json.id, 'terminated')
@@ -143,12 +155,10 @@ def terminate_monte_carlo(request_json: TerminateMonteCarloRequestJson, authoriz
 
 
 @router.post("/resume")
-async def resume_monte_carlo(request_json: MonteCarloRequestJson, authorization: Optional[str] = Header(None)):
+async def resume_monte_carlo(request_json: MonteCarloRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Resume a Monte Carlo simulation
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     jh.validate_cwd()
 
@@ -166,6 +176,10 @@ async def resume_monte_carlo(request_json: MonteCarloRequestJson, authorization:
         return JSONResponse({
             'error': f'Session with ID {request_json.id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Transform the session using the transformer
     transformed_session = get_monte_carlo_session_for_load_more(session)
@@ -196,12 +210,13 @@ async def resume_monte_carlo(request_json: MonteCarloRequestJson, authorization:
 
 
 @router.post("/sessions")
-def get_monte_carlo_sessions_endpoint(request_json: GetMonteCarloSessionsRequestJson = GetMonteCarloSessionsRequestJson(), authorization: Optional[str] = Header(None)):
+def get_monte_carlo_sessions_endpoint(request_json: GetMonteCarloSessionsRequestJson = GetMonteCarloSessionsRequestJson(), current_user: CurrentUser = Depends(get_current_user)):
     """
     Get a list of Monte Carlo sessions sorted by most recently updated with pagination and filters
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    # Admins see all sessions (unless impersonating); regular users see only their own
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
 
     # Get sessions from the database with pagination and filters
     sessions = get_monte_carlo_sessions(
@@ -209,11 +224,17 @@ def get_monte_carlo_sessions_endpoint(request_json: GetMonteCarloSessionsRequest
         offset=request_json.offset,
         title_search=request_json.title_search,
         status_filter=request_json.status_filter,
-        date_filter=request_json.date_filter
+        date_filter=request_json.date_filter,
+        user_id=user_id,
     )
 
     # Transform the sessions using the transformer
     transformed_sessions = [get_monte_carlo_session(session) for session in sessions]
+
+    # Add owner labels for admin view
+    if not user_id:
+        from qengine.services.transformers import enrich_with_owner
+        enrich_with_owner(transformed_sessions, sessions)
 
     return JSONResponse({
         'sessions': transformed_sessions,
@@ -222,12 +243,10 @@ def get_monte_carlo_sessions_endpoint(request_json: GetMonteCarloSessionsRequest
 
 
 @router.post("/sessions/{session_id}")
-def get_monte_carlo_session_by_id_endpoint(session_id: str, authorization: Optional[str] = Header(None)):
+def get_monte_carlo_session_by_id_endpoint(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get a single Monte Carlo session by ID
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     # Get the session from the database
     session = get_monte_carlo_session_by_id(session_id)
@@ -236,6 +255,10 @@ def get_monte_carlo_session_by_id_endpoint(session_id: str, authorization: Optio
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Transform the session using the transformer
     transformed_session = get_monte_carlo_session_for_load_more(session)
@@ -248,20 +271,22 @@ def get_monte_carlo_session_by_id_endpoint(session_id: str, authorization: Optio
 
 
 @router.post("/sessions/{session_id}/equity-curves")
-def get_monte_carlo_equity_curves(session_id: str, authorization: Optional[str] = Header(None)):
+def get_monte_carlo_equity_curves(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get equity curve data for a Monte Carlo session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_monte_carlo_session_by_id(session_id)
-    
+
     if not session:
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
-    
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
+
     trades_equity_curves = None
     candles_equity_curves = None
     
@@ -328,13 +353,16 @@ def get_monte_carlo_equity_curves(session_id: str, authorization: Optional[str] 
 @router.post("/update-state")
 def update_session_state(
     request_json: UpdateMonteCarloSessionStateRequestJson,
-    authorization: Optional[str] = Header(None)
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """
     Update the state of a Monte Carlo session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+
+    session = get_monte_carlo_session_by_id(request_json.id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     update_monte_carlo_session_state(request_json.id, request_json.state)
 
@@ -344,12 +372,10 @@ def update_session_state(
 
 
 @router.post("/sessions/{session_id}/remove")
-def remove_monte_carlo_session(session_id: str, authorization: Optional[str] = Header(None)):
+def remove_monte_carlo_session(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Remove a Monte Carlo session from the database
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_monte_carlo_session_by_id(session_id)
 
@@ -357,6 +383,10 @@ def remove_monte_carlo_session(session_id: str, authorization: Optional[str] = H
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Delete the session from the database
     result = delete_monte_carlo_session(session_id)
@@ -372,12 +402,10 @@ def remove_monte_carlo_session(session_id: str, authorization: Optional[str] = H
 
 
 @router.post("/sessions/{session_id}/notes")
-def update_session_notes(session_id: str, request_json: UpdateMonteCarloSessionNotesRequestJson, authorization: Optional[str] = Header(None)):
+def update_session_notes(session_id: str, request_json: UpdateMonteCarloSessionNotesRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Update the notes (title, description, strategy_codes) of a Monte Carlo session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_monte_carlo_session_by_id(session_id)
 
@@ -385,6 +413,10 @@ def update_session_notes(session_id: str, request_json: UpdateMonteCarloSessionN
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     update_monte_carlo_session_notes(session_id, request_json.title, request_json.description, request_json.strategy_codes)
 
@@ -394,32 +426,37 @@ def update_session_notes(session_id: str, request_json: UpdateMonteCarloSessionN
 
 
 @router.post("/sessions/{session_id}/strategy-code")
-def get_session_strategy_code(session_id: str, authorization: Optional[str] = Header(None)):
+def get_session_strategy_code(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the strategy code for a Monte Carlo session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
     
     session = get_monte_carlo_session_by_id(session_id)
     if not session:
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
-    
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
+
     return JSONResponse({
         'strategy_code': json.loads(session.strategy_codes) if session.strategy_codes else {}
     })
 
 
 @router.post("/sessions/{session_id}/logs")
-def get_session_logs(session_id: str, authorization: Optional[str] = Header(None)):
+def get_session_logs(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the logs for a Monte Carlo session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-        
+
+    session = get_monte_carlo_session_by_id(session_id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
+
     from qengine.modes import data_provider
 
     content = data_provider.get_monte_carlo_logs(session_id)
@@ -435,12 +472,10 @@ def get_session_logs(session_id: str, authorization: Optional[str] = Header(None
     
     
 @router.post("/purge-sessions")
-def purge_sessions(request_json: dict, authorization: Optional[str] = Header(None)):
+def purge_sessions(request_json: dict, current_user: CurrentUser = Depends(require_admin)):
     """
     Purge Monte Carlo sessions older than specified days
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
     
     days_old = request_json.get('days_old', None)
     
@@ -453,12 +488,10 @@ def purge_sessions(request_json: dict, authorization: Optional[str] = Header(Non
 
 
 @router.get("/running-session")
-def get_running_session(authorization: Optional[str] = Header(None)):
+def get_running_session(current_user: CurrentUser = Depends(get_current_user)):
     """
     Get the running session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     return JSONResponse({
         'session_id': get_running_monte_carlo_session_id()

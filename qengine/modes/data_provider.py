@@ -273,7 +273,7 @@ def validate_csv_content(content: str) -> bool:
         return False
 
 
-def import_api_keys_from_csv(content: str) -> Dict[str, Any]:
+def import_api_keys_from_csv(content: str, user_id: str = None) -> Dict[str, Any]:
     """
     Import API keys from CSV content string.
     Returns a dict with success flag and summary info.
@@ -342,7 +342,7 @@ def import_api_keys_from_csv(content: str) -> Dict[str, Any]:
 
         # Also sync imported keys into app_settings so /broker/connected picks them up
         if imported_names:
-            _sync_imported_keys_to_settings(imported_names)
+            _sync_imported_keys_to_settings(imported_names, user_id=user_id)
 
         return {
             'success': True,
@@ -353,11 +353,14 @@ def import_api_keys_from_csv(content: str) -> Dict[str, Any]:
         return {'success': False, 'error': str(e)}
 
 
-def _sync_imported_keys_to_settings(imported_keys: list):
+def _sync_imported_keys_to_settings(imported_keys: list, user_id: str = None):
     """Write imported broker keys into app_settings.brokers so they appear as connected."""
-    from qengine.controllers.settings_controller import _get_settings_from_db, _save_settings_to_db
+    from qengine.controllers.settings_controller import _get_settings_from_db, _save_settings_to_db, ADMIN_SETTINGS_ID
 
-    settings = _get_settings_from_db()
+    # Broker settings are always stored under the shared admin ID
+    uid = ADMIN_SETTINGS_ID
+
+    settings = _get_settings_from_db(uid)
     if 'brokers' not in settings:
         settings['brokers'] = {}
 
@@ -370,7 +373,7 @@ def _sync_imported_keys_to_settings(imported_keys: list):
             'additional_fields': key_info['additional_fields'],
         }
 
-    _save_settings_to_db(settings)
+    _save_settings_to_db(settings, uid)
 
 
 def get_backtest_logs(session_id: str):

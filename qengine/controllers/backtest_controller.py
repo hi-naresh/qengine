@@ -1,9 +1,10 @@
 import math
-from typing import Optional
-from fastapi import APIRouter, Header, Query, Body
+from fastapi import APIRouter, Depends, Body
 from fastapi.responses import JSONResponse, FileResponse
 import json
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
+from qengine.services.quota import check_quota, increment_quota
 from qengine.services.multiprocessing import process_manager
 from qengine.services.web import BacktestRequestJson, CancelRequestJson, UpdateBacktestSessionStateRequestJson, GetBacktestSessionsRequestJson, UpdateBacktestSessionNotesRequestJson
 import qengine.helpers as jh
@@ -25,14 +26,15 @@ router = APIRouter(prefix="/backtest", tags=["Backtest"])
 
 
 @router.post("")
-def backtest(request_json: BacktestRequestJson, authorization: Optional[str] = Header(None)):
+def backtest(request_json: BacktestRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Start a backtest process
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-
     jh.validate_cwd()
+
+    allowed, msg = check_quota(current_user.effective_user_id, 'backtest')
+    if not allowed:
+        return JSONResponse({'message': msg}, status_code=403)
 
     process_manager.add_task(
         run_backtest,
@@ -52,19 +54,20 @@ def backtest(request_json: BacktestRequestJson, authorization: Optional[str] = H
         request_json.fast_mode,
         request_json.benchmark,
         request_json.hyperparameters,
-        request_json.cost_model
+        request_json.cost_model,
+        current_user.effective_user_id
     )
+
+    increment_quota(current_user.effective_user_id, 'backtest')
 
     return JSONResponse({'message': 'Started backtesting...'}, status_code=202)
 
 
 @router.post("/cancel")
-def cancel_backtest(request_json: CancelRequestJson, authorization: Optional[str] = Header(None)):
+def cancel_backtest(request_json: CancelRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Cancel a backtest process
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     process_manager.cancel_process(request_json.id)
     
@@ -75,12 +78,10 @@ def cancel_backtest(request_json: CancelRequestJson, authorization: Optional[str
 
 
 @router.get("/logs/{session_id}")
-def get_logs(session_id: str, token: str = Query(...)):
+def get_logs(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get logs as text for a specific session. Similar to download but returns text content instead of file.
     """
-    if not authenticator.is_valid_token(token):
-        return authenticator.unauthorized_response()
 
     try:
         content = get_backtest_logs(session_id)
@@ -94,12 +95,10 @@ def get_logs(session_id: str, token: str = Query(...)):
 
 
 @router.get("/download-log/{session_id}")
-def download_backtest_log_endpoint(session_id: str, token: str = Query(...)):
+def download_backtest_log_endpoint(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Download log file for a specific backtest session
     """
-    if not authenticator.is_valid_token(token):
-        return authenticator.unauthorized_response()
 
     try:
         return download_backtest_log(session_id)
@@ -108,24 +107,30 @@ def download_backtest_log_endpoint(session_id: str, token: str = Query(...)):
 
 
 @router.post("/sessions")
-def get_backtest_sessions(request_json: GetBacktestSessionsRequestJson = Body(default=GetBacktestSessionsRequestJson()), authorization: Optional[str] = Header(None)):
+def get_backtest_sessions(request_json: GetBacktestSessionsRequestJson = Body(default=GetBacktestSessionsRequestJson()), current_user: CurrentUser = Depends(get_current_user)):
     """
     Get a list of backtest sessions sorted by most recently updated with pagination
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+    # Scope to user unless admin (and not impersonating)
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
 
     # Get sessions from the database with pagination and filters
     sessions = get_sessions(
-        limit=request_json.limit, 
+        limit=request_json.limit,
         offset=request_json.offset,
         title_search=request_json.title_search,
         status_filter=request_json.status_filter,
-        date_filter=request_json.date_filter
+        date_filter=request_json.date_filter,
+        user_id=user_id,
     )
 
     # Transform the sessions using the transformer
     transformed_sessions = [get_backtest_session(session) for session in sessions]
+
+    # Add owner labels for admin view
+    if not user_id:
+        from qengine.services.transformers import enrich_with_owner
+        enrich_with_owner(transformed_sessions, sessions)
 
     return JSONResponse({
         'sessions': transformed_sessions,
@@ -134,12 +139,10 @@ def get_backtest_sessions(request_json: GetBacktestSessionsRequestJson = Body(de
 
 
 @router.post("/sessions/{session_id}")
-def get_backtest_session_by_id(session_id: str, authorization: Optional[str] = Header(None)):
+def get_backtest_session_by_id(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get a single backtest session by ID
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     # Get the session from the database
     session = get_backtest_session_by_id_from_db(session_id)
@@ -148,6 +151,10 @@ def get_backtest_session_by_id(session_id: str, authorization: Optional[str] = H
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Transform the session using the transformer
     transformed_session = get_backtest_session_for_load_more(session)
@@ -159,14 +166,17 @@ def get_backtest_session_by_id(session_id: str, authorization: Optional[str] = H
 
 
 @router.post("/update-state")
-def update_session_state(request_json: UpdateBacktestSessionStateRequestJson, authorization: Optional[str] = Header(None)):
+def update_session_state(request_json: UpdateBacktestSessionStateRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Update the state of a backtest session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
-    update_backtest_session_state(request_json.id, request_json.state)
+    session = get_backtest_session_by_id_from_db(request_json.id)
+    if session and not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
+
+    update_backtest_session_state(request_json.id, request_json.state, user_id=current_user.effective_user_id)
 
     return JSONResponse({
         'message': 'Backtest session state updated successfully'
@@ -174,12 +184,10 @@ def update_session_state(request_json: UpdateBacktestSessionStateRequestJson, au
 
 
 @router.post("/sessions/{session_id}/remove")
-def remove_backtest_session(session_id: str, authorization: Optional[str] = Header(None)):
+def remove_backtest_session(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Remove a backtest session from the database
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_backtest_session_by_id_from_db(session_id)
 
@@ -187,6 +195,10 @@ def remove_backtest_session(session_id: str, authorization: Optional[str] = Head
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     # Delete the session from the database
     result = delete_backtest_session(session_id)
@@ -202,12 +214,10 @@ def remove_backtest_session(session_id: str, authorization: Optional[str] = Head
 
 
 @router.post("/sessions/{session_id}/notes")
-def update_session_notes(session_id: str, request_json: UpdateBacktestSessionNotesRequestJson, authorization: Optional[str] = Header(None)):
+def update_session_notes(session_id: str, request_json: UpdateBacktestSessionNotesRequestJson, current_user: CurrentUser = Depends(get_current_user)):
     """
     Update the notes (title, description, strategy_codes) of a backtest session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_backtest_session_by_id_from_db(session_id)
 
@@ -215,6 +225,10 @@ def update_session_notes(session_id: str, request_json: UpdateBacktestSessionNot
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     update_backtest_session_notes(session_id, request_json.title, request_json.description, request_json.strategy_codes)
 
@@ -224,13 +238,11 @@ def update_session_notes(session_id: str, request_json: UpdateBacktestSessionNot
 
 
 @router.post("/purge-sessions")
-def purge_sessions(request_json: dict = Body(...), authorization: Optional[str] = Header(None)):
+def purge_sessions(request_json: dict = Body(...), current_user: CurrentUser = Depends(require_admin)):
     """
-    Purge backtest sessions older than specified days
+    Purge backtest sessions older than specified days (admin only)
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
-    
+
     days_old = request_json.get('days_old', None)
     
     deleted_count = purge_backtest_sessions(days_old)
@@ -242,12 +254,10 @@ def purge_sessions(request_json: dict = Body(...), authorization: Optional[str] 
 
 
 @router.post("/sessions/{session_id}/chart-data")
-def get_backtest_session_chart_data(session_id: str, authorization: Optional[str] = Header(None)):
+def get_backtest_session_chart_data(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get chart data for a specific backtest session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_backtest_session_by_id_from_db(session_id)
 
@@ -255,6 +265,10 @@ def get_backtest_session_chart_data(session_id: str, authorization: Optional[str
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     chart_data = jh.clean_infinite_values(json.loads(session.chart_data)) if session.chart_data else None
 
@@ -264,12 +278,10 @@ def get_backtest_session_chart_data(session_id: str, authorization: Optional[str
 
 
 @router.post("/sessions/{session_id}/strategy-code")
-def get_backtest_session_strategy_codes(session_id: str, authorization: Optional[str] = Header(None)):
+def get_backtest_session_strategy_codes(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get strategy codes for a specific backtest session
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_backtest_session_by_id_from_db(session_id)
 
@@ -277,6 +289,10 @@ def get_backtest_session_strategy_codes(session_id: str, authorization: Optional
         return JSONResponse({
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
+
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
 
     return JSONResponse({
         'strategy_code': json.loads(session.strategy_codes) if session.strategy_codes else {}
@@ -284,12 +300,10 @@ def get_backtest_session_strategy_codes(session_id: str, authorization: Optional
 
 
 @router.post("/sessions/{session_id}/logs")
-def get_backtest_session_logs(session_id: str, authorization: Optional[str] = Header(None)):
+def get_backtest_session_logs(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
     """
     Get backtest logs for a specific session from the database
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     session = get_backtest_session_by_id_from_db(session_id)
 
@@ -298,13 +312,17 @@ def get_backtest_session_logs(session_id: str, authorization: Optional[str] = He
             'error': f'Session with ID {session_id} not found'
         }, status_code=404)
 
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
+
     return JSONResponse({
         'logs': json.loads(session.logs) if session.logs else []
     })
 
 
 @router.post("/exposure-table")
-def compute_exposure_table(request_json: dict = Body(...), authorization: Optional[str] = Header(None)):
+def compute_exposure_table(request_json: dict = Body(...), current_user: CurrentUser = Depends(get_current_user)):
     """
     Compute a theoretical exposure table from strategy hyperparameters.
     initial_size / base_size = % of equity used as MARGIN for level 0.
@@ -316,8 +334,6 @@ def compute_exposure_table(request_json: dict = Body(...), authorization: Option
       - hyperparameters: dict
       - balance: float
     """
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
 
     from qengine.core.instruments import instrument_registry
     from qengine.info import exchange_info

@@ -1,10 +1,10 @@
-from typing import Optional
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends
 from starlette.responses import JSONResponse
 
 from qengine.modes.import_candles_mode import CandleExchange
 from qengine.modes.import_candles_mode.drivers import drivers, driver_names
 from qengine.services import auth as authenticator
+from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 from qengine.services.redis import sync_redis
 from qengine.services.web import ExchangeSupportedSymbolsRequestJson, StoreExchangeApiKeyRequestJson, DeleteExchangeApiKeyRequestJson
 from qengine.services.env import is_dev_env
@@ -14,9 +14,7 @@ router = APIRouter(prefix="/exchange", tags=["Exchange"])
 
 
 @router.post('/supported-symbols')
-def exchange_supported_symbols(request_json: ExchangeSupportedSymbolsRequestJson, authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def exchange_supported_symbols(request_json: ExchangeSupportedSymbolsRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     
     # if is_dev_env():
     #     return JSONResponse({
@@ -29,35 +27,34 @@ def exchange_supported_symbols(request_json: ExchangeSupportedSymbolsRequestJson
 
 
 @router.get('/api-keys')
-def get_exchange_api_keys_endpoint(authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+def get_exchange_api_keys_endpoint(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
+
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
 
     from qengine.modes.exchange_api_keys import get_exchange_api_keys
-    return get_exchange_api_keys()
+    return get_exchange_api_keys(user_id=user_id)
 
 
 @router.post('/api-keys/store')
 def store_exchange_api_keys_endpoint(json_request: StoreExchangeApiKeyRequestJson,
-                        authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+                        current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
 
     from qengine.modes.exchange_api_keys import store_exchange_api_keys
     return store_exchange_api_keys(
         json_request.exchange, json_request.name, json_request.api_key, json_request.api_secret,
-        json_request.additional_fields, json_request.general_notifications_id, json_request.error_notifications_id
+        json_request.additional_fields, json_request.general_notifications_id, json_request.error_notifications_id,
+        user_id=current_user.effective_user_id
     )
 
 
 @router.post('/api-keys/delete')
 def delete_exchange_api_keys_endpoint(json_request: DeleteExchangeApiKeyRequestJson,
-                         authorization: Optional[str] = Header(None)) -> JSONResponse:
-    if not authenticator.is_valid_token(authorization):
-        return authenticator.unauthorized_response()
+                         current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
+
+    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
 
     from qengine.modes.exchange_api_keys import delete_exchange_api_keys
-    return delete_exchange_api_keys(json_request.id)
+    return delete_exchange_api_keys(json_request.id, user_id=user_id)
 
 
 def get_exchange_supported_symbols(exchange: str) -> JSONResponse:

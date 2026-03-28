@@ -221,7 +221,8 @@ def find_by_filters(
     exchange_filter: str = None,
     type_filter: str = None,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
+    user_id: str = None
 ) -> List[ClosedTrade]:
     if jh.is_unit_testing():
         return []
@@ -236,6 +237,9 @@ def find_by_filters(
         pass
 
     query = ClosedTrade.select()
+
+    if user_id:
+        query = query.where(ClosedTrade.user_id == user_id)
 
     if id_search:
         # UUID fields can't be searched with ILIKE directly; cast to text first.

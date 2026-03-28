@@ -383,12 +383,20 @@ def get_strategy_class(strategy_name: str):
     import re
 
     if not is_unit_testing():
-        strategy_class = locate(f'strategies.{strategy_name}.{strategy_name}')
+        # Find which subdirectory contains this strategy (user-scoped layout)
+        strategy_subdir = _find_strategy_subdir(strategy_name)
+        if strategy_subdir:
+            module_base = f'strategies.{strategy_subdir}.{strategy_name}'
+        else:
+            # Fallback to legacy flat layout
+            module_base = f'strategies.{strategy_name}'
+
+        strategy_class = locate(f'{module_base}.{strategy_name}')
         if strategy_class is None:
             # Try to find any class that inherits from Strategy in the module
-            module = locate(f'strategies.{strategy_name}')
+            module = locate(module_base)
             if module:
-                strategy_file = os.path.join('strategies', strategy_name, '__init__.py')
+                strategy_file = os.path.join('strategies', *(strategy_subdir.split('.') if strategy_subdir else []), strategy_name, '__init__.py')
                 if os.path.exists(strategy_file):
                     with open(strategy_file, 'r') as f:
                         content = f.read()
@@ -406,15 +414,14 @@ def get_strategy_class(strategy_name: str):
 
                             # Reload the module to get the updated class
                             import importlib
-                            module_path = f'strategies.{strategy_name}'
-                            if module_path in sys.modules:
-                                del sys.modules[module_path]
-                            strategy_class = locate(f'strategies.{strategy_name}.{strategy_name}')
+                            if module_base in sys.modules:
+                                del sys.modules[module_base]
+                            strategy_class = locate(f'{module_base}.{strategy_name}')
                             return strategy_class
 
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
-                    if isinstance(attr, type) and attr.__module__ == f'strategies.{strategy_name}':
+                    if isinstance(attr, type) and attr.__module__ == module_base:
                         # Create a new class with the correct name as fallback
                         strategy_class = type(strategy_name, (attr,), {})
                         break
@@ -429,6 +436,28 @@ def get_strategy_class(strategy_name: str):
         strategy_dir = f'qengine.strategies.{strategy_name}.{strategy_name}'
 
     return locate(strategy_dir)
+
+
+def _find_strategy_subdir(strategy_name: str) -> str:
+    """
+    Find the subdirectory (user_id or _shared) that contains a strategy.
+    Returns the subdirectory name, or empty string if using legacy flat layout.
+    """
+    import os
+    strategies_base = 'strategies'
+    if not os.path.isdir(strategies_base):
+        return ''
+    # Check legacy flat path first
+    if os.path.isfile(os.path.join(strategies_base, strategy_name, '__init__.py')):
+        return ''
+    # Search subdirectories (user dirs and _shared)
+    for item in os.listdir(strategies_base):
+        item_path = os.path.join(strategies_base, item)
+        if os.path.isdir(item_path):
+            candidate = os.path.join(item_path, strategy_name, '__init__.py')
+            if os.path.isfile(candidate):
+                return item
+    return ''
 
 
 def insecure_hash(msg: str) -> str:
