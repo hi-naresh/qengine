@@ -12,6 +12,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     from qengine.services.env import ENV_VALUES
 
     if not authenticator.is_valid_token(token):
+        await websocket.close(code=1008, reason="Unauthorized")
         return
 
     # Use connection manager to handle this websocket
