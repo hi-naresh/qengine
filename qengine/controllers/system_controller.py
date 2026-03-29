@@ -222,6 +222,221 @@ def storage_info(current_user: CurrentUser = Depends(require_admin)) -> JSONResp
     }, status_code=200)
 
 
+@router.get("/db-storage")
+def db_storage(current_user: CurrentUser = Depends(require_admin)) -> JSONResponse:
+    """Comprehensive PostgreSQL storage analytics: total, per-table, per-user."""
+    from qengine.services.db import database
+    from qengine.services.env import ENV_VALUES
+
+    db = database.db
+    storage_limit_mb = int(ENV_VALUES.get('DB_STORAGE_LIMIT_MB', '500'))
+
+    try:
+        # Total database size
+        cursor = db.execute_sql(
+            "SELECT pg_database_size(current_database())"
+        )
+        total_bytes = cursor.fetchone()[0]
+
+        # Per-table sizes (only app tables, not pg_ internal)
+        cursor = db.execute_sql("""
+            SELECT
+                tablename,
+                pg_total_relation_size(quote_ident(tablename)) as total_size,
+                pg_relation_size(quote_ident(tablename)) as data_size,
+                (SELECT count(*) FROM information_schema.columns c WHERE c.table_name = t.tablename) as col_count
+            FROM pg_tables t
+            WHERE schemaname = 'public'
+            ORDER BY total_size DESC
+        """)
+        tables = []
+        for row in cursor.fetchall():
+            tables.append({
+                'name': row[0],
+                'total_bytes': row[1],
+                'data_bytes': row[2],
+                'index_bytes': row[1] - row[2],
+            })
+
+        # Row counts for key tables (fast estimate via pg_stat)
+        cursor = db.execute_sql("""
+            SELECT relname, n_live_tup
+            FROM pg_stat_user_tables
+            WHERE schemaname = 'public'
+            ORDER BY n_live_tup DESC
+        """)
+        row_counts = {r[0]: r[1] for r in cursor.fetchall()}
+        for t in tables:
+            t['rows'] = row_counts.get(t['name'], 0)
+
+        # Per-user storage (for user-scoped tables)
+        user_scoped_tables = [
+            'backtestsession', 'livesession', 'optimizationsession',
+            'montecarlosession', 'closedtrade', 'order',
+            'liveequitysnapshot', 'issue', 'issuecomment',
+            'exchangeapikeys', 'notificationapikeys', 'opentab', 'option'
+        ]
+
+        # Build UNION query for per-user row counts across all scoped tables
+        union_parts = []
+        for tbl in user_scoped_tables:
+            # Check table exists
+            exists = db.execute_sql(
+                "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=%s",
+                (tbl,)
+            ).fetchone()
+            if exists:
+                # Check if user_id column exists
+                has_uid = db.execute_sql(
+                    "SELECT 1 FROM information_schema.columns WHERE table_name=%s AND column_name='user_id'",
+                    (tbl,)
+                ).fetchone()
+                if has_uid:
+                    union_parts.append(
+                        f"SELECT user_id, '{tbl}' as tbl, count(*) as cnt FROM \"{tbl}\" WHERE user_id IS NOT NULL GROUP BY user_id"
+                    )
+
+        per_user = {}
+        if union_parts:
+            query = " UNION ALL ".join(union_parts)
+            cursor = db.execute_sql(f"SELECT user_id, tbl, cnt FROM ({query}) sub ORDER BY user_id")
+            for row in cursor.fetchall():
+                uid = str(row[0])
+                if uid not in per_user:
+                    per_user[uid] = {'total_rows': 0, 'tables': {}}
+                per_user[uid]['tables'][row[1]] = row[2]
+                per_user[uid]['total_rows'] += row[2]
+
+        # Resolve usernames
+        if per_user:
+            from qengine.models.User import get_users_by_ids
+            user_map = get_users_by_ids(list(per_user.keys()))
+            for uid, data in per_user.items():
+                u = user_map.get(uid)
+                data['username'] = u.username if u else 'unknown'
+                data['role'] = u.role if u else 'unknown'
+
+        # Candle data size (shared, not per-user)
+        candle_size = 0
+        candle_rows = 0
+        for t in tables:
+            if t['name'] == 'candle':
+                candle_size = t['total_bytes']
+                candle_rows = t['rows']
+                break
+
+        return JSONResponse({
+            'data': {
+                'total_bytes': total_bytes,
+                'storage_limit_mb': storage_limit_mb,
+                'usage_percent': round((total_bytes / (storage_limit_mb * 1024 * 1024)) * 100, 1),
+                'tables': tables,
+                'per_user': per_user,
+                'candle_bytes': candle_size,
+                'candle_rows': candle_rows,
+            }
+        }, status_code=200)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+class FlushDataRequestJson(BaseModel):
+    target: str  # 'user_sessions', 'candles', 'all_sessions', 'table'
+    user_id: str = None
+    table_name: str = None
+    older_than_days: int = None
+
+
+@router.post("/flush-data")
+def flush_data(json_request: FlushDataRequestJson,
+               current_user: CurrentUser = Depends(require_admin)) -> JSONResponse:
+    """Flush heavyweight data: user sessions, candles, or specific tables."""
+    from qengine.services.db import database
+    import time
+
+    db = database.db
+    target = json_request.target
+    deleted = 0
+
+    try:
+        age_filter = ""
+        age_params = []
+        if json_request.older_than_days and json_request.older_than_days > 0:
+            cutoff_ms = int((time.time() - json_request.older_than_days * 86400) * 1000)
+            age_filter = " AND created_at < %s"
+            age_params = [cutoff_ms]
+
+        if target == 'user_sessions':
+            if not json_request.user_id:
+                return JSONResponse({'error': 'user_id required'}, status_code=400)
+            session_tables = ['backtestsession', 'optimizationsession', 'montecarlosession']
+            result_tables = ['closedtrade', 'order']
+            for tbl in session_tables + result_tables:
+                cursor = db.execute_sql(
+                    f"DELETE FROM \"{tbl}\" WHERE user_id = %s" + age_filter,
+                    [json_request.user_id] + age_params
+                )
+                deleted += cursor.rowcount
+            # Also clean liveequitysnapshot
+            cursor = db.execute_sql(
+                f"DELETE FROM liveequitysnapshot WHERE user_id = %s" + age_filter,
+                [json_request.user_id] + age_params
+            )
+            deleted += cursor.rowcount
+
+        elif target == 'all_sessions':
+            session_tables = ['backtestsession', 'optimizationsession', 'montecarlosession',
+                              'closedtrade', 'order', 'liveequitysnapshot']
+            for tbl in session_tables:
+                if age_filter:
+                    cursor = db.execute_sql(f"DELETE FROM \"{tbl}\" WHERE 1=1" + age_filter, age_params)
+                else:
+                    cursor = db.execute_sql(f"TRUNCATE \"{tbl}\"")
+                deleted += cursor.rowcount if age_filter else 0
+
+        elif target == 'candles':
+            cursor = db.execute_sql("SELECT count(*) FROM candle")
+            count = cursor.fetchone()[0]
+            db.execute_sql("TRUNCATE candle")
+            deleted = count
+
+        elif target == 'table':
+            if not json_request.table_name:
+                return JSONResponse({'error': 'table_name required'}, status_code=400)
+            # Safety: only allow known tables
+            allowed = {'backtestsession', 'optimizationsession', 'montecarlosession',
+                       'closedtrade', 'order', 'liveequitysnapshot', 'candle',
+                       'opentab', 'option'}
+            if json_request.table_name not in allowed:
+                return JSONResponse({'error': f'Cannot flush table: {json_request.table_name}'}, status_code=400)
+            cursor = db.execute_sql(f"SELECT count(*) FROM \"{json_request.table_name}\"")
+            count = cursor.fetchone()[0]
+            db.execute_sql(f"TRUNCATE \"{json_request.table_name}\"")
+            deleted = count
+
+        else:
+            return JSONResponse({'error': f'Unknown target: {target}'}, status_code=400)
+
+        # Run VACUUM to reclaim space
+        old_autocommit = db.autocommit
+        db.set_autocommit(True)
+        try:
+            db.execute_sql("VACUUM")
+        finally:
+            db.set_autocommit(old_autocommit)
+
+        from qengine.services.audit_logger import audit
+        audit('flush_data', user_id=current_user.id, detail=f'target={target}, deleted={deleted}')
+
+        return JSONResponse({
+            'status': 'success',
+            'deleted': deleted,
+            'message': f'Flushed {deleted} rows. VACUUM run to reclaim space.'
+        }, status_code=200)
+    except Exception as e:
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
 @router.post("/test-notification")
 def test_notification(json_request: TestNotificationRequestJson,
                       current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:

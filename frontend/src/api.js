@@ -211,6 +211,8 @@ export const api = {
 
   // Maintenance
   getStorageInfo: () => request('GET', '/system/storage-info'),
+  getDbStorage: () => request('GET', '/system/db-storage'),
+  flushData: (data) => request('POST', '/system/flush-data', data),
   clearCache: () => request('POST', '/system/clear-cache'),
   flushRedis: () => request('POST', '/system/flush-redis'),
   clearLogs: () => request('POST', '/system/clear-logs'),
