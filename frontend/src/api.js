@@ -271,7 +271,26 @@ export function getCurrentUser() {
 }
 
 export function isAuthenticated() {
-  return !!localStorage.getItem('te_token')
+  const token = localStorage.getItem('te_token')
+  if (!token) return false
+  // Require both token and user object (clears stale legacy sessions)
+  if (!localStorage.getItem('te_user')) {
+    localStorage.removeItem('te_token')
+    return false
+  }
+  // Check JWT expiry client-side (avoids showing app shell before 401 kicks in)
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      logout()
+      return false
+    }
+  } catch {
+    // Not a valid JWT — clear stale token
+    logout()
+    return false
+  }
+  return true
 }
 
 export function isAdmin() {

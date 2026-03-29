@@ -49,6 +49,10 @@ router.beforeEach((to) => {
     return { name: 'Dashboard' }
   }
   if (to.meta.feature && !hasFeature(to.meta.feature)) {
+    // Avoid infinite loop: if Dashboard itself is blocked, go to Login
+    if (to.name === 'Dashboard') {
+      return { name: 'Login' }
+    }
     return { name: 'Dashboard' }
   }
 })
