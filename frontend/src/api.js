@@ -37,6 +37,10 @@ async function request(method, path, body = null) {
   try {
     data = JSON.parse(text)
   } catch {
+    // If server returned HTML (e.g. catch-all route), show clean error
+    if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+      throw new Error(`Server endpoint not found (${res.status}). Backend may need redeployment.`)
+    }
     throw new Error(text || `Server error (${res.status})`)
   }
   if (!res.ok) throw new Error(data.error || data.message || 'Request failed')
