@@ -278,6 +278,18 @@ export function isAuthenticated() {
     localStorage.removeItem('te_token')
     return false
   }
+  // Check JWT expiry client-side (avoids showing app shell before 401 kicks in)
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      logout()
+      return false
+    }
+  } catch {
+    // Not a valid JWT — clear stale token
+    logout()
+    return false
+  }
   return true
 }
 

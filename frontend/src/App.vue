@@ -24,7 +24,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import Sidebar from './components/Sidebar.vue'
 import BottomNav from './components/BottomNav.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -32,9 +33,25 @@ import ProcessManager from './components/ProcessManager.vue'
 import AdminNotifier from './components/AdminNotifier.vue'
 import WelcomeModal from './components/WelcomeModal.vue'
 import { useSidebar } from './useSidebar'
-import { getCurrentUser, isImpersonating, api, setAuth } from './api'
+import { getCurrentUser, isAuthenticated, isImpersonating, api, setAuth, logout } from './api'
 
 const { collapsed } = useSidebar()
+const router = useRouter()
+
+// On startup, validate session with backend and refresh user profile
+onMounted(async () => {
+  if (!isAuthenticated()) return
+  try {
+    const res = await api.getMe()
+    if (res.user) {
+      localStorage.setItem('te_user', JSON.stringify(res.user))
+    }
+  } catch {
+    // Token rejected by backend — force re-login
+    logout()
+    router.push({ name: 'Login' })
+  }
+})
 
 const impersonating = computed(() => isImpersonating())
 const impersonatingUsername = computed(() => {
