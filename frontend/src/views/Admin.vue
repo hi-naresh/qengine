@@ -1,17 +1,234 @@
 <template>
   <div class="max-w-5xl mx-auto space-y-6">
+    <!-- Top-level tabs -->
     <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-surface-100">User Management</h1>
-        <p class="text-sm text-surface-500 mt-1">
-          {{ activeUsers.length }} active user{{ activeUsers.length !== 1 ? 's' : '' }}
-          <span v-if="deletedUsers.length" class="text-surface-600"> · {{ deletedUsers.length }} deleted</span>
-        </p>
+      <div class="flex items-center gap-4">
+        <h1 class="text-2xl font-bold text-surface-100">Admin</h1>
+        <div class="flex gap-1">
+          <button @click="mainTab = 'users'"
+            class="px-4 py-2 rounded-lg text-sm transition-colors"
+            :class="mainTab === 'users' ? 'bg-brand-600/20 text-brand-400 font-medium' : 'bg-surface-800/60 text-surface-500 hover:text-surface-300'">
+            Users
+          </button>
+          <button @click="mainTab = 'storage'; loadDbStorage()"
+            class="px-4 py-2 rounded-lg text-sm transition-colors"
+            :class="mainTab === 'storage' ? 'bg-brand-600/20 text-brand-400 font-medium' : 'bg-surface-800/60 text-surface-500 hover:text-surface-300'">
+            Storage
+          </button>
+        </div>
       </div>
-      <button @click="showCreateForm = !showCreateForm"
+      <button v-if="mainTab === 'users'" @click="showCreateForm = !showCreateForm"
         class="btn-primary btn-sm">
         {{ showCreateForm ? 'Cancel' : '+ Create User' }}
       </button>
+    </div>
+
+    <!-- ═══════════════ STORAGE TAB ═══════════════ -->
+    <template v-if="mainTab === 'storage'">
+      <div v-if="storageLoading" class="card p-8 text-center text-surface-400">Loading storage analytics...</div>
+      <div v-else-if="storageError" class="card p-8 text-center text-red-400">{{ storageError }}</div>
+      <template v-else-if="dbStorage">
+
+        <!-- Overall gauge -->
+        <div class="card">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="text-sm font-semibold text-surface-200">Database Storage</h2>
+              <p class="text-xs text-surface-500 mt-0.5">PostgreSQL · {{ dbStorage.storage_limit_mb }} MB limit</p>
+            </div>
+            <div class="text-right">
+              <div class="text-2xl font-bold" :class="storageColor">{{ formatBytes(dbStorage.total_bytes) }}</div>
+              <div class="text-xs text-surface-500">{{ dbStorage.usage_percent }}% used</div>
+            </div>
+          </div>
+          <div class="h-3 bg-surface-700 rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-500" :class="storageBgColor"
+              :style="{ width: Math.min(100, dbStorage.usage_percent) + '%' }"></div>
+          </div>
+          <div class="flex justify-between mt-2 text-[10px] text-surface-600">
+            <span>0 MB</span>
+            <span v-if="dbStorage.usage_percent < 80" class="text-surface-500">{{ Math.round(dbStorage.total_bytes / 1024 / 1024) }} MB used</span>
+            <span>{{ dbStorage.storage_limit_mb }} MB</span>
+          </div>
+        </div>
+
+        <!-- Per-table breakdown -->
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-surface-200">Table Breakdown</h2>
+            <span class="text-xs text-surface-500">{{ dbStorage.tables.length }} tables</span>
+          </div>
+          <div class="space-y-2">
+            <div v-for="t in topTables" :key="t.name"
+              class="flex items-center gap-3 text-xs">
+              <span class="text-surface-400 w-40 truncate font-mono" :title="t.name">{{ t.name }}</span>
+              <div class="flex-1 h-1.5 bg-surface-700 rounded-full overflow-hidden">
+                <div class="h-full bg-brand-500/60 rounded-full" :style="{ width: tablePercent(t) + '%' }"></div>
+              </div>
+              <span class="text-surface-300 w-20 text-right font-medium">{{ formatBytes(t.total_bytes) }}</span>
+              <span class="text-surface-500 w-20 text-right">{{ t.rows.toLocaleString() }} rows</span>
+            </div>
+            <button v-if="dbStorage.tables.length > 8 && !showAllTables" @click="showAllTables = true"
+              class="text-xs text-brand-400 hover:text-brand-300 mt-2">
+              Show all {{ dbStorage.tables.length }} tables
+            </button>
+          </div>
+        </div>
+
+        <!-- Candle data callout -->
+        <div v-if="dbStorage.candle_bytes > 0" class="card border-amber-500/20">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-amber-400">Market Data (Candles)</h2>
+              <p class="text-xs text-surface-500 mt-0.5">{{ dbStorage.candle_rows.toLocaleString() }} candle rows · Shared across all users</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-lg font-bold text-surface-200">{{ formatBytes(dbStorage.candle_bytes) }}</span>
+              <span class="text-xs text-surface-500">{{ candlePercent }}% of total</span>
+              <button @click="confirmFlush('candles')"
+                class="px-3 py-1.5 text-xs rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                :disabled="flushing">
+                Flush All
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Per-user storage -->
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-surface-200">Per-User Storage</h2>
+            <span class="text-xs text-surface-500">{{ Object.keys(dbStorage.per_user).length }} users with data</span>
+          </div>
+          <div v-if="Object.keys(dbStorage.per_user).length === 0" class="text-xs text-surface-600 py-4 text-center">
+            No user-scoped data found.
+          </div>
+          <div v-else class="space-y-3">
+            <div v-for="(data, uid) in sortedPerUser" :key="uid"
+              class="bg-surface-800/60 rounded-lg p-3">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-medium text-surface-200">{{ data.username }}</span>
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                    :class="data.role === 'admin' ? 'bg-amber-500/10 text-amber-400' : 'bg-brand-500/10 text-brand-400'">
+                    {{ data.role }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs text-surface-300 font-medium">{{ data.total_rows.toLocaleString() }} rows</span>
+                  <button @click="confirmFlush('user_sessions', uid, data.username)"
+                    class="px-2.5 py-1 text-[10px] rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                    :disabled="flushing">
+                    Flush Sessions
+                  </button>
+                </div>
+              </div>
+              <!-- Mini table breakdown -->
+              <div class="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+                <span v-for="(cnt, tbl) in data.tables" :key="tbl" class="text-surface-500">
+                  <span class="text-surface-400">{{ tbl }}</span>: {{ cnt.toLocaleString() }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bulk flush controls -->
+        <div class="card">
+          <h2 class="text-sm font-semibold text-surface-200 mb-4">Data Management</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="flex items-center justify-between p-3 bg-surface-800/60 rounded-lg">
+              <div>
+                <div class="text-xs font-medium text-surface-300">Flush All Sessions</div>
+                <div class="text-[10px] text-surface-500">Backtest, optimization, Monte Carlo results</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <select v-model.number="flushOlderDays" class="select text-xs py-1 px-2 w-28">
+                  <option :value="0">All time</option>
+                  <option :value="7">Older than 7d</option>
+                  <option :value="30">Older than 30d</option>
+                  <option :value="90">Older than 90d</option>
+                </select>
+                <button @click="confirmFlush('all_sessions')"
+                  class="px-3 py-1.5 text-xs rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                  :disabled="flushing">
+                  Flush
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between p-3 bg-surface-800/60 rounded-lg">
+              <div>
+                <div class="text-xs font-medium text-surface-300">Clear File Cache</div>
+                <div class="text-[10px] text-surface-500">Pickle cache + temp files</div>
+              </div>
+              <button @click="clearCache"
+                class="px-3 py-1.5 text-xs rounded bg-surface-700 hover:bg-surface-600 text-surface-300 transition-colors"
+                :disabled="flushing">
+                Clear
+              </button>
+            </div>
+            <div class="flex items-center justify-between p-3 bg-surface-800/60 rounded-lg">
+              <div>
+                <div class="text-xs font-medium text-surface-300">Clear Logs</div>
+                <div class="text-[10px] text-surface-500">All session log files</div>
+              </div>
+              <button @click="clearLogsAction"
+                class="px-3 py-1.5 text-xs rounded bg-surface-700 hover:bg-surface-600 text-surface-300 transition-colors"
+                :disabled="flushing">
+                Clear
+              </button>
+            </div>
+            <div class="flex items-center justify-between p-3 bg-surface-800/60 rounded-lg">
+              <div>
+                <div class="text-xs font-medium text-surface-300">Flush Redis</div>
+                <div class="text-[10px] text-surface-500">Clear all Redis keys and pub/sub state</div>
+              </div>
+              <button @click="flushRedisAction"
+                class="px-3 py-1.5 text-xs rounded bg-surface-700 hover:bg-surface-600 text-surface-300 transition-colors"
+                :disabled="flushing">
+                Flush
+              </button>
+            </div>
+          </div>
+          <p v-if="flushMsg" class="mt-3 text-xs" :class="flushErr ? 'text-red-400' : 'text-green-400'">{{ flushMsg }}</p>
+        </div>
+
+        <!-- File storage info -->
+        <div v-if="fileStorage" class="card">
+          <h2 class="text-sm font-semibold text-surface-200 mb-3">File Storage</h2>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="p-3 bg-surface-800/60 rounded-lg">
+              <div class="text-[10px] text-surface-500 uppercase">Cache</div>
+              <div class="text-lg font-bold text-surface-200">{{ formatBytes(fileStorage.cache_size_bytes) }}</div>
+              <div class="text-[10px] text-surface-500">{{ fileStorage.cache_files }} files</div>
+            </div>
+            <div class="p-3 bg-surface-800/60 rounded-lg">
+              <div class="text-[10px] text-surface-500 uppercase">Logs</div>
+              <div class="text-lg font-bold text-surface-200">{{ formatBytes(fileStorage.log_size_bytes) }}</div>
+              <div class="text-[10px] text-surface-500">{{ fileStorage.log_files }} files</div>
+            </div>
+            <div class="p-3 bg-surface-800/60 rounded-lg">
+              <div class="text-[10px] text-surface-500 uppercase">Redis</div>
+              <div class="text-lg font-bold text-surface-200">{{ fileStorage.redis_memory }}</div>
+              <div class="text-[10px] text-surface-500">{{ fileStorage.redis_keys }} keys</div>
+            </div>
+            <div class="p-3 bg-surface-800/60 rounded-lg">
+              <div class="text-[10px] text-surface-500 uppercase">DB Usage</div>
+              <div class="text-lg font-bold" :class="storageColor">{{ dbStorage.usage_percent }}%</div>
+              <div class="text-[10px] text-surface-500">of {{ dbStorage.storage_limit_mb }} MB</div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
+
+    <!-- ═══════════════ USERS TAB ═══════════════ -->
+    <template v-if="mainTab === 'users'">
+    <div class="flex items-center justify-between">
+      <p class="text-sm text-surface-500">
+        {{ activeUsers.length }} active user{{ activeUsers.length !== 1 ? 's' : '' }}
+        <span v-if="deletedUsers.length" class="text-surface-600"> · {{ deletedUsers.length }} deleted</span>
+      </p>
     </div>
 
     <!-- Create User Form -->
@@ -353,6 +570,7 @@
       </div>
 
     </div>
+    </template>
   </div>
 </template>
 
@@ -362,6 +580,7 @@ import { useRouter } from 'vue-router'
 import { api, setAuth, getCurrentUser } from '../api'
 
 const router = useRouter()
+const mainTab = ref('users')
 const users = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -620,6 +839,160 @@ async function deleteUser(user, deleteData) {
     deleteErr.value = true
   } finally {
     deletingUser.value = null
+  }
+}
+
+// ═══════ Storage Tab ═══════
+
+const dbStorage = ref(null)
+const fileStorage = ref(null)
+const storageLoading = ref(false)
+const storageError = ref('')
+const showAllTables = ref(false)
+const flushing = ref(false)
+const flushMsg = ref('')
+const flushErr = ref(false)
+const flushOlderDays = ref(0)
+
+const storageColor = computed(() => {
+  if (!dbStorage.value) return 'text-surface-200'
+  const p = dbStorage.value.usage_percent
+  if (p > 90) return 'text-red-400'
+  if (p > 70) return 'text-amber-400'
+  return 'text-emerald-400'
+})
+
+const storageBgColor = computed(() => {
+  if (!dbStorage.value) return 'bg-brand-400'
+  const p = dbStorage.value.usage_percent
+  if (p > 90) return 'bg-red-400'
+  if (p > 70) return 'bg-amber-400'
+  return 'bg-brand-400'
+})
+
+const topTables = computed(() => {
+  if (!dbStorage.value) return []
+  return showAllTables.value ? dbStorage.value.tables : dbStorage.value.tables.slice(0, 8)
+})
+
+const candlePercent = computed(() => {
+  if (!dbStorage.value || !dbStorage.value.total_bytes) return 0
+  return Math.round((dbStorage.value.candle_bytes / dbStorage.value.total_bytes) * 100)
+})
+
+const sortedPerUser = computed(() => {
+  if (!dbStorage.value) return {}
+  const entries = Object.entries(dbStorage.value.per_user)
+  entries.sort((a, b) => b[1].total_rows - a[1].total_rows)
+  return Object.fromEntries(entries)
+})
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let val = bytes
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++ }
+  return val.toFixed(i > 0 ? 1 : 0) + ' ' + units[i]
+}
+
+function tablePercent(t) {
+  if (!dbStorage.value || !dbStorage.value.total_bytes) return 0
+  return Math.max(1, Math.round((t.total_bytes / dbStorage.value.total_bytes) * 100))
+}
+
+async function loadDbStorage() {
+  storageLoading.value = true
+  storageError.value = ''
+  try {
+    const [dbRes, fileRes] = await Promise.all([
+      api.getDbStorage(),
+      api.getStorageInfo(),
+    ])
+    dbStorage.value = dbRes.data
+    fileStorage.value = fileRes.data
+  } catch (e) {
+    storageError.value = e.message || 'Failed to load storage info'
+  } finally {
+    storageLoading.value = false
+  }
+}
+
+function confirmFlush(target, userId = null, username = null) {
+  let msg = ''
+  if (target === 'candles') msg = 'Delete ALL candle market data? This cannot be undone.'
+  else if (target === 'user_sessions') msg = `Flush all session data for ${username}? This cannot be undone.`
+  else if (target === 'all_sessions') {
+    const age = flushOlderDays.value > 0 ? ` older than ${flushOlderDays.value} days` : ''
+    msg = `Flush ALL session data${age} for all users? This cannot be undone.`
+  }
+  if (!confirm(msg)) return
+  flushData(target, userId)
+}
+
+async function flushData(target, userId = null) {
+  flushing.value = true
+  flushMsg.value = ''
+  try {
+    const res = await api.flushData({
+      target,
+      user_id: userId,
+      older_than_days: flushOlderDays.value || null,
+    })
+    flushMsg.value = res.message || `Flushed ${res.deleted} rows`
+    flushErr.value = false
+    await loadDbStorage()
+  } catch (e) {
+    flushMsg.value = e.message || 'Flush failed'
+    flushErr.value = true
+  } finally {
+    flushing.value = false
+  }
+}
+
+async function clearCache() {
+  flushing.value = true
+  try {
+    const res = await api.clearCache()
+    flushMsg.value = res.message || 'Cache cleared'
+    flushErr.value = false
+    await loadDbStorage()
+  } catch (e) {
+    flushMsg.value = e.message || 'Failed'
+    flushErr.value = true
+  } finally {
+    flushing.value = false
+  }
+}
+
+async function clearLogsAction() {
+  flushing.value = true
+  try {
+    const res = await api.clearLogs()
+    flushMsg.value = res.message || 'Logs cleared'
+    flushErr.value = false
+    await loadDbStorage()
+  } catch (e) {
+    flushMsg.value = e.message || 'Failed'
+    flushErr.value = true
+  } finally {
+    flushing.value = false
+  }
+}
+
+async function flushRedisAction() {
+  if (!confirm('Flush all Redis data? Active WebSocket connections may be disrupted.')) return
+  flushing.value = true
+  try {
+    const res = await api.flushRedis()
+    flushMsg.value = res.message || 'Redis flushed'
+    flushErr.value = false
+    await loadDbStorage()
+  } catch (e) {
+    flushMsg.value = e.message || 'Failed'
+    flushErr.value = true
+  } finally {
+    flushing.value = false
   }
 }
 </script>
