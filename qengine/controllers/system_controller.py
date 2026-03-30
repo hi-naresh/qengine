@@ -307,10 +307,11 @@ def db_storage(current_user: CurrentUser = Depends(require_admin)) -> JSONRespon
                 per_user[uid]['tables'][row[1]] = row[2]
                 per_user[uid]['total_rows'] += row[2]
 
-        # Resolve usernames
+        # Resolve usernames and roles
         if per_user:
-            from qengine.models.User import get_users_by_ids
-            user_map = get_users_by_ids(list(per_user.keys()))
+            from qengine.models.User import User
+            users_q = User.select(User.id, User.username, User.role).where(User.id.in_(list(per_user.keys())))
+            user_map = {str(u.id): u for u in users_q}
             for uid, data in per_user.items():
                 u = user_map.get(uid)
                 data['username'] = u.username if u else 'unknown'
