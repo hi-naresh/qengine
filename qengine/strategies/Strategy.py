@@ -92,6 +92,9 @@ class Strategy(ABC):
         # Add cached price
         self._cached_price = None
 
+        # Autopilot pipeline stack (None = disabled, set externally by framework)
+        self._pipelines = None
+
     def candles_pipeline(self) -> Optional[BaseCandlesPipeline]:
         return None
 
@@ -584,6 +587,17 @@ class Strategy(ABC):
 
         self._prepare_buy()
 
+        # Pipeline size adjustment: scale entry qty
+        if self._pipelines:
+            total_qty = float(np.abs(self._buy[:, 0]).sum())
+            if total_qty > 0:
+                adjusted_qty = self._pipelines.adjust_size(self, total_qty, 'long')
+                if adjusted_qty <= 0:
+                    return  # pipeline cancelled the entry
+                scale = adjusted_qty / total_qty
+                if scale != 1.0:
+                    self._buy[:, 0] = self._buy[:, 0] * scale
+
         if self.take_profit is not None:
             if self.exchange_type == 'spot':
                 raise exceptions.InvalidStrategy(
@@ -624,17 +638,37 @@ class Strategy(ABC):
             price_to_compare = self.price
 
         for o in self._buy:
-            # MARKET order
-            if jh.is_price_near(o[1], price_to_compare):
-                self.broker.buy_at_market(o[0])
-            # STOP order
-            elif o[1] > price_to_compare:
-                self.broker.start_profit_at(sides.BUY, o[0], o[1])
-            # LIMIT order
-            elif o[1] < price_to_compare:
-                self.broker.buy_at(o[0], o[1])
+            qty, price = o[0], o[1]
+
+            # Determine order type
+            if jh.is_price_near(price, price_to_compare):
+                order_type = 'market'
+            elif price > price_to_compare:
+                order_type = 'stop'
             else:
-                raise ValueError(f'Invalid order price: o[1]:{o[1]}, self.price:{self.price}')
+                order_type = 'limit'
+
+            # Pipeline order filter
+            if self._pipelines:
+                from qengine.framework.base import OrderIntent
+                intent = OrderIntent(
+                    qty=qty, price=price, side='buy', type=order_type,
+                    is_entry=True, symbol=self.symbol, exchange=self.exchange
+                )
+                intent = self._pipelines.filter_order(self, intent)
+                if intent is None:
+                    continue
+                qty, price = intent.qty, intent.price
+
+            # Submit based on type
+            if order_type == 'market':
+                self.broker.buy_at_market(qty)
+            elif order_type == 'stop':
+                self.broker.start_profit_at(sides.BUY, qty, price)
+            elif order_type == 'limit':
+                self.broker.buy_at(qty, price)
+            else:
+                raise ValueError(f'Invalid order price: price:{price}, self.price:{self.price}')
 
     def _submit_sell_orders(self) -> None:
         if jh.is_livetrading():
@@ -646,17 +680,37 @@ class Strategy(ABC):
             price_to_compare = self.price
 
         for o in self._sell:
-            # MARKET order
-            if jh.is_price_near(o[1], price_to_compare):
-                self.broker.sell_at_market(o[0])
-            # STOP order
-            elif o[1] < price_to_compare:
-                self.broker.start_profit_at(sides.SELL, o[0], o[1])
-            # LIMIT order
-            elif o[1] > price_to_compare:
-                self.broker.sell_at(o[0], o[1])
+            qty, price = o[0], o[1]
+
+            # Determine order type
+            if jh.is_price_near(price, price_to_compare):
+                order_type = 'market'
+            elif price < price_to_compare:
+                order_type = 'stop'
             else:
-                raise ValueError(f'Invalid order price: o[1]:{o[1]}, self.price:{self.price}')
+                order_type = 'limit'
+
+            # Pipeline order filter
+            if self._pipelines:
+                from qengine.framework.base import OrderIntent
+                intent = OrderIntent(
+                    qty=qty, price=price, side='sell', type=order_type,
+                    is_entry=True, symbol=self.symbol, exchange=self.exchange
+                )
+                intent = self._pipelines.filter_order(self, intent)
+                if intent is None:
+                    continue
+                qty, price = intent.qty, intent.price
+
+            # Submit based on type
+            if order_type == 'market':
+                self.broker.sell_at_market(qty)
+            elif order_type == 'stop':
+                self.broker.start_profit_at(sides.SELL, qty, price)
+            elif order_type == 'limit':
+                self.broker.sell_at(qty, price)
+            else:
+                raise ValueError(f'Invalid order price: price:{price}, self.price:{self.price}')
 
     def _execute_short(self) -> None:
         self.go_short()
@@ -670,6 +724,17 @@ class Strategy(ABC):
             )
 
         self._prepare_sell()
+
+        # Pipeline size adjustment: scale entry qty
+        if self._pipelines:
+            total_qty = float(np.abs(self._sell[:, 0]).sum())
+            if total_qty > 0:
+                adjusted_qty = self._pipelines.adjust_size(self, total_qty, 'short')
+                if adjusted_qty <= 0:
+                    return  # pipeline cancelled the entry
+                scale = adjusted_qty / total_qty
+                if scale != 1.0:
+                    self._sell[:, 0] = self._sell[:, 0] * scale
 
         if self.take_profit is not None:
             self._validate_take_profit()
@@ -854,6 +919,41 @@ class Strategy(ABC):
         # after _wait_until_executing_orders_are_fully_handled, the position might have closed, so:
         if self.position.is_close:
             return
+
+        # Pipeline exit suggestions (replaces simple should_abort)
+        if self._pipelines:
+            _exit = self._pipelines.suggest_exit(self)
+            if _exit:
+                _action = _exit.get('action')
+                if _action == 'close_all':
+                    _abort_meta = {'exit_reason': 'pipeline_abort'}
+                    # Include strategy session info so trades group correctly
+                    if self.vars.get('session_number') is not None:
+                        _abort_meta['session'] = self.vars['session_number']
+                    if self.vars.get('level') is not None:
+                        _abort_meta['level'] = self.vars['level']
+                    if self.position.is_cfd_mode and hasattr(self, 'close_all_tickets'):
+                        self.close_all_tickets(self.price, meta=_abort_meta)
+                    else:
+                        self.broker.reduce_position_at(self.position.qty, self.price, self.price)
+                        # Tag the resulting trade with abort meta
+                        if store.closed_trades.trades:
+                            _ct = store.closed_trades.trades[-1]
+                            if not _ct.meta:
+                                _ct.meta = {}
+                            _ct.meta.update(_abort_meta)
+                    return
+                elif _action == 'partial_close':
+                    _pct = min(max(_exit.get('pct', 0.5), 0.01), 1.0)
+                    _close_qty = abs(self.position.qty) * _pct
+                    if _close_qty > 0:
+                        self.broker.reduce_position_at(_close_qty, self.price, self.price)
+                    # don't return — continue to update_position for remaining qty
+                elif _action == 'tighten_sl' and _exit.get('price') is not None:
+                    self.stop_loss = [(abs(self.position.qty), _exit['price'])]
+                    # _detect_and_handle_entry_and_exit_modifications will resubmit
+                elif _action == 'set_tp' and _exit.get('price') is not None:
+                    self.take_profit = [(abs(self.position.qty), _exit['price'])]
 
         self.update_position()
 
@@ -1082,6 +1182,12 @@ class Strategy(ABC):
 
             should_long = self.should_long()
 
+            # Pipeline entry gate: block if any pipeline vetoes
+            if self._pipelines and (should_long or should_short):
+                if not self._pipelines.gate_entry(self):
+                    should_long = False
+                    should_short = False
+
             # should_short and should_long cannot both be True unless hedge_mode is enabled
             if should_short and should_long:
                 if not self.hedge_mode:
@@ -1120,6 +1226,10 @@ class Strategy(ABC):
 
     def _on_open_position(self, order: Order) -> None:
         self.increased_count = 1
+
+        # Pipeline: track entry state (danger at entry, cycle start)
+        if self._pipelines:
+            self._pipelines.on_open_position(self)
 
         self._broadcast('route-open-position')
 
@@ -1184,6 +1294,10 @@ class Strategy(ABC):
 
         # get the last closed trade
         closed_trade = store.closed_trades.trades[-1]
+
+        # Pipeline learning: feed outcome for Q-learning updates
+        if self._pipelines:
+            self._pipelines.on_cycle_end(closed_trade.pnl, self)
 
         self._broadcast('route-close-position')
         self._execute_cancel()
@@ -1290,6 +1404,11 @@ class Strategy(ABC):
                         logger.info(f'CFD live: submitted broker BUY {short_qty} to close short tickets')
                 except Exception as e:
                     logger.error(f'CFD live: failed to submit broker close order: {e}')
+
+        # Fire pipeline learning hook (before strategy callback so vars are still populated)
+        if self._pipelines and store.closed_trades.trades:
+            closed_trade = store.closed_trades.trades[-1]
+            self._pipelines.on_cycle_end(closed_trade.pnl, self)
 
         # Fire close callback
         if store.closed_trades.trades:
@@ -1402,6 +1521,8 @@ class Strategy(ABC):
             self._cached_price = self.close
 
             self.before()
+            if self._pipelines:
+                self._pipelines.on_before(self)
             self._check()
             self.after()
             self._clear_cached_methods()
@@ -1444,13 +1565,19 @@ class Strategy(ABC):
             )
             if self.position.is_cfd_mode and self.position._tickets:
                 # Close all CFD tickets at current price
-                self.close_all_tickets(self.position.current_price)
+                self.close_all_tickets(self.position.current_price, meta={'exit_reason': 'terminated'})
             else:
                 # first cancel all active orders so the balances would go back to the original state
                 if self.exchange_type == 'spot':
                     self.broker.cancel_all_orders()
                 # fake a closing (market) order so that the calculations would be correct
                 self.broker.reduce_position_at(self.position.qty, self.position.current_price, self.price)
+                # Tag the resulting trade as terminated so it's not orphaned in session grouping
+                if store.closed_trades.trades:
+                    last_trade = store.closed_trades.trades[-1]
+                    if not last_trade.meta:
+                        last_trade.meta = {}
+                    last_trade.meta['exit_reason'] = 'terminated'
             self.terminate()
             return
 

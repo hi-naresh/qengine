@@ -38,19 +38,14 @@ fastapi_app.add_middleware(
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Log every HTTP request with user context extracted from JWT."""
+    """Log every HTTP request with user context extracted from JWT.
+    Also catches unhandled exceptions for error tracking."""
 
     # Paths that are too noisy to log at info level
     _SKIP_PATHS = {'/ws', '/favicon.ico'}
 
     async def dispatch(self, request: Request, call_next):
         start = time.perf_counter()
-        response = await call_next(request)
-        duration_ms = (time.perf_counter() - start) * 1000
-
-        path = request.url.path
-        if path in self._SKIP_PATHS:
-            return response
 
         # Extract user from JWT (cheap — no DB call)
         user_id = None
@@ -65,6 +60,35 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     username = payload.get('username')
             except Exception:
                 pass
+
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            import traceback
+            # Track the unhandled exception
+            try:
+                from qengine.services.error_tracker import track_error
+                track_error(
+                    message=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
+                    traceback=traceback.format_exc(),
+                    session_type='http',
+                    user_id=user_id,
+                    context={
+                        'method': request.method,
+                        'path': request.url.path,
+                        'user': username,
+                    },
+                )
+            except Exception:
+                pass
+            raise  # Re-raise so FastAPI returns the 500
+
+        duration_ms = (time.perf_counter() - start) * 1000
+
+        path = request.url.path
+        if path in self._SKIP_PATHS:
+            return response
 
         ip = request.client.host if request.client else None
 
@@ -101,6 +125,7 @@ class BacktestRequestJson(BaseModel):
     benchmark: bool
     cost_model: bool = True
     hyperparameters: Optional[dict] = None
+    pipelines: Optional[list] = None
 
 
 class OptimizationRequestJson(BaseModel):

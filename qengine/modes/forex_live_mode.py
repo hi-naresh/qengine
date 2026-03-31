@@ -141,6 +141,13 @@ def run(
             # (also sets hp from defaults if not already set above)
             r.strategy._init_objects()
 
+            # Attach pipelines if configured
+            pipeline_configs = config.get('app', {}).get('pipelines')
+            if pipeline_configs:
+                from qengine.framework import create_pipelines
+                r.strategy._pipelines = create_pipelines(pipeline_configs)
+                _log(client_id, f'Attached {len(r.strategy._pipelines.pipelines)} pipeline(s) to {r.strategy_name}')
+
             # Link position back to strategy (needed by closed_trade_service)
             p = store.positions.get_position(r.exchange, r.symbol)
             if p:

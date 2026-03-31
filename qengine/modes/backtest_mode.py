@@ -303,6 +303,9 @@ def _execute_backtest(
         sync_publish('trades', result['trades'], compression=True)
         if 'sessions' in result:
             sync_publish('sessions', result['sessions'], compression=True)
+        # Publish pipeline stats (if any pipelines were active)
+        if result.get('pipeline_stats'):
+            sync_publish('pipeline_stats', result['pipeline_stats'], compression=True)
         # Publish backtest logs
         if result.get('logs'):
             sync_publish('backtest_logs', result['logs'], compression=True)
@@ -833,6 +836,12 @@ def _prepare_routes(
         # it also injects hyperparameters into self.hp in case the route does not uses any DNAs
         r.strategy._init_objects()
 
+        # Attach autopilot pipelines if configured
+        pipeline_configs = config.get('app', {}).get('pipelines')
+        if pipeline_configs:
+            from qengine.framework import create_pipelines
+            r.strategy._pipelines = create_pipelines(pipeline_configs)
+
         # monte-carlo simulation
         if with_candles_pipeline:
             if candles_pipeline_class is not None:
@@ -908,6 +917,54 @@ def _get_live_stats() -> dict:
         stats['trades'] = total_trades
         if session_num is not None:
             stats['session'] = session_num
+
+        # Pipeline live stats (danger score, gate/abort counts)
+        # Access raw pipeline state directly (avoid expensive get_stats() analytics)
+        for r in router.routes:
+            if r.strategy and hasattr(r.strategy, '_pipelines') and r.strategy._pipelines:
+                try:
+                    for p in r.strategy._pipelines.pipelines:
+                        if hasattr(p, 'scorer'):
+                            stats['pipeline_danger'] = round(p.scorer.current_score, 4)
+                            ds = p._stats.danger_scores
+                            if ds:
+                                vals = [d[1] for d in ds]
+                                stats['pipeline_danger_mean'] = round(sum(vals) / len(vals), 4)
+                                # Last 60 danger scores for live mini-chart
+                                stats['pipeline_danger_history'] = [
+                                    [d[0], d[1]] for d in ds[-60:]
+                                ]
+                        if hasattr(p, '_stats'):
+                            stats['pipeline_blocks'] = p._stats.entries_blocked
+                            stats['pipeline_aborts'] = p._stats.aborts_triggered
+                            stats['pipeline_cycles'] = p._stats.cycles_completed
+                            # Recent decisions for live feed (last 5 new ones)
+                            gd = p._stats.gate_decisions
+                            ad = p._stats.abort_decisions
+                            recent = []
+                            for g in gd[-5:]:
+                                recent.append({
+                                    'type': 'gate',
+                                    'ts': g['ts'],
+                                    'danger': g['danger'],
+                                    'threshold': g.get('threshold'),
+                                    'decision': 'ALLOWED' if g['allowed'] else 'BLOCKED',
+                                })
+                            for a in ad[-5:]:
+                                if a['action'] == 'abort':
+                                    recent.append({
+                                        'type': 'abort',
+                                        'ts': a['ts'],
+                                        'danger': a['danger'],
+                                        'level': a.get('level'),
+                                        'decision': 'ABORT',
+                                    })
+                            recent.sort(key=lambda x: x.get('ts', 0))
+                            stats['pipeline_decisions'] = recent[-5:]
+                        break
+                except Exception:
+                    pass
+                break
     except Exception:
         pass
     return stats
@@ -1348,6 +1405,43 @@ def _generate_outputs(
         }
         for log in store.logs.info
     ]
+
+    # Collect pipeline stats from strategies (if any pipelines attached)
+    pipeline_stats = {}
+    for r in router.routes:
+        if getattr(r.strategy, '_pipelines', None):
+            stack_stats = r.strategy._pipelines.get_stats()
+            # Flatten PipelineStack nesting: {pipeline_name: stats} → stats
+            # For single pipeline (common case), use its stats directly
+            # For multiple, merge all pipeline stats into one dict
+            merged = {}
+            for pname, pstats in stack_stats.items():
+                merged.update(pstats)
+                merged['pipeline_name'] = pname
+            pipeline_stats[f"{r.exchange}-{r.symbol}"] = merged
+    if pipeline_stats:
+        result["pipeline_stats"] = pipeline_stats
+
+        # Enrich sessions with pipeline context (danger, abort info per session)
+        if sessions:
+            for route_key, ps in pipeline_stats.items():
+                cycles = ps.get('cycle_outcomes', [])
+                cycle_map = {c['cycle']: c for c in cycles}
+                for s in sessions:
+                    sn = s.get('session')
+                    if isinstance(sn, int) and sn in cycle_map:
+                        c = cycle_map[sn]
+                        s['pipeline'] = {
+                            'danger_at_entry': c.get('danger_at_entry'),
+                            'danger_at_exit': c.get('danger_at_exit'),
+                            'max_danger': c.get('max_danger'),
+                            'min_danger': c.get('min_danger'),
+                            'avg_danger': c.get('avg_danger'),
+                            'abort_checks': c.get('abort_checks', 0),
+                            'abort_triggers': c.get('abort_triggers', 0),
+                            'gate_blocks_before_entry': c.get('gate_blocks_before_entry', 0),
+                        }
+
     return result
 
 

@@ -18,6 +18,9 @@ from qengine.services.redis import is_process_active
 from qengine.models.OptimizationSession import update_optimization_session_status, update_optimization_session_trials, get_optimization_session, get_optimization_session_by_id
 import traceback
 
+# Valid sampler choices
+SAMPLER_CHOICES = ('bayesian', 'random', 'cma-es', 'bust-aware')
+
 # Define a Ray-compatible remote function
 
 
@@ -92,6 +95,7 @@ class Optimizer:
             fast_mode: bool,
             optimal_total: int,
             cpu_cores: int,
+            sampler: str = 'bayesian',
     ) -> None:
         # Check for Python 3.13 first thing
         if jh.python_version() == (3, 13):
@@ -99,6 +103,11 @@ class Optimizer:
                 'Optimization is not supported on Python 3.13. The Ray library used for optimization does not support Python 3.13 yet. Please use Python 3.12 or lower.')
 
         self.session_id = session_id
+
+        # Validate and store sampler choice
+        self.sampler_name = sampler.lower() if sampler else 'bayesian'
+        if self.sampler_name not in SAMPLER_CHOICES:
+            raise ValueError(f"Unknown sampler '{sampler}'. Choose from: {', '.join(SAMPLER_CHOICES)}")
 
         # Retrieve the target strategy and its hyperparameter configuration
         strategy_class = jh.get_strategy_class(router.routes[0].strategy_name)
@@ -157,12 +166,16 @@ class Optimizer:
         self.trial_counter = 0
         self.completed_trials = 0
 
+        # Build the Optuna sampler based on user selection
+        optuna_sampler = self._create_sampler()
+
         # Create or load the Optuna study for persistence
         self.study = optuna.create_study(
             direction='maximize',
             storage=self.storage_url,
             study_name=self.study_name,
-            load_if_exists=True
+            load_if_exists=True,
+            sampler=optuna_sampler,
         )
 
         # Buffer to accumulate objective curve data points (one point per trial)
@@ -244,99 +257,73 @@ class Optimizer:
             self.completed_trials = 0
             self.trial_counter = 0
 
-    def _generate_trial_params(self):
-        """Generate random hyperparameters for a trial"""
+    def _has_categorical_params(self):
+        """Check if any hyperparameters are categorical"""
+        for param in self.strategy_hp:
+            param_type = param['type']
+            if isinstance(param_type, type):
+                param_type = param_type.__name__
+            else:
+                param_type = param_type.strip("'").strip('"')
+            if param_type == 'categorical':
+                return True
+        return False
+
+    def _create_sampler(self):
+        """Create the appropriate Optuna sampler based on user selection"""
+        startup = max(10, self.cpu_cores * 2)
+        if self.sampler_name == 'bayesian':
+            return optuna.samplers.TPESampler(n_startup_trials=startup)
+        elif self.sampler_name == 'random':
+            return optuna.samplers.RandomSampler()
+        elif self.sampler_name == 'cma-es':
+            if self._has_categorical_params():
+                logger.log_optimize_mode(
+                    "CMA-ES requested but strategy has categorical hyperparameters. "
+                    "Falling back to Bayesian (TPE) which handles all parameter types.",
+                    self.session_id
+                )
+                sync_publish('alert', {
+                    'message': 'CMA-ES is incompatible with categorical parameters. Switched to Bayesian (TPE).',
+                    'type': 'warning'
+                })
+                self.sampler_name = 'bayesian'
+                return optuna.samplers.TPESampler(n_startup_trials=startup)
+            return optuna.samplers.CmaEsSampler(n_startup_trials=startup)
+        elif self.sampler_name == 'bust-aware':
+            from qengine.modes.optimize_mode.bust_aware_sampler import BustAwareSampler
+            return BustAwareSampler(n_startup_trials=startup)
+        else:
+            return optuna.samplers.TPESampler()
+
+    def _ask_trial(self):
+        """Ask Optuna for the next trial parameters using the configured sampler.
+        Returns (optuna_trial, hp_dict) where hp_dict maps param names to values."""
+        trial = self.study.ask()
         hp = {}
         for param in self.strategy_hp:
             param_name = str(param['name'])
             param_type = param['type']
-            # Convert to string whether input is type class or string
             if isinstance(param_type, type):
                 param_type = param_type.__name__
             else:
-                # Remove quotes if they exist
                 param_type = param_type.strip("'").strip('"')
 
             if param_type == 'int':
-                if 'step' in param and param['step'] is not None:
-                    steps = (param['max'] - param['min']) // param['step'] + 1
-                    value = param['min'] + np.random.randint(0, steps) * param['step']
-                else:
-                    value = np.random.randint(param['min'], param['max'] + 1)
-                hp[param_name] = value
+                step = param.get('step') or 1
+                hp[param_name] = trial.suggest_int(param_name, param['min'], param['max'], step=step)
             elif param_type == 'float':
-                if 'step' in param and param['step'] is not None:
-                    steps = int((param['max'] - param['min']) / param['step']) + 1
-                    value = param['min'] + np.random.randint(0, steps) * param['step']
+                step = param.get('step')
+                if step is not None:
+                    hp[param_name] = trial.suggest_float(param_name, param['min'], param['max'], step=step)
                 else:
-                    value = np.random.uniform(param['min'], param['max'])
-                hp[param_name] = value
+                    hp[param_name] = trial.suggest_float(param_name, param['min'], param['max'])
             elif param_type == 'categorical':
-                options = param['options']
-                hp[param_name] = options[np.random.randint(0, len(options))]
+                hp[param_name] = trial.suggest_categorical(param_name, param['options'])
             else:
                 raise ValueError(f"Unsupported hyperparameter type: {param_type}")
 
-        return hp
-
-    def _create_optuna_trial(self, trial_number, params, score, training_metrics, testing_metrics):
-        """Create and store an Optuna trial for persistence"""
-        try:
-            # Create distributions for the parameters
-            distributions = {}
-            for param in self.strategy_hp:
-                param_name = str(param['name'])
-                param_type = param['type']
-                if isinstance(param_type, type):
-                    param_type = param_type.__name__
-                else:
-                    param_type = param_type.strip("'").strip('"')
-
-                if param_type == 'int':
-                    if 'step' in param and param['step'] is not None:
-                        distributions[param_name] = optuna.distributions.IntDistribution(
-                            low=param['min'],
-                            high=param['max'],
-                            step=param['step']
-                        )
-                    else:
-                        distributions[param_name] = optuna.distributions.IntDistribution(
-                            low=param['min'],
-                            high=param['max']
-                        )
-                elif param_type == 'float':
-                    if 'step' in param and param['step'] is not None:
-                        distributions[param_name] = optuna.distributions.FloatDistribution(
-                            low=param['min'],
-                            high=param['max'],
-                            step=param['step']
-                        )
-                    else:
-                        distributions[param_name] = optuna.distributions.FloatDistribution(
-                            low=param['min'],
-                            high=param['max']
-                        )
-                elif param_type == 'categorical':
-                    distributions[param_name] = optuna.distributions.CategoricalDistribution(param['options'])
-
-            # Create a new trial
-            trial = optuna.create_trial(
-                params=params,
-                distributions=distributions,
-                value=score,
-                user_attrs={
-                    'training_metrics': training_metrics,
-                    'testing_metrics': testing_metrics
-                }
-            )
-
-            # Add the trial to the study
-            self.study.add_trial(trial)
-            return True
-
-        except Exception as e:
-            logger.log_optimize_mode(f"Error creating Optuna trial: {e}", self.session_id )
-            return False
+        return trial, hp
 
     def _process_trial_result(self, result):
         """Process the result of a completed trial"""
@@ -350,9 +337,6 @@ class Optimizer:
         self.completed_trials += 1
         self.progressbar.update()
 
-        # Store trial in Optuna for persistence
-        self._create_optuna_trial(trial_number, params, score, training_metrics, testing_metrics)
-
         # Update the dashboard with general information about the progress
         general_info = {
             'started_at': jh.timestamp_to_arrow(self.start_time).humanize(),
@@ -362,6 +346,7 @@ class Optimizer:
             'leverage_mode': config['env']['exchanges'][router.routes[0].exchange].get('futures_leverage_mode', 'cross'),
             'leverage': config['env']['exchanges'][router.routes[0].exchange].get('futures_leverage', 30),
             'cpu_cores': self.cpu_cores,
+            'sampler': self.sampler_name,
         }
         sync_publish('general_info', general_info)
 
@@ -514,7 +499,7 @@ class Optimizer:
 
     def run(self) -> optuna.trial.FrozenTrial:
         # Log the start of the optimization session
-        logger.log_optimize_mode(f"Optimization session started with {self.cpu_cores} CPU cores", self.session_id )
+        logger.log_optimize_mode(f"Optimization session started with {self.cpu_cores} CPU cores, sampler: {self.sampler_name}", self.session_id )
 
         if self.completed_trials > 0:
             logger.log_optimize_mode(f"Resuming from previous session with {self.completed_trials} trials already completed", self.session_id )
@@ -531,10 +516,16 @@ class Optimizer:
             best_trial_params = None
 
         try:
-            # Maximum number of active workers (slightly higher than CPU cores to keep CPUs busy)
-            max_workers = min(self.cpu_cores * 2, self.n_trials - self.completed_trials)
+            # For Bayesian/CMA-ES: cap parallelism to cpu_cores so the sampler can learn
+            # from completed trials before suggesting new ones. Over-parallelizing makes
+            # the sampler blind (all suggestions based on the same prior).
+            # For Random: full parallelism (cpu_cores * 2) since there's nothing to learn.
+            if self.sampler_name == 'random':
+                max_workers = min(self.cpu_cores * 2, self.n_trials - self.completed_trials)
+            else:
+                max_workers = min(self.cpu_cores, self.n_trials - self.completed_trials)
 
-            # Dictionary to keep track of active workers
+            # Dictionary to keep track of active workers: ray_ref -> (trial_number, optuna_trial)
             active_refs = {}
             # Begin optimization loop
             while self.completed_trials < self.n_trials:
@@ -548,8 +539,8 @@ class Optimizer:
                     )
                 # Launch new trials if we have capacity
                 while len(active_refs) < max_workers and self.trial_counter < self.n_trials:
-                    # Generate parameters for this trial
-                    hp = self._generate_trial_params()
+                    # Ask Optuna for the next set of parameters (sampler-guided)
+                    optuna_trial, hp = self._ask_trial()
 
                     # Launch the trial evaluation
                     ref = ray_evaluate_trial.options(num_cpus=1).remote(
@@ -568,8 +559,8 @@ class Optimizer:
                         self.session_id
                     )
 
-                    # Store the reference
-                    active_refs[ref] = self.trial_counter
+                    # Store the reference with both trial number and optuna trial
+                    active_refs[ref] = (self.trial_counter, optuna_trial)
                     self.trial_counter += 1
 
                 # No more workers to launch, wait for results
@@ -581,9 +572,13 @@ class Optimizer:
 
                 # Process completed trials
                 for ref in done_refs:
-                    trial_number = active_refs.pop(ref)
+                    trial_number, optuna_trial = active_refs.pop(ref)
                     try:
                         result = ray.get(ref)
+
+                        # Report the result back to Optuna (drives TPE/CMA-ES learning)
+                        self.study.tell(optuna_trial, result['score'])
+
                         # Process the result
                         self._process_trial_result(result)
 
@@ -592,6 +587,8 @@ class Optimizer:
                             best_trial_value = result['score']
                             best_trial_params = result['params']
                     except ray.exceptions.RayTaskError as e:
+                        # Report failure to Optuna so it doesn't block
+                        self.study.tell(optuna_trial, state=optuna.trial.TrialState.FAIL)
                         # Check if this is a RouteNotFound error converted to RuntimeError
                         if hasattr(e, 'cause') and isinstance(e.cause, RuntimeError) and 'RouteNotFound:' in str(e.cause):
                             raise e.cause
@@ -600,6 +597,8 @@ class Optimizer:
                             original_exception = e.cause
                             raise
                     except Exception as e:
+                        # Report failure to Optuna so it doesn't block
+                        self.study.tell(optuna_trial, state=optuna.trial.TrialState.FAIL)
                         jh.debug(f'Exception raised in the ray method for trial {trial_number}: {e}')
                         raise e
 

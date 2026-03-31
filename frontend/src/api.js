@@ -104,6 +104,19 @@ export const api = {
   validateStrategy: (code) => request('POST', '/llm/validate', { code }),
   configureLLM: (data) => request('POST', '/llm/configure', data),
 
+  // Autopilot
+  startAutopilot: (data) => request('POST', '/autopilot', data),
+  cancelAutopilot: (id) => request('POST', '/autopilot/cancel', { id }),
+  getAutopilotState: (sessionId) => request('GET', `/autopilot/state/${sessionId}`),
+
+  // Pipelines (framework)
+  getRegisteredPipelines: () => request('GET', '/pipelines/registered'),
+  getAllPipelines: () => request('GET', '/pipelines/all'),
+  getPipeline: (name) => request('POST', '/pipelines/get', { name }),
+  makePipeline: (name) => request('POST', '/pipelines/make', { name }),
+  savePipeline: (name, content) => request('POST', '/pipelines/save', { name, content }),
+  deletePipeline: (name) => request('POST', '/pipelines/delete', { name }),
+
   // Strategies
   getStrategies: () => request('GET', '/strategy/all'),
   getStrategy: (name) => request('POST', '/strategy/get', { name }),
@@ -248,6 +261,15 @@ export const api = {
   submitQuotaRequest: (data) => request('POST', '/auth/quota-request', data),
   getQuotaRequests: () => request('GET', '/auth/quota-requests'),
   reviewQuotaRequest: (data) => request('POST', '/auth/quota-requests/review', data),
+
+  // Error Reports
+  getReports: (params) => request('POST', '/reports/list', params || {}),
+  getReport: (id) => request('POST', '/reports/get', { id }),
+  dismissReport: (id) => request('POST', '/reports/dismiss', { id }),
+  bulkDismissReports: (ids) => request('POST', '/reports/bulk-dismiss', { ids: ids || null }),
+  submitReportAsIssue: (data) => request('POST', '/reports/submit-issue', data),
+  clearReports: (status, daysOld) => request('POST', '/reports/clear', { status: status || null, days_old: daysOld || null }),
+  getReportCount: () => request('POST', '/reports/count'),
 
   // Issues
   getIssues: (params) => request('POST', '/issues/list', params || {}),

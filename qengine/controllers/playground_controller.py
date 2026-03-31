@@ -63,7 +63,10 @@ def get_strategy_hyperparams(request_json: dict = Body(...), current_user: Curre
         import ast
         import os
         from qengine.services.strategy_handler import resolve_strategy_path
-        resolved = resolve_strategy_path(name, current_user.effective_user_id)
+        resolved = resolve_strategy_path(
+            name, current_user.effective_user_id,
+            is_admin=current_user.is_admin, search_all=current_user.is_admin,
+        )
         if not resolved:
             return JSONResponse({'hyperparameters': []})
         path = f'{resolved}/__init__.py'
@@ -342,6 +345,15 @@ def _run_playground_simulation(
         )
     except Exception as e:
         import traceback
+        # Track in error report system
+        try:
+            from qengine.services.error_tracker import track_error
+            track_error(
+                message=str(e), error_type=type(e).__name__,
+                traceback=traceback.format_exc(), session_type='playground',
+            )
+        except Exception:
+            pass
         sync_publish('notification', {
             'message': f'Playground error: {str(e)}',
             'type': 'error',

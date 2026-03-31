@@ -945,7 +945,14 @@ class Surefire(Strategy):
             self._setup_broker_orders()
 
     def on_close_position(self, order, closed_trade) -> None:
-        pass
+        """Handle pipeline abort: reset cycle state so new entries can happen."""
+        if self.vars['cycle_active'] and closed_trade:
+            meta = getattr(closed_trade, 'meta', None) or {}
+            if meta.get('exit_reason') == 'pipeline_abort':
+                if jh.is_live():
+                    self._cancel_hedge_order()
+                    self._cancel_all_trade_tp_sl()
+                self._reset_cycle('pipeline_abort')
 
     def on_ticket_opened(self, order) -> None:
         pass

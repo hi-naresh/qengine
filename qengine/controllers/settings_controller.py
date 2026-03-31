@@ -534,7 +534,7 @@ def _test_llm(provider: str, api_key: str, model: str = None) -> dict:
     if provider == 'gemini':
         from google import genai
         client = genai.Client(api_key=api_key)
-        mdl = model or 'gemini-2.5-flash-lite-preview-06-17'
+        mdl = model or 'gemini-2.5-flash'
         response = client.models.generate_content(
             model=mdl,
             contents='Reply with exactly: CONNECTION_OK',

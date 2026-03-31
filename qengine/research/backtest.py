@@ -26,6 +26,7 @@ def backtest(
         fast_mode: bool = False,
         candles_pipeline_class = None,
         candles_pipeline_kwargs: dict = None,
+        pipeline_configs: list = None,
 ) -> dict:
     """
     An isolated backtest() function which is perfect for using in research, and AI training
@@ -76,6 +77,7 @@ def backtest(
         fast_mode=fast_mode,
         candles_pipeline_class=candles_pipeline_class,
         candles_pipeline_kwargs=candles_pipeline_kwargs,
+        pipeline_configs=pipeline_configs,
     )
 
 
@@ -97,11 +99,15 @@ def _isolated_backtest(
         fast_mode: bool = False,
         candles_pipeline_class = None,
         candles_pipeline_kwargs: dict = None,
+        pipeline_configs: list = None,
 ) -> dict:
     qe_config['app']['trading_mode'] = 'backtest'
 
     # inject (formatted) configuration values
-    set_config(_format_config(config))
+    formatted = _format_config(config)
+    if pipeline_configs:
+        formatted['pipelines'] = pipeline_configs
+    set_config(formatted)
 
     # set routes
     router.initiate(routes, data_routes)
@@ -188,6 +194,8 @@ def _isolated_backtest(
     # Always include trades if available (needed for trade-shuffling Monte Carlo)
     if 'trades' in backtest_result:
         result['trades'] = backtest_result['trades']
+    if 'pipeline_stats' in backtest_result:
+        result['pipeline_stats'] = backtest_result['pipeline_stats']
 
     # reset store and config so rerunning would be flawlessly possible
     reset_config()

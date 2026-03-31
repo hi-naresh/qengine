@@ -43,7 +43,7 @@
         </div>
 
         <!-- Recent Activity Summary -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <div class="p-3 bg-surface-800 rounded-lg cursor-pointer hover:bg-surface-750 transition-colors" @click="navigateTo('#/backtest')">
             <div class="flex items-center gap-2 mb-1">
               <span class="w-1.5 h-1.5 rounded-full" :class="activityCounts.backtest.running ? 'bg-green-400 animate-pulse' : 'bg-surface-600'"></span>

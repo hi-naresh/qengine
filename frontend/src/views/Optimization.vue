@@ -1,17 +1,17 @@
 <template>
   <div>
-    <!-- Workspace Tabs -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+    <!-- Header + Workspace Tabs + History -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
       <div>
         <h1 class="text-2xl font-bold text-center sm:text-left">Optimization</h1>
         <p class="text-xs text-surface-500 mt-0.5">Search hyperparameter space to find optimal strategy configurations</p>
       </div>
       <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg overflow-x-auto">
         <div v-for="wt in workspaceTabs" :key="wt.id"
-          @click="!running && switchWorkspace(wt.id)"
+          @click="pageTab = 'run'; !running && switchWorkspace(wt.id)"
           class="flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer group rounded-md transition-colors"
           :class="[
-            wt.id === activeWorkspaceId ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300',
+            pageTab === 'run' && wt.id === activeWorkspaceId ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300',
             running && wt.id !== activeWorkspaceId ? 'opacity-40 cursor-not-allowed' : ''
           ]">
           <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="wt.running ? 'bg-green-400 animate-pulse' : wt.hasResults ? 'bg-brand-400' : 'bg-surface-600'"></span>
@@ -22,12 +22,20 @@
         <button @click="addWorkspace" :disabled="running"
           class="w-6 h-6 flex items-center justify-center text-surface-500 hover:text-brand-400 rounded text-sm transition-colors"
           :class="running ? 'opacity-40 cursor-not-allowed' : ''" title="New workspace">+</button>
+        <div class="w-px h-5 bg-surface-600 mx-1"></div>
+        <div @click="pageTab = 'history'; loadSessions()"
+          class="px-3 py-1.5 text-xs cursor-pointer rounded-md transition-colors"
+          :class="pageTab === 'history' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
+          History
+          <span v-if="sessions.length" class="ml-1 text-surface-600">({{ sessions.length }})</span>
+        </div>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+    <!-- ═══ RUN VIEW ═══ -->
+    <div v-show="pageTab === 'run'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <!-- Left: Config Panel -->
-      <div class="lg:col-span-1 space-y-4" v-show="!running || showConfig">
+      <div class="md:col-span-1 lg:col-span-1 space-y-4" v-show="!running || showConfig">
         <div class="card">
           <h2 class="text-sm font-semibold mb-1 text-surface-300">Configuration</h2>
           <p class="text-[11px] text-surface-500 mb-4">Pick a strategy and date range -- the optimizer will search for the best hyperparameters</p>
@@ -112,6 +120,19 @@
               </select>
             </div>
 
+            <div>
+              <label class="label">Search Algorithm</label>
+              <select v-model="form.sampler" class="select">
+                <option value="bayesian">Bayesian (TPE)</option>
+                <option value="random">Random</option>
+                <option value="cma-es">CMA-ES</option>
+                <option value="bust-aware">Bust-Aware (TPE + Risk)</option>
+              </select>
+              <div class="text-[10px] text-surface-500 mt-1">
+                {{ form.sampler === 'bayesian' ? 'Intelligent search — converges faster with fewer trials' : form.sampler === 'cma-es' ? 'Best for continuous (int/float) parameters only — auto-falls back to Bayesian if strategy has categorical params' : form.sampler === 'bust-aware' ? 'Bayesian + avoids negative expectancy and high-drawdown parameter regions' : 'Uniform random sampling — maximum parallelism' }}
+              </div>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="label">Warm-up Candles</label>
@@ -166,18 +187,8 @@
         </div>
       </div>
 
-      <!-- Center: Results Panel -->
-      <div :class="running && !showConfig ? 'lg:col-span-3' : 'lg:col-span-2'" class="space-y-4">
-        <!-- Open Session Tabs -->
-        <div v-if="openTabs.length > 0" class="flex items-center gap-1 overflow-x-auto pb-1">
-          <div v-for="tab in openTabs" :key="tab.id"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs cursor-pointer shrink-0 border border-b-0 transition-colors"
-            :class="selectedSession?.id === tab.id ? 'bg-surface-800 text-surface-100 border-surface-600' : 'bg-surface-900 text-surface-500 border-surface-700 hover:text-surface-300'"
-            @click="switchToTab(tab.id)">
-            <span class="max-w-[120px] truncate">{{ tab.label }}</span>
-            <button @click.stop="closeTab(tab.id)" class="text-surface-600 hover:text-red-400 text-sm leading-none">&times;</button>
-          </div>
-        </div>
+      <!-- Center/Right: Results Panel -->
+      <div :class="running && !showConfig ? 'md:col-span-2 lg:col-span-3' : 'md:col-span-1 lg:col-span-2'" class="space-y-4 min-w-0">
         <!-- Error -->
         <div v-if="error" class="card border-red-500/30">
           <div class="flex items-center gap-2 mb-1">
@@ -193,6 +204,48 @@
           <p :class="alertType === 'success' ? 'text-green-400' : 'text-amber-400'" class="text-sm">{{ alertMessage }}</p>
         </div>
 
+        <!-- Progress + Info (inline during run) -->
+        <div v-if="running" class="card p-5 space-y-4">
+          <div class="flex items-center gap-5">
+            <!-- Circular gauge -->
+            <div class="relative w-24 h-24 flex-shrink-0">
+              <svg class="w-24 h-24 -rotate-90" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="8" class="text-surface-800" />
+                <circle cx="60" cy="60" r="52" fill="none" stroke="currentColor" stroke-width="8"
+                        class="text-purple-500 transition-all duration-500 ease-out"
+                        stroke-linecap="round"
+                        :stroke-dasharray="2 * Math.PI * 52"
+                        :stroke-dashoffset="2 * Math.PI * 52 * (1 - progress.current / 100)" />
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <span class="text-xl font-bold text-surface-100 tabular-nums">{{ Math.round(progress.current) }}%</span>
+              </div>
+            </div>
+            <!-- Info + actions -->
+            <div class="flex-1 min-w-0 space-y-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+                <span class="text-sm font-medium text-surface-200">Optimizing</span>
+                <span class="text-xs text-surface-500">{{ form.strategy }} &middot; {{ form.symbol }}</span>
+              </div>
+              <div v-if="generalInfo" class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div class="flex justify-between"><span class="text-surface-500">Progress</span><span class="text-surface-200 font-mono">{{ generalInfo.trial }}</span></div>
+                <div class="flex justify-between"><span class="text-surface-500">Objective</span><span class="text-surface-200">{{ generalInfo.objective_function }}</span></div>
+                <div class="flex justify-between"><span class="text-surface-500">Algorithm</span><span class="text-surface-200">{{ samplerLabel(generalInfo.sampler) }}</span></div>
+                <div class="flex justify-between"><span class="text-surface-500">CPU Cores</span><span class="text-surface-200">{{ generalInfo.cpu_cores }}</span></div>
+                <div v-if="progress.eta > 0" class="flex justify-between"><span class="text-surface-500">ETA</span><span class="text-surface-200">{{ formatEta(progress.eta) }}</span></div>
+              </div>
+              <div class="flex items-center gap-2 pt-1">
+                <button @click="cancelOptimization" class="px-3 py-1.5 text-xs border border-red-500/30 text-red-400 rounded hover:bg-red-500/10">Terminate</button>
+                <button @click="viewLogs" class="px-3 py-1.5 text-xs border border-surface-600 text-surface-300 rounded hover:bg-surface-800">Logs</button>
+                <button @click="showConfig = !showConfig" class="px-3 py-1.5 text-xs border border-surface-600 text-surface-300 rounded hover:bg-surface-800">
+                  {{ showConfig ? 'Hide Config' : 'Show Config' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <!-- Objective Progress Chart -->
         <div v-if="allCurveData.length > 0" class="card">
           <div class="flex items-center justify-between mb-4">
@@ -283,252 +336,7 @@
             </table>
           </div>
         </div>
-
-        <!-- Recent Sessions / History -->
-        <div class="card">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-sm font-semibold text-surface-300">Optimization History</h2>
-            <div class="flex items-center gap-2">
-              <button @click="loadSessions" class="text-xs text-brand-400 hover:text-brand-300">Refresh</button>
-              <button v-if="sessions.length" @click="showPurgeConfirm = true" class="text-xs text-red-400 hover:text-red-300">Purge</button>
-            </div>
-          </div>
-
-          <!-- Purge Confirm -->
-          <div v-if="showPurgeConfirm" class="mb-4 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-            <p class="text-xs text-red-300 mb-2">Delete sessions older than:</p>
-            <div class="flex items-center gap-2">
-              <select v-model="purgeDays" class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300">
-                <option :value="7">7 days</option>
-                <option :value="30">30 days</option>
-                <option :value="90">90 days</option>
-                <option :value="null">All</option>
-              </select>
-              <button @click="purge" class="text-xs bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Purge</button>
-              <button @click="showPurgeConfirm = false" class="text-xs text-surface-400 hover:text-surface-200">Cancel</button>
-            </div>
-          </div>
-
-          <!-- Filters -->
-          <div v-if="sessions.length || sessionsStatusFilter !== 'all'" class="flex items-center gap-3 mb-3">
-            <input v-model="sessionsSearch" placeholder="Search by title..." class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300 flex-1" />
-            <select v-model="sessionsStatusFilter" class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300">
-              <option value="all">All Statuses</option>
-              <option value="finished">Finished</option>
-              <option value="running">Running</option>
-              <option value="stopped">Stopped</option>
-              <option value="terminated">Terminated</option>
-            </select>
-          </div>
-
-          <div v-if="loadingSessions" class="text-surface-500 text-sm">Loading...</div>
-
-          <div v-else-if="sessions.length === 0" class="text-surface-500 text-sm">
-            No optimization sessions yet. Run an optimization to see results here.
-          </div>
-
-          <div v-else class="overflow-x-auto">
-            <table class="w-full text-xs">
-              <thead>
-                <tr class="border-b border-surface-700">
-                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Strategy</th>
-                  <th v-if="showOwnerColumn" class="text-left py-2 px-2 text-surface-500 font-medium">Owner</th>
-                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Progress</th>
-                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Status</th>
-                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Best Score</th>
-                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Date</th>
-                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="s in filteredSessions" :key="s.id"
-                  class="border-b border-surface-800 hover:bg-surface-800/50 cursor-pointer"
-                  :class="{ 'bg-surface-800/30': selectedSession?.id === s.id }"
-                  @click="viewSession(s)">
-                  <td class="py-2 px-2">
-                    <div class="text-surface-200">{{ sessionStrategy(s) }}</div>
-                    <div class="text-surface-500 text-[10px]">{{ sessionExchange(s) }}</div>
-                  </td>
-                  <td v-if="showOwnerColumn" class="py-2 px-2">
-                    <span v-if="s.owner_username" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-medium">{{ s.owner_username }}</span>
-                  </td>
-                  <td class="py-2 px-2 text-surface-400 font-mono">
-                    {{ s.completed_trials || 0 }} / {{ s.total_trials || 0 }}
-                    <div class="text-[10px] text-surface-500">trials</div>
-                  </td>
-                  <td class="py-2 px-2">
-                    <span class="text-xs px-2 py-0.5 rounded-full font-medium" :class="statusBadgeClass(s.status)">{{ s.status }}</span>
-                  </td>
-                  <td class="py-2 px-2 font-mono" :class="s.best_score > 0 ? 'text-green-400' : 'text-surface-400'">
-                    {{ s.best_score != null ? Number(s.best_score).toFixed(2) : '-' }}
-                  </td>
-                  <td class="py-2 px-2 text-surface-400">{{ formatDateTime(s.updated_at) }}</td>
-                  <td class="py-2 px-2">
-                    <div class="flex items-center gap-2">
-                      <button @click.stop="viewSession(s)" class="text-brand-400 hover:text-brand-300" title="View">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                      </button>
-                      <button v-if="s.status === 'stopped' || s.status === 'terminated'" @click.stop="resumeSession(s)" class="text-green-400 hover:text-green-300" title="Resume">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
-                      </button>
-                      <button @click.stop="removeSession(s)" class="text-red-400 hover:text-red-300" title="Delete">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Sidebar: Progress + Info (visible during run or when viewing session) -->
-      <div class="lg:col-span-1 space-y-4" v-if="running || selectedSession">
-        <!-- Action Buttons -->
-        <div class="space-y-2" v-if="running">
-          <button @click="cancelOptimization" class="w-full px-4 py-2 text-sm border border-red-500/30 text-red-400 rounded-lg hover:bg-red-500/10 flex items-center justify-center gap-2">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            Terminate
-          </button>
-          <button @click="viewLogs" class="w-full px-4 py-2 text-sm border border-surface-600 text-surface-300 rounded-lg hover:bg-surface-800 flex items-center justify-center gap-2">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Logs
-          </button>
-          <button @click="showConfig = !showConfig" class="w-full px-4 py-2 text-sm border border-surface-600 text-surface-300 rounded-lg hover:bg-surface-800 flex items-center justify-center gap-2">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-            {{ showConfig ? 'Hide Config' : 'Show Config' }}
-          </button>
-        </div>
-
-        <!-- Buttons for selected session -->
-        <div class="space-y-2" v-if="selectedSession && !running">
-          <button @click="startNewSession" class="w-full px-4 py-2 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 flex items-center justify-center gap-2">
-            New Session
-          </button>
-          <button @click="viewSessionLogs(selectedSession)" class="w-full px-4 py-2 text-sm border border-surface-600 text-surface-300 rounded-lg hover:bg-surface-800 flex items-center justify-center gap-2">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Logs
-          </button>
-          <button v-if="selectedSession.status === 'stopped' || selectedSession.status === 'terminated'"
-            @click="resumeSession(selectedSession)" class="w-full px-4 py-2 text-sm border border-green-500/30 text-green-400 rounded-lg hover:bg-green-500/10 flex items-center justify-center gap-2">
-            Resume
-          </button>
-          <button @click="closeTab(selectedSession.id)" class="w-full px-4 py-2 text-sm border border-surface-600 text-surface-300 rounded-lg hover:bg-surface-800 flex items-center justify-center gap-2">
-            Close
-          </button>
-        </div>
-
-        <!-- Circular Progress -->
-        <div v-if="running" class="flex justify-center py-4">
-          <div class="relative w-32 h-32">
-            <svg class="w-32 h-32 transform -rotate-90" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="52" stroke="#374151" stroke-width="8" fill="none" />
-              <circle cx="60" cy="60" r="52" stroke="#8b5cf6" stroke-width="8" fill="none"
-                :stroke-dasharray="2 * Math.PI * 52"
-                :stroke-dashoffset="2 * Math.PI * 52 * (1 - progress.current / 100)"
-                stroke-linecap="round" class="transition-all duration-500" />
-            </svg>
-            <div class="absolute inset-0 flex items-center justify-center">
-              <span class="text-2xl font-bold text-surface-200">{{ Math.round(progress.current) }}%</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Info Panel -->
-        <div class="card" v-if="running && generalInfo">
-          <h3 class="text-xs font-semibold text-surface-400 mb-3 border-b border-surface-700 pb-2">Info</h3>
-          <div class="space-y-2 text-xs">
-            <div class="flex justify-between">
-              <span class="text-surface-500">Started at</span>
-              <span class="text-surface-200">{{ generalInfo.started_at }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">Progress</span>
-              <span class="text-surface-200 font-mono">{{ generalInfo.trial }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">Objective Function</span>
-              <span class="text-surface-200">{{ generalInfo.objective_function }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">Exchange Type</span>
-              <span class="text-surface-200">{{ generalInfo.exchange_type }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">Leverage Mode</span>
-              <span class="text-surface-200">{{ generalInfo.leverage_mode }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">Leverage</span>
-              <span class="text-surface-200">{{ generalInfo.leverage }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">CPU Cores</span>
-              <span class="text-surface-200">{{ generalInfo.cpu_cores }}</span>
-            </div>
-            <div v-if="progress.eta > 0" class="flex justify-between">
-              <span class="text-surface-500">ETA</span>
-              <span class="text-surface-200">{{ formatEta(progress.eta) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Session Info Panel -->
-        <div class="card" v-if="selectedSession && !running">
-          <h3 class="text-xs font-semibold text-surface-400 mb-3 border-b border-surface-700 pb-2">Info</h3>
-          <div class="space-y-2 text-xs">
-            <div class="flex justify-between">
-              <span class="text-surface-500">Status</span>
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-medium" :class="statusBadgeClass(selectedSession.status)">{{ selectedSession.status }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">Progress</span>
-              <span class="text-surface-200 font-mono">{{ selectedSession.completed_trials }}/{{ selectedSession.total_trials }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">Best Score</span>
-              <span class="font-mono" :class="selectedSession.best_score > 0 ? 'text-green-400' : 'text-surface-300'">
-                {{ selectedSession.best_score != null ? Number(selectedSession.best_score).toFixed(4) : 'N/A' }}
-              </span>
-            </div>
-            <div v-if="selectedSession.state" class="flex justify-between">
-              <span class="text-surface-500">Strategy</span>
-              <span class="text-surface-200">{{ selectedSession.state.strategy || '-' }}</span>
-            </div>
-            <div v-if="selectedSession.state" class="flex justify-between">
-              <span class="text-surface-500">Exchange</span>
-              <span class="text-surface-200">{{ selectedSession.state.exchange || '-' }}</span>
-            </div>
-            <div v-if="selectedSession.state" class="flex justify-between">
-              <span class="text-surface-500">Symbol</span>
-              <span class="text-surface-200">{{ selectedSession.state.symbol || '-' }}</span>
-            </div>
-            <div v-if="selectedSession.state" class="flex justify-between">
-              <span class="text-surface-500">Objective</span>
-              <span class="text-surface-200">{{ selectedSession.state.objectiveFunction || '-' }}</span>
-            </div>
-            <div v-if="selectedSession.state" class="flex justify-between">
-              <span class="text-surface-500">Training</span>
-              <span class="text-surface-200 text-[10px]">{{ selectedSession.state.trainingStartDate }} - {{ selectedSession.state.trainingFinishDate }}</span>
-            </div>
-            <div v-if="selectedSession.state" class="flex justify-between">
-              <span class="text-surface-500">Testing</span>
-              <span class="text-surface-200 text-[10px]">{{ selectedSession.state.testingStartDate }} - {{ selectedSession.state.testingFinishDate }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-surface-500">Created</span>
-              <span class="text-surface-200">{{ formatDateTime(selectedSession.created_at) }}</span>
-            </div>
-          </div>
-
-          <!-- Session exception -->
-          <div v-if="selectedSession.exception" class="mt-3 p-3 bg-red-500/10 rounded">
-            <div class="text-red-400 text-xs font-semibold mb-1">Exception</div>
-            <p class="text-red-300 text-xs">{{ selectedSession.exception }}</p>
-            <pre v-if="selectedSession.traceback" class="text-[10px] text-red-300/70 mt-1 max-h-[150px] overflow-auto whitespace-pre-wrap">{{ selectedSession.traceback }}</pre>
-          </div>
-        </div>
+        
       </div>
     </div>
 
@@ -628,78 +436,105 @@
       </div>
     </div>
 
-    <!-- Session Objective Curve (when viewing a finished session) -->
-    <div v-if="selectedSession && sessionCurveData.length > 0 && !running" class="mt-4">
+    <!-- ═══ HISTORY VIEW ═══ -->
+    <div v-show="pageTab === 'history'" class="space-y-4">
       <div class="card">
         <div class="flex items-center justify-between mb-4">
-          <h2 class="text-sm font-semibold text-surface-300">Session Objective Progress</h2>
+          <div>
+            <h2 class="text-sm font-semibold text-surface-300">Session History</h2>
+            <p class="text-[11px] text-surface-500 mt-0.5">Browse, compare, and manage past optimization runs</p>
+          </div>
           <div class="flex items-center gap-2">
-            <div class="flex items-center gap-3 text-[10px] mr-4">
-              <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-blue-400 inline-block"></span> Training</span>
-              <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-red-400 inline-block"></span> Testing</span>
-            </div>
-            <select v-model="chartMetric" class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300">
-              <option v-for="m in chartMetricOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
-            </select>
+            <button @click="loadSessions" class="text-xs text-brand-400 hover:text-brand-300">Refresh</button>
+            <button v-if="sessions.length" @click="showPurgeConfirm = true" class="text-xs text-red-400 hover:text-red-300">Purge</button>
           </div>
         </div>
-        <div class="relative h-56 select-none">
-          <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" class="w-full h-full" preserveAspectRatio="none">
-            <line v-for="i in 5" :key="'sgrid-' + i"
-              :x1="chartPad.left" :x2="chartWidth - chartPad.right"
-              :y1="chartPad.top + (i - 1) * ((chartHeight - chartPad.top - chartPad.bottom) / 4)"
-              :y2="chartPad.top + (i - 1) * ((chartHeight - chartPad.top - chartPad.bottom) / 4)"
-              stroke="#333" stroke-width="0.5" stroke-dasharray="4,4" />
-            <polyline :points="sessionTrainingLinePath" fill="none" stroke="#60a5fa" stroke-width="1.5" />
-            <polyline :points="sessionTestingLinePath" fill="none" stroke="#f87171" stroke-width="1.5" />
-          </svg>
-          <div class="absolute top-0 right-0 h-full flex flex-col justify-between text-[10px] text-surface-500 font-mono pr-1 py-2">
-            <span>{{ sessionChartYMax.toFixed(2) }}</span>
-            <span>{{ ((sessionChartYMax + sessionChartYMin) / 2).toFixed(2) }}</span>
-            <span>{{ sessionChartYMin.toFixed(2) }}</span>
-          </div>
-          <div class="absolute bottom-0 left-0 w-full flex justify-between text-[10px] text-surface-500 font-mono px-1">
-            <span>{{ sessionCurveData[0]?.trial || 1 }}</span>
-            <span>{{ sessionCurveData[sessionCurveData.length - 1]?.trial || '' }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- Session Best Candidates (when viewing a finished session) -->
-    <div v-if="selectedSession && selectedSession.best_candidates && selectedSession.best_candidates.length && !running" class="mt-4">
-      <div class="card">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-sm font-semibold text-surface-300">Session Best Trials</h2>
-          <span class="text-xs text-surface-500">{{ selectedSession.best_candidates.length }} candidates</span>
+        <!-- Purge Confirm -->
+        <div v-if="showPurgeConfirm" class="mb-4 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+          <p class="text-xs text-red-300 mb-2">Delete sessions older than:</p>
+          <div class="flex items-center gap-2">
+            <select v-model="purgeDays" class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300">
+              <option :value="7">7 days</option>
+              <option :value="30">30 days</option>
+              <option :value="90">90 days</option>
+              <option :value="null">All</option>
+            </select>
+            <button @click="purge" class="text-xs bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Purge</button>
+            <button @click="showPurgeConfirm = false" class="text-xs text-surface-400 hover:text-surface-200">Cancel</button>
+          </div>
         </div>
-        <div class="overflow-x-auto">
+
+        <!-- Filters -->
+        <div v-if="sessions.length > 3 || sessionsStatusFilter !== 'all'" class="flex items-center gap-3 mb-3">
+          <input v-model="sessionsSearch" placeholder="Search by strategy, symbol..." class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300 flex-1" />
+          <select v-model="sessionsStatusFilter" class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300">
+            <option value="all">All Statuses</option>
+            <option value="finished">Finished</option>
+            <option value="running">Running</option>
+            <option value="stopped">Stopped</option>
+            <option value="terminated">Terminated</option>
+          </select>
+        </div>
+
+        <div v-if="loadingSessions" class="text-surface-500 text-sm py-8 text-center">Loading...</div>
+
+        <div v-else-if="sessions.length === 0" class="text-surface-500 text-sm py-8 text-center">
+          No optimization sessions yet. Run an optimization to see results here.
+        </div>
+
+        <div v-else class="overflow-x-auto">
           <table class="w-full text-xs">
             <thead>
-              <tr class="border-b border-surface-700">
-                <th class="text-left py-2 px-2 text-surface-500 font-medium">Rank</th>
-                <th class="text-left py-2 px-2 text-surface-500 font-medium">Trial</th>
-                <th class="text-left py-2 px-2 text-surface-500 font-medium">Training/Testing</th>
-                <th class="text-left py-2 px-2 text-surface-500 font-medium">Fitness</th>
-                <th class="text-left py-2 px-2 text-surface-500 font-medium">Actions</th>
+              <tr class="text-surface-500 text-xs border-b border-surface-700">
+                <th class="text-left py-2 px-2 font-medium">Status</th>
+                <th class="text-left py-2 px-2 font-medium">Strategy / Config</th>
+                <th v-if="showOwnerColumn" class="text-left py-2 px-2 font-medium">Owner</th>
+                <th class="text-left py-2 px-2 font-medium">Progress</th>
+                <th class="text-left py-2 px-2 font-medium">Best Score</th>
+                <th class="text-left py-2 px-2 font-medium">Date</th>
+                <th class="text-right py-2 px-2 font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(c, idx) in selectedSession.best_candidates" :key="idx"
-                class="border-b border-surface-800 hover:bg-surface-800/50 cursor-pointer">
-                <td class="py-2 px-2 text-surface-300 font-mono">{{ c.rank }}</td>
-                <td class="py-2 px-2 text-surface-400">{{ c.trial }}</td>
-                <td class="py-2 px-2 text-surface-400 font-mono">{{ c.objective_metric || '-' }}</td>
-                <td class="py-2 px-2 font-mono" :class="c.fitness > 0 ? 'text-green-400' : 'text-red-400'">
-                  {{ typeof c.fitness === 'number' ? c.fitness.toFixed(4) : c.fitness }}
+              <tr v-for="s in filteredSessions" :key="s.id"
+                class="border-b border-surface-800 hover:bg-surface-800/50 cursor-pointer transition-colors"
+                :class="selectedSession?.id === s.id ? 'bg-surface-800/70 border-l-2 border-l-brand-500' : ''"
+                @click="viewSession(s)">
+                <td class="py-2.5 px-2">
+                  <span class="text-xs px-2 py-0.5 rounded-full font-medium" :class="statusBadgeClass(s.status)">{{ s.status }}</span>
                 </td>
-                <td class="py-2 px-2">
-                  <div class="flex items-center gap-2">
-                    <button @click.stop="openCandidateModal(c)" class="text-brand-400 hover:text-brand-300" title="View details">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                <td class="py-2.5 px-2">
+                  <div class="text-surface-200 font-medium">{{ sessionStrategy(s) }}</div>
+                  <div class="text-surface-500 text-[10px] mt-0.5">{{ sessionExchange(s) }} {{ s.state?.symbol ? '/ ' + s.state.symbol : '' }}</div>
+                </td>
+                <td v-if="showOwnerColumn" class="py-2.5 px-2">
+                  <span v-if="s.owner_username" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 font-medium">{{ s.owner_username }}</span>
+                </td>
+                <td class="py-2.5 px-2 text-surface-400 font-mono">
+                  {{ s.completed_trials || 0 }} / {{ s.total_trials || 0 }}
+                  <div class="text-[10px] text-surface-500">trials</div>
+                </td>
+                <td class="py-2.5 px-2 font-mono" :class="s.best_score > 0 ? 'text-green-400' : 'text-surface-400'">
+                  {{ s.best_score != null ? Number(s.best_score).toFixed(2) : '-' }}
+                </td>
+                <td class="py-2.5 px-2 text-surface-500">{{ formatDateTime(s.updated_at) }}</td>
+                <td class="py-2.5 px-2 text-right">
+                  <div class="flex items-center gap-2 justify-end">
+                    <button @click.stop="viewSession(s)"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded bg-brand-600/20 text-brand-400 hover:bg-brand-600/30 transition-colors" title="View results">
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                      View
                     </button>
-                    <button @click.stop="copyDna(c.dna)" class="text-brand-400 hover:text-brand-300" title="Copy DNA">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                    <button v-if="s.status === 'stopped' || s.status === 'terminated'" @click.stop="resumeSession(s)"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors" title="Resume">
+                      <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                      Resume
+                    </button>
+                    <button @click.stop="removeSession(s)"
+                      class="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors" title="Delete session">
+                      <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                      Delete
                     </button>
                   </div>
                 </td>
@@ -708,6 +543,120 @@
           </table>
         </div>
       </div>
+
+      <!-- Session Detail (when a session is selected from history) -->
+      <template v-if="selectedSession && !running">
+        <!-- Session Info Bar -->
+        <div class="card p-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-4">
+              <span class="text-xs px-2 py-0.5 rounded-full font-medium" :class="statusBadgeClass(selectedSession.status)">{{ selectedSession.status }}</span>
+              <span class="text-sm font-medium text-surface-200">{{ sessionStrategy(selectedSession) }}</span>
+              <span class="text-xs text-surface-500">{{ selectedSession.completed_trials }}/{{ selectedSession.total_trials }} trials</span>
+              <span v-if="selectedSession.best_score != null" class="font-mono text-sm" :class="selectedSession.best_score > 0 ? 'text-green-400' : 'text-surface-300'">
+                Score: {{ Number(selectedSession.best_score).toFixed(4) }}
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="viewSessionLogs(selectedSession)" class="px-3 py-1.5 text-xs border border-surface-600 text-surface-300 rounded hover:bg-surface-800">Logs</button>
+              <button v-if="selectedSession.status === 'stopped' || selectedSession.status === 'terminated'"
+                @click="resumeSession(selectedSession)" class="px-3 py-1.5 text-xs border border-green-500/30 text-green-400 rounded hover:bg-green-500/10">Resume</button>
+              <button @click="selectedSession = null" class="px-3 py-1.5 text-xs border border-surface-600 text-surface-300 rounded hover:bg-surface-800">Close</button>
+            </div>
+          </div>
+          <div v-if="selectedSession.state" class="flex items-center gap-4 mt-2 text-[10px] text-surface-500">
+            <span>{{ selectedSession.state.exchange }}</span>
+            <span>{{ selectedSession.state.symbol }}</span>
+            <span>{{ selectedSession.state.objectiveFunction }}</span>
+            <span v-if="selectedSession.state.sampler">{{ samplerLabel(selectedSession.state.sampler) }}</span>
+            <span>Train: {{ selectedSession.state.trainingStartDate }} - {{ selectedSession.state.trainingFinishDate }}</span>
+            <span>Test: {{ selectedSession.state.testingStartDate }} - {{ selectedSession.state.testingFinishDate }}</span>
+          </div>
+          <div v-if="selectedSession.exception" class="mt-3 p-3 bg-red-500/10 rounded">
+            <div class="text-red-400 text-xs font-semibold mb-1">Exception</div>
+            <p class="text-red-300 text-xs">{{ selectedSession.exception }}</p>
+            <pre v-if="selectedSession.traceback" class="text-[10px] text-red-300/70 mt-1 max-h-[150px] overflow-auto whitespace-pre-wrap">{{ selectedSession.traceback }}</pre>
+          </div>
+        </div>
+
+        <!-- Session Objective Curve -->
+        <div v-if="sessionCurveData.length > 0" class="card">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-surface-300">Session Objective Progress</h2>
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-3 text-[10px] mr-4">
+                <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-blue-400 inline-block"></span> Training</span>
+                <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-red-400 inline-block"></span> Testing</span>
+              </div>
+              <select v-model="chartMetric" class="text-xs bg-surface-800 border border-surface-700 rounded px-2 py-1 text-surface-300">
+                <option v-for="m in chartMetricOptions" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="relative h-56 select-none">
+            <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" class="w-full h-full" preserveAspectRatio="none">
+              <line v-for="i in 5" :key="'sgrid-' + i"
+                :x1="chartPad.left" :x2="chartWidth - chartPad.right"
+                :y1="chartPad.top + (i - 1) * ((chartHeight - chartPad.top - chartPad.bottom) / 4)"
+                :y2="chartPad.top + (i - 1) * ((chartHeight - chartPad.top - chartPad.bottom) / 4)"
+                stroke="#333" stroke-width="0.5" stroke-dasharray="4,4" />
+              <polyline :points="sessionTrainingLinePath" fill="none" stroke="#60a5fa" stroke-width="1.5" />
+              <polyline :points="sessionTestingLinePath" fill="none" stroke="#f87171" stroke-width="1.5" />
+            </svg>
+            <div class="absolute top-0 right-0 h-full flex flex-col justify-between text-[10px] text-surface-500 font-mono pr-1 py-2">
+              <span>{{ sessionChartYMax.toFixed(2) }}</span>
+              <span>{{ ((sessionChartYMax + sessionChartYMin) / 2).toFixed(2) }}</span>
+              <span>{{ sessionChartYMin.toFixed(2) }}</span>
+            </div>
+            <div class="absolute bottom-0 left-0 w-full flex justify-between text-[10px] text-surface-500 font-mono px-1">
+              <span>{{ sessionCurveData[0]?.trial || 1 }}</span>
+              <span>{{ sessionCurveData[sessionCurveData.length - 1]?.trial || '' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Session Best Candidates -->
+        <div v-if="selectedSession.best_candidates && selectedSession.best_candidates.length" class="card">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-surface-300">Session Best Trials</h2>
+            <span class="text-xs text-surface-500">{{ selectedSession.best_candidates.length }} candidates</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="border-b border-surface-700">
+                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Rank</th>
+                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Trial</th>
+                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Training/Testing</th>
+                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Fitness</th>
+                  <th class="text-left py-2 px-2 text-surface-500 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(c, idx) in selectedSession.best_candidates" :key="idx"
+                  class="border-b border-surface-800 hover:bg-surface-800/50 cursor-pointer">
+                  <td class="py-2 px-2 text-surface-300 font-mono">{{ c.rank }}</td>
+                  <td class="py-2 px-2 text-surface-400">{{ c.trial }}</td>
+                  <td class="py-2 px-2 text-surface-400 font-mono">{{ c.objective_metric || '-' }}</td>
+                  <td class="py-2 px-2 font-mono" :class="c.fitness > 0 ? 'text-green-400' : 'text-red-400'">
+                    {{ typeof c.fitness === 'number' ? c.fitness.toFixed(4) : c.fitness }}
+                  </td>
+                  <td class="py-2 px-2">
+                    <div class="flex items-center gap-2">
+                      <button @click.stop="openCandidateModal(c)" class="text-brand-400 hover:text-brand-300" title="View details">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                      </button>
+                      <button @click.stop="copyDna(c.dna)" class="text-brand-400 hover:text-brand-300" title="Copy DNA">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -731,6 +680,7 @@ const activeWorkspaceId = ref('ws-1')
 const workspaceCache = ref({})
 let wsCounter = 1
 
+const pageTab = ref('run')
 const selectedCandidate = ref(null)
 const candidateModal = ref(null)
 const running = ref(false)
@@ -848,6 +798,7 @@ const form = ref({
   testingFinishDate: '2024-09-01',
   balance: 10000,
   objectiveFunction: 'sharpe',
+  sampler: 'bayesian',
   warmUpCandles: 240,
   trials: 200,
   optimalTotal: 100,
@@ -1041,7 +992,7 @@ function _freshDefaults() {
       strategy: strategies.value[0]?.name || 'ForexMA',
       trainingStartDate: '2024-01-01', trainingFinishDate: '2024-06-01',
       testingStartDate: '2024-06-01', testingFinishDate: '2024-09-01',
-      balance: 10000, objectiveFunction: 'sharpe', warmUpCandles: 240,
+      balance: 10000, objectiveFunction: 'sharpe', sampler: 'bayesian', warmUpCandles: 240,
       trials: 200, optimalTotal: 100, bestCandidatesCount: 20,
       cpuCores: Math.min(6, maxCpuCores.value), fastMode: true,
     },
@@ -1194,6 +1145,11 @@ function formatParamValue(val) {
   return val
 }
 
+function samplerLabel(s) {
+  const map = { 'bayesian': 'Bayesian (TPE)', 'random': 'Random', 'cma-es': 'CMA-ES', 'bust-aware': 'Bust-Aware' }
+  return map[s] || s || 'Bayesian (TPE)'
+}
+
 function formatObjMetric(c) {
   const mapping = {
     'sharpe': 'sharpe_ratio',
@@ -1275,6 +1231,7 @@ function buildState() {
     testingFinishDate: form.value.testingFinishDate,
     balance: form.value.balance,
     objectiveFunction: form.value.objectiveFunction,
+    sampler: form.value.sampler,
     warmUpCandles: form.value.warmUpCandles,
     trials: form.value.trials,
     optimalTotal: form.value.optimalTotal,
@@ -1299,6 +1256,14 @@ async function startOptimization() {
   running.value = true
   showConfig.value = false
 
+  // Validate required dates
+  if (!form.value.trainingStartDate || !form.value.trainingFinishDate ||
+      !form.value.testingStartDate || !form.value.testingFinishDate) {
+    error.value = 'All date fields (training start/end, testing start/end) are required.'
+    running.value = false
+    return
+  }
+
   const id = crypto.randomUUID()
   currentTaskId.value = id
 
@@ -1316,6 +1281,7 @@ async function startOptimization() {
       config: {
         warm_up_candles: form.value.warmUpCandles,
         objective_function: form.value.objectiveFunction,
+        sampler: form.value.sampler,
         trials: form.value.trials,
         best_candidates_count: form.value.bestCandidatesCount,
         logging: { order_submission: true, order_cancellation: true, order_execution: true, position_opened: true, position_increased: true, position_reduced: true, position_closed: true, shorter_period_candles: false, trading_candles: false, balance_update: true },
@@ -1367,13 +1333,6 @@ async function loadSessions() {
 }
 
 async function viewSession(s) {
-  if (!openTabs.value.find(t => t.id === s.id)) {
-    const label = sessionStrategy(s) || s.id?.slice(0, 8)
-    openTabs.value.push({ id: s.id, label })
-  }
-  if (selectedSession.value && selectedSession.value.id !== s.id) {
-    tabCache.value[selectedSession.value.id] = selectedSession.value
-  }
   if (tabCache.value[s.id]) {
     selectedSession.value = tabCache.value[s.id]
   } else {
@@ -1407,7 +1366,8 @@ function closeTab(id) {
 async function removeSession(s) {
   try {
     await api.removeOptimizationSession(s.id)
-    closeTab(s.id)
+    if (selectedSession.value?.id === s.id) selectedSession.value = null
+    delete tabCache.value[s.id]
     loadSessions()
   } catch (e) {
     error.value = e.message
@@ -1452,6 +1412,7 @@ async function resumeSession(s) {
       config: {
         warm_up_candles: st.warmUpCandles || form.value.warmUpCandles,
         objective_function: st.objectiveFunction || form.value.objectiveFunction,
+        sampler: st.sampler || form.value.sampler,
         trials: st.trials || form.value.trials,
         best_candidates_count: st.bestCandidatesCount || form.value.bestCandidatesCount,
         logging: { order_submission: true, order_cancellation: true, order_execution: true, position_opened: true, position_increased: true, position_reduced: true, position_closed: true, shorter_period_candles: false, trading_candles: false, balance_update: true },

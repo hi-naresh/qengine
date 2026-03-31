@@ -1,0 +1,662 @@
+<template>
+  <div>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-center sm:text-left">Autopilot</h1>
+        <p class="text-xs text-surface-500 mt-0.5">Automated hyperparameter tuning with pipeline learning across repeated backtests</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span v-if="running" class="flex items-center gap-1.5 text-xs text-green-400">
+          <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+          Running iteration {{ currentIteration + 1 }}/{{ maxIterations }}
+        </span>
+        <button v-if="running" @click="cancelRun" class="btn-sm bg-red-500/20 text-red-400 hover:bg-red-500/30">Cancel</button>
+      </div>
+    </div>
+
+    <!-- ═══ Configuration Panel (when not running + no results) ═══ -->
+    <div v-if="!running && !hasResults" class="card max-w-2xl">
+      <h2 class="text-sm font-semibold text-surface-300 mb-4">Configure Autopilot Run</h2>
+      <p class="text-xs text-surface-500 mb-4">Set up a backtest configuration first in the Backtest page, then launch Autopilot to automatically tune parameters while pipelines learn.</p>
+      <div class="text-center py-8">
+        <p class="text-surface-500 text-sm">Autopilot sessions are launched from the Backtest page.</p>
+        <p class="text-xs text-surface-600 mt-1">Select "Pipeline" mode, configure your strategy, and click "Run Autopilot".</p>
+        <router-link to="/backtest" class="btn-primary btn-sm mt-4 inline-flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0l-3.75-3.75M17.25 21L21 17.25"/></svg>
+          Go to Backtest
+        </router-link>
+      </div>
+    </div>
+
+    <!-- ═══ Live Dashboard (during + after run) ═══ -->
+    <div v-if="running || hasResults" class="space-y-6">
+
+      <!-- Progress bar -->
+      <div v-if="running" class="card">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs text-surface-500">Progress</span>
+          <span class="text-xs font-mono text-surface-400">{{ currentIteration }}/{{ maxIterations }} iterations</span>
+        </div>
+        <div class="w-full h-2 bg-surface-800 rounded-full overflow-hidden">
+          <div class="h-full bg-brand-500 transition-all duration-300 rounded-full" :style="{width: (currentIteration/maxIterations*100)+'%'}"></div>
+        </div>
+        <div class="flex justify-between mt-1 text-[10px] text-surface-600">
+          <span v-if="elapsedTotal">Elapsed: {{ formatDuration(elapsedTotal) }}</span>
+          <span v-if="avgIterTime">~{{ formatDuration(avgIterTime) }}/iter</span>
+          <span v-if="avgIterTime && maxIterations > currentIteration">ETA: {{ formatDuration(avgIterTime * (maxIterations - currentIteration)) }}</span>
+        </div>
+      </div>
+
+      <!-- Best Config Card -->
+      <div v-if="bestResult" class="card border-green-500/20">
+        <div class="flex items-center gap-2 mb-3">
+          <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"/></svg>
+          <h3 class="text-sm font-semibold text-green-400">Best Configuration</h3>
+          <span class="text-[10px] text-surface-600 ml-auto">Iteration #{{ bestResult.iteration + 1 }}</span>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
+          <div class="p-2 bg-surface-800 rounded">
+            <div class="text-surface-500 text-[10px]">{{ objectiveKey }}</div>
+            <div class="font-mono text-green-400 text-lg">{{ formatVal(bestResult.objective) }}</div>
+          </div>
+          <div v-for="(v, k) in bestResult.metrics" :key="k" class="p-2 bg-surface-800 rounded">
+            <div class="text-surface-500 text-[10px]">{{ k }}</div>
+            <div class="font-mono text-surface-200">{{ formatVal(v) }}</div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <div v-if="bestResult.hp && Object.keys(bestResult.hp).length" class="flex flex-wrap gap-2">
+            <div v-for="(v, k) in bestResult.hp" :key="k" class="px-2 py-1 bg-green-500/10 border border-green-500/20 rounded text-xs">
+              <span class="text-surface-500">{{ k }}:</span>
+              <span class="text-green-400 font-mono ml-1">{{ formatVal(v) }}</span>
+            </div>
+          </div>
+          <router-link v-if="bestResult.hp && Object.keys(bestResult.hp).length"
+                       :to="{ path: '/backtest', query: { hp: JSON.stringify(bestResult.hp) } }"
+                       class="btn-sm bg-brand-500/20 text-brand-400 hover:bg-brand-500/30 flex items-center gap-1.5 shrink-0 ml-3">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+            Load into Backtest
+          </router-link>
+        </div>
+      </div>
+
+      <!-- Convergence Plot -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-semibold text-surface-400">Objective Convergence</h3>
+          <span v-if="plateauInfo" class="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded" :class="plateauInfo.stale ? 'bg-amber-500/10 text-amber-400' : 'bg-green-500/10 text-green-400'">
+            <svg v-if="plateauInfo.stale" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+            {{ plateauInfo.stale ? `No improvement in ${plateauInfo.sinceBest} iterations — consider stopping` : `Improving (best at iter #${plateauInfo.bestAt + 1})` }}
+          </span>
+        </div>
+        <div ref="convergenceEl" class="w-full h-[280px]"></div>
+      </div>
+
+      <!-- Pipeline Learning Curve -->
+      <div v-if="pipelineCoverage.length" class="card">
+        <h3 class="text-xs font-semibold text-surface-400 mb-3">Pipeline Learning Progress</h3>
+        <div ref="learningEl" class="w-full h-[220px]"></div>
+      </div>
+
+      <!-- HP Parallel Coordinates -->
+      <div v-if="hpAxes.length >= 2" class="card">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="text-xs font-semibold text-surface-400">Hyperparameter Space</h3>
+            <p class="text-[10px] text-surface-600">Each line = one iteration. Color = objective value (green = better).</p>
+          </div>
+        </div>
+        <div ref="parallelEl" class="w-full h-[280px]"></div>
+      </div>
+
+      <!-- Iteration History Table -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-semibold text-surface-400">Iteration History</h3>
+          <span class="text-[10px] text-surface-600">{{ iterations.length }} iterations</span>
+        </div>
+        <div class="overflow-x-auto max-h-[400px] overflow-y-auto">
+          <table class="w-full text-xs">
+            <thead class="sticky top-0 bg-surface-900">
+              <tr class="text-surface-500 border-b border-surface-700">
+                <th class="text-left py-2 px-2">#</th>
+                <th class="text-right py-2 px-2">{{ objectiveKey }}</th>
+                <th class="text-right py-2 px-2">Win Rate</th>
+                <th class="text-right py-2 px-2">Profit Factor</th>
+                <th class="text-right py-2 px-2">Max DD%</th>
+                <th class="text-right py-2 px-2">Trades</th>
+                <th class="text-right py-2 px-2">Block Rate</th>
+                <th class="text-right py-2 px-2">Abort Rate</th>
+                <th class="text-right py-2 px-2">Coverage</th>
+                <th class="text-right py-2 px-2">Time</th>
+                <th class="text-left py-2 px-2">HP</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(it, i) in iterations" :key="i"
+                  class="border-b border-surface-800/50 hover:bg-surface-800/30"
+                  :class="bestResult && bestResult.iteration === i ? 'bg-green-500/5' : ''">
+                <td class="py-1.5 px-2 font-mono" :class="bestResult && bestResult.iteration === i ? 'text-green-400 font-bold' : 'text-surface-400'">{{ i + 1 }}</td>
+                <td class="py-1.5 px-2 text-right font-mono" :class="objColor(it.objective)">{{ formatVal(it.objective) }}</td>
+                <td class="py-1.5 px-2 text-right font-mono" :class="(it.metrics?.win_rate||0) >= 0.5 ? 'text-green-400' : 'text-red-400'">{{ ((it.metrics?.win_rate||0)*100).toFixed(1) }}%</td>
+                <td class="py-1.5 px-2 text-right font-mono" :class="(it.metrics?.profit_factor||0) >= 1 ? 'text-green-400' : 'text-red-400'">{{ (it.metrics?.profit_factor||0).toFixed(2) }}</td>
+                <td class="py-1.5 px-2 text-right font-mono text-red-400">{{ ((it.metrics?.max_drawdown_percentage||0)).toFixed(1) }}%</td>
+                <td class="py-1.5 px-2 text-right font-mono text-surface-300">{{ it.metrics?.total || '-' }}</td>
+                <td class="py-1.5 px-2 text-right font-mono text-amber-400">{{ it.blockRate != null ? (it.blockRate*100).toFixed(1)+'%' : '-' }}</td>
+                <td class="py-1.5 px-2 text-right font-mono text-red-400">{{ it.abortRate != null ? (it.abortRate*100).toFixed(1)+'%' : '-' }}</td>
+                <td class="py-1.5 px-2 text-right font-mono text-surface-400">{{ it.coverage != null ? (it.coverage*100).toFixed(1)+'%' : '-' }}</td>
+                <td class="py-1.5 px-2 text-right font-mono text-surface-500">{{ it.elapsed ? it.elapsed.toFixed(1)+'s' : '-' }}</td>
+                <td class="py-1.5 px-2 text-left">
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="(v, k) in (it.hp || {})" :key="k" class="px-1 py-0.5 bg-surface-800 rounded text-[9px] font-mono text-surface-500">{{ k }}={{ formatVal(v) }}</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
+import { useWebSocket } from '../useWebSocket'
+import { api } from '../api'
+
+// ── State ──
+const running = ref(false)
+const currentIteration = ref(0)
+const maxIterations = ref(100)
+const objectiveKey = ref('net_profit_percentage')
+const iterations = ref([])
+const bestResult = ref(null)
+const sessionId = ref(null)
+const elapsedTotal = ref(0)
+const avgIterTime = ref(0)
+
+const convergenceEl = ref(null)
+const learningEl = ref(null)
+const parallelEl = ref(null)
+
+const hasResults = computed(() => iterations.value.length > 0)
+
+const pipelineCoverage = computed(() => {
+  return iterations.value
+    .map((it, i) => ({ iteration: i, coverage: it.coverage }))
+    .filter(d => d.coverage != null)
+})
+
+const plateauInfo = computed(() => {
+  const n = iterations.value.length
+  if (n < 5) return null
+  const vals = iterations.value.map(d => d.objective)
+  let bestIdx = 0
+  for (let i = 1; i < n; i++) {
+    if (vals[i] > vals[bestIdx]) bestIdx = i
+  }
+  const sinceBest = n - 1 - bestIdx
+  const threshold = Math.max(5, Math.round(n * 0.3))
+  return { bestAt: bestIdx, sinceBest, stale: sinceBest >= threshold }
+})
+
+const hpAxes = computed(() => {
+  if (!iterations.value.length) return []
+  const allKeys = new Set()
+  for (const it of iterations.value) {
+    if (it.hp) Object.keys(it.hp).forEach(k => allKeys.add(k))
+  }
+  return [...allKeys]
+})
+
+// ── WebSocket handler ──
+function handleWsMessage(msg) {
+  const { event, data } = msg
+  if (!data) return
+
+  if (event === 'autopilot.started') {
+    running.value = true
+    maxIterations.value = data.max_iterations || 100
+    currentIteration.value = data.resumed_from || 0
+    sessionId.value = data.client_id
+    iterations.value = []
+    bestResult.value = null
+    elapsedTotal.value = 0
+  }
+
+  if (event === 'autopilot.iteration_start') {
+    currentIteration.value = data.iteration
+  }
+
+  if (event === 'autopilot.iteration_end') {
+    const metrics = data.metrics || {}
+    const hp = data.hp || {}
+    const ps = extractPipelineStats(data.pipeline_stats)
+    const elapsed = data.elapsed_seconds || 0
+
+    elapsedTotal.value += elapsed
+
+    iterations.value.push({
+      objective: metrics[objectiveKey.value] || 0,
+      metrics,
+      hp,
+      blockRate: ps.blockRate,
+      abortRate: ps.abortRate,
+      coverage: ps.coverage,
+      elapsed,
+    })
+
+    avgIterTime.value = elapsedTotal.value / iterations.value.length
+
+    if (data.best) {
+      bestResult.value = {
+        iteration: data.best.best_iteration ?? iterations.value.length - 1,
+        objective: data.best.best_metric ?? 0,
+        metrics: data.best.best_metrics || metrics,
+        hp: data.best.best_config || hp,
+      }
+    }
+
+    currentIteration.value = data.iteration + 1
+    nextTick(() => {
+      drawConvergence()
+      drawLearning()
+      drawParallel()
+    })
+  }
+
+  if (event === 'autopilot.finished') {
+    running.value = false
+    if (data.best_metric != null) {
+      bestResult.value = {
+        iteration: data.best_iteration ?? 0,
+        objective: data.best_metric,
+        metrics: data.best_metrics || {},
+        hp: data.best_config || {},
+      }
+    }
+  }
+
+  if (event === 'autopilot.error') {
+    running.value = false
+  }
+}
+
+useWebSocket(handleWsMessage)
+
+function extractPipelineStats(ps) {
+  if (!ps) return {}
+  for (const route of Object.values(ps)) {
+    return {
+      blockRate: route.block_rate ?? null,
+      abortRate: route.abort_rate ?? null,
+      coverage: route.abort?.coverage ?? null,
+    }
+  }
+  return {}
+}
+
+async function cancelRun() {
+  if (!sessionId.value) return
+  try {
+    await api.cancelAutopilot(sessionId.value)
+  } catch (e) {
+    console.error('Failed to cancel:', e)
+  }
+}
+
+// ── Charts ──
+function drawConvergence() {
+  const el = convergenceEl.value
+  if (!el || !iterations.value.length) return
+
+  const data = iterations.value
+  const dpr = window.devicePixelRatio || 1
+  const w = el.clientWidth
+  const h = el.clientHeight
+
+  let canvas = el.querySelector('canvas')
+  if (!canvas) {
+    canvas = document.createElement('canvas')
+    el.innerHTML = ''
+    el.appendChild(canvas)
+  }
+  canvas.width = w * dpr
+  canvas.height = h * dpr
+  canvas.style.width = w + 'px'
+  canvas.style.height = h + 'px'
+
+  const ctx = canvas.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  const pad = { top: 20, right: 20, bottom: 35, left: 60 }
+  const pw = w - pad.left - pad.right
+  const ph = h - pad.top - pad.bottom
+
+  const vals = data.map(d => d.objective)
+  const minV = Math.min(...vals)
+  const maxV = Math.max(...vals)
+  const range = maxV - minV || 1
+  const n = vals.length
+
+  // Build running best
+  let runBest = []
+  let best = -Infinity
+  for (const v of vals) {
+    best = Math.max(best, v)
+    runBest.push(best)
+  }
+
+  ctx.fillStyle = '#1a1b23'
+  ctx.fillRect(0, 0, w, h)
+
+  // Grid
+  ctx.strokeStyle = '#1e1f2b'
+  ctx.lineWidth = 1
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + ph * i / 4
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke()
+  }
+
+  // Per-iteration dots + line
+  ctx.strokeStyle = '#818cf8'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  for (let i = 0; i < n; i++) {
+    const x = pad.left + (n > 1 ? pw * i / (n - 1) : pw / 2)
+    const y = pad.top + ph * (1 - (vals[i] - minV) / range)
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+  }
+  ctx.stroke()
+
+  // Dots
+  for (let i = 0; i < n; i++) {
+    const x = pad.left + (n > 1 ? pw * i / (n - 1) : pw / 2)
+    const y = pad.top + ph * (1 - (vals[i] - minV) / range)
+    ctx.beginPath()
+    ctx.arc(x, y, 3, 0, Math.PI * 2)
+    const isBest = bestResult.value && bestResult.value.iteration === i
+    ctx.fillStyle = isBest ? '#4ade80' : '#818cf8'
+    ctx.fill()
+    if (isBest) {
+      ctx.strokeStyle = '#4ade80'
+      ctx.lineWidth = 2
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.stroke()
+    }
+  }
+
+  // Running best line
+  ctx.strokeStyle = '#4ade80'
+  ctx.lineWidth = 1
+  ctx.setLineDash([4, 4])
+  ctx.beginPath()
+  for (let i = 0; i < n; i++) {
+    const x = pad.left + (n > 1 ? pw * i / (n - 1) : pw / 2)
+    const y = pad.top + ph * (1 - (runBest[i] - minV) / range)
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+  }
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // Axis labels
+  ctx.fillStyle = '#666'
+  ctx.font = '10px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText('Iteration', pad.left + pw / 2, h - 5)
+
+  ctx.textAlign = 'right'
+  for (let i = 0; i <= 4; i++) {
+    const v = minV + range * (1 - i / 4)
+    ctx.fillText(v.toFixed(2), pad.left - 5, pad.top + ph * i / 4 + 4)
+  }
+
+  // Legend
+  ctx.textAlign = 'right'
+  ctx.fillStyle = '#818cf8'
+  ctx.fillRect(w - pad.right - 80, pad.top, 10, 2)
+  ctx.fillStyle = '#666'
+  ctx.fillText('Per-iter', w - pad.right - 5, pad.top + 5)
+  ctx.fillStyle = '#4ade80'
+  ctx.fillRect(w - pad.right - 80, pad.top + 12, 10, 2)
+  ctx.fillStyle = '#666'
+  ctx.fillText('Best so far', w - pad.right - 5, pad.top + 17)
+}
+
+function drawLearning() {
+  const el = learningEl.value
+  if (!el || !pipelineCoverage.value.length) return
+
+  const data = pipelineCoverage.value
+  const dpr = window.devicePixelRatio || 1
+  const w = el.clientWidth
+  const h = el.clientHeight
+
+  let canvas = el.querySelector('canvas')
+  if (!canvas) {
+    canvas = document.createElement('canvas')
+    el.innerHTML = ''
+    el.appendChild(canvas)
+  }
+  canvas.width = w * dpr
+  canvas.height = h * dpr
+  canvas.style.width = w + 'px'
+  canvas.style.height = h + 'px'
+
+  const ctx = canvas.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  const pad = { top: 15, right: 20, bottom: 30, left: 55 }
+  const pw = w - pad.left - pad.right
+  const ph = h - pad.top - pad.bottom
+  const n = data.length
+
+  ctx.fillStyle = '#1a1b23'
+  ctx.fillRect(0, 0, w, h)
+
+  // Grid
+  ctx.strokeStyle = '#1e1f2b'
+  ctx.lineWidth = 1
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + ph * i / 4
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke()
+  }
+
+  // Area fill
+  ctx.fillStyle = 'rgba(74, 222, 128, 0.1)'
+  ctx.beginPath()
+  ctx.moveTo(pad.left, pad.top + ph)
+  for (let i = 0; i < n; i++) {
+    const x = pad.left + (n > 1 ? pw * i / (n - 1) : pw / 2)
+    const y = pad.top + ph * (1 - data[i].coverage)
+    ctx.lineTo(x, y)
+  }
+  ctx.lineTo(pad.left + pw, pad.top + ph)
+  ctx.closePath()
+  ctx.fill()
+
+  // Line
+  ctx.strokeStyle = '#4ade80'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  for (let i = 0; i < n; i++) {
+    const x = pad.left + (n > 1 ? pw * i / (n - 1) : pw / 2)
+    const y = pad.top + ph * (1 - data[i].coverage)
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+  }
+  ctx.stroke()
+
+  // Labels
+  ctx.fillStyle = '#666'
+  ctx.font = '10px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText('Iteration', pad.left + pw / 2, h - 5)
+
+  ctx.textAlign = 'right'
+  for (let i = 0; i <= 4; i++) {
+    ctx.fillText(((1 - i / 4) * 100).toFixed(0) + '%', pad.left - 5, pad.top + ph * i / 4 + 4)
+  }
+
+  ctx.save()
+  ctx.translate(12, pad.top + ph / 2)
+  ctx.rotate(-Math.PI / 2)
+  ctx.textAlign = 'center'
+  ctx.fillText('State Coverage', 0, 0)
+  ctx.restore()
+}
+
+// ── Parallel Coordinates ──
+function drawParallel() {
+  const el = parallelEl.value
+  if (!el || !iterations.value.length || hpAxes.value.length < 2) return
+
+  const axes = hpAxes.value
+  const data = iterations.value
+  const dpr = window.devicePixelRatio || 1
+  const w = el.clientWidth
+  const h = el.clientHeight
+
+  let canvas = el.querySelector('canvas')
+  if (!canvas) {
+    canvas = document.createElement('canvas')
+    el.innerHTML = ''
+    el.appendChild(canvas)
+  }
+  canvas.width = w * dpr
+  canvas.height = h * dpr
+  canvas.style.width = w + 'px'
+  canvas.style.height = h + 'px'
+
+  const ctx = canvas.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  const pad = { top: 30, right: 30, bottom: 25, left: 30 }
+  const pw = w - pad.left - pad.right
+  const ph = h - pad.top - pad.bottom
+  const nAxes = axes.length
+
+  // Compute ranges per axis
+  const ranges = axes.map(key => {
+    const vals = data.map(d => d.hp?.[key]).filter(v => v != null && typeof v === 'number')
+    if (!vals.length) return { min: 0, max: 1 }
+    const mi = Math.min(...vals)
+    const ma = Math.max(...vals)
+    return { min: mi, max: ma === mi ? mi + 1 : ma }
+  })
+
+  // Objective range for coloring
+  const objs = data.map(d => d.objective)
+  const minObj = Math.min(...objs)
+  const maxObj = Math.max(...objs)
+  const objRange = maxObj - minObj || 1
+
+  ctx.fillStyle = '#1a1b23'
+  ctx.fillRect(0, 0, w, h)
+
+  // Draw axes
+  ctx.strokeStyle = '#2a2b33'
+  ctx.lineWidth = 1
+  for (let a = 0; a < nAxes; a++) {
+    const x = pad.left + (nAxes > 1 ? pw * a / (nAxes - 1) : pw / 2)
+    ctx.beginPath()
+    ctx.moveTo(x, pad.top)
+    ctx.lineTo(x, pad.top + ph)
+    ctx.stroke()
+
+    // Axis label
+    ctx.fillStyle = '#888'
+    ctx.font = '10px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(axes[a], x, pad.top - 8)
+
+    // Min/max labels
+    ctx.fillStyle = '#555'
+    ctx.font = '9px monospace'
+    ctx.fillText(formatVal(ranges[a].max), x, pad.top - 0)
+    ctx.fillText(formatVal(ranges[a].min), x, pad.top + ph + 14)
+  }
+
+  // Draw lines (one per iteration)
+  for (let i = 0; i < data.length; i++) {
+    const it = data[i]
+    const t = (it.objective - minObj) / objRange // 0 = worst, 1 = best
+
+    // Color: red (bad) → green (good)
+    const r = Math.round(239 * (1 - t) + 74 * t)
+    const g = Math.round(68 * (1 - t) + 222 * t)
+    const b = Math.round(68 * (1 - t) + 128 * t)
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${bestResult.value && bestResult.value.iteration === i ? 0.9 : 0.25})`
+    ctx.lineWidth = bestResult.value && bestResult.value.iteration === i ? 2.5 : 1
+
+    ctx.beginPath()
+    let started = false
+    for (let a = 0; a < nAxes; a++) {
+      const x = pad.left + (nAxes > 1 ? pw * a / (nAxes - 1) : pw / 2)
+      const v = it.hp?.[axes[a]]
+      if (v == null || typeof v !== 'number') continue
+      const { min, max } = ranges[a]
+      const y = pad.top + ph * (1 - (v - min) / (max - min))
+      if (!started) { ctx.moveTo(x, y); started = true }
+      else ctx.lineTo(x, y)
+    }
+    ctx.stroke()
+  }
+
+  // Draw best line on top
+  if (bestResult.value) {
+    const it = data[bestResult.value.iteration]
+    if (it) {
+      ctx.strokeStyle = '#4ade80'
+      ctx.lineWidth = 2.5
+      ctx.beginPath()
+      let started = false
+      for (let a = 0; a < nAxes; a++) {
+        const x = pad.left + (nAxes > 1 ? pw * a / (nAxes - 1) : pw / 2)
+        const v = it.hp?.[axes[a]]
+        if (v == null || typeof v !== 'number') continue
+        const { min, max } = ranges[a]
+        const y = pad.top + ph * (1 - (v - min) / (max - min))
+        if (!started) { ctx.moveTo(x, y); started = true }
+        else ctx.lineTo(x, y)
+      }
+      ctx.stroke()
+    }
+  }
+}
+
+// ── Helpers ──
+function formatVal(v) {
+  if (v == null) return '-'
+  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(4)
+  return String(v)
+}
+
+function formatDuration(seconds) {
+  if (seconds < 60) return seconds.toFixed(0) + 's'
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60).toFixed(0) + 's'
+  return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm'
+}
+
+function objColor(v) {
+  if (v == null) return 'text-surface-400'
+  return v > 0 ? 'text-green-400' : v < 0 ? 'text-red-400' : 'text-surface-300'
+}
+
+// Resize observer
+let resizeObserver = null
+watch([convergenceEl, learningEl, parallelEl], () => {
+  if (resizeObserver) resizeObserver.disconnect()
+  resizeObserver = new ResizeObserver(() => {
+    drawConvergence()
+    drawLearning()
+    drawParallel()
+  })
+  if (convergenceEl.value) resizeObserver.observe(convergenceEl.value)
+  if (learningEl.value) resizeObserver.observe(learningEl.value)
+  if (parallelEl.value) resizeObserver.observe(parallelEl.value)
+})
+
+onUnmounted(() => {
+  if (resizeObserver) resizeObserver.disconnect()
+})
+</script>

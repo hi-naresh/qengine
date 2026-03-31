@@ -36,11 +36,15 @@ def backtest(request_json: BacktestRequestJson, current_user: CurrentUser = Depe
     if not allowed:
         return JSONResponse({'message': msg}, status_code=403)
 
+    bt_config = request_json.config
+    if request_json.pipelines:
+        bt_config['pipelines'] = request_json.pipelines
+
     process_manager.add_task(
         run_backtest,
         request_json.id,
         request_json.debug_mode,
-        request_json.config,
+        bt_config,
         request_json.exchange,
         request_json.routes,
         request_json.data_routes,

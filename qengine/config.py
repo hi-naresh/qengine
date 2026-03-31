@@ -49,6 +49,8 @@ config = {
         'optimization': {
             # available ratio options: sharpe, calmar, sortino, omega, serenity, smart sharpe, smart sortino
             'objective_function': 'sharpe',
+            # search algorithm: bayesian (TPE), random, cma-es
+            'sampler': 'bayesian',
             # number of trials per each hyperparameter
             'trials': 200,
             # number of best candidates to keep and display
@@ -192,6 +194,10 @@ def set_config(conf: dict) -> None:
                     default_lev = broker_info.get(e['name'], {}).get('default_leverage', 30)
                 config['env']['exchanges'][e['name']]['futures_leverage'] = int(e.get('futures_leverage', default_lev))
                 config['env']['exchanges'][e['name']]['futures_leverage_mode'] = e.get('futures_leverage_mode', 'cross')
+
+        # pipeline configs (framework)
+        if 'pipelines' in conf:
+            config['app']['pipelines'] = conf['pipelines']
 
     # live mode only
     if jh.is_live():

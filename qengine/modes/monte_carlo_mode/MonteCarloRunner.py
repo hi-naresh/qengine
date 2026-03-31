@@ -154,13 +154,23 @@ class MonteCarloRunner:
                 store_session_exception(self.trades_session_id, 'trades', str(e), error_traceback)
             elif self.candles_session_id:
                 store_session_exception(self.candles_session_id, 'candles', str(e), error_traceback)
-            
+
+            # Track in error report system
+            try:
+                from qengine.services.error_tracker import track_error
+                track_error(
+                    message=str(e), error_type=error_type, traceback=error_traceback,
+                    session_type='monte-carlo',
+                )
+            except Exception:
+                pass
+
             # Publish exception to frontend
             sync_publish('exception', {
                 'error': str(e),
                 'traceback': error_traceback
             })
-            
+
             raise
         finally:
             if self.ray_started_here and ray.is_initialized():
@@ -250,13 +260,23 @@ class MonteCarloRunner:
             # Store exception in database
             store_session_exception(self.trades_session_id, 'trades', str(e), error_traceback)
             update_trades_session_status(self.trades_session_id, 'stopped')
-            
+
+            # Track in error report system
+            try:
+                from qengine.services.error_tracker import track_error
+                track_error(
+                    message=str(e), error_type=error_type, traceback=error_traceback,
+                    session_type='monte-carlo',
+                )
+            except Exception:
+                pass
+
             # Publish exception to frontend
             sync_publish('exception', {
                 'error': str(e),
                 'traceback': error_traceback
             })
-            
+
             raise
 
     def _run_candles_simulation(self):
@@ -381,13 +401,23 @@ class MonteCarloRunner:
             # Store exception in database
             store_session_exception(self.candles_session_id, 'candles', str(e), error_traceback)
             update_candles_session_status(self.candles_session_id, 'stopped')
-            
+
+            # Track in error report system
+            try:
+                from qengine.services.error_tracker import track_error
+                track_error(
+                    message=str(e), error_type=error_type, traceback=error_traceback,
+                    session_type='monte-carlo',
+                )
+            except Exception:
+                pass
+
             # Publish exception to frontend
             sync_publish('exception', {
                 'error': str(e),
                 'traceback': error_traceback
             })
-            
+
             raise
 
     def _run_trades_with_progress(self, config: dict) -> dict:

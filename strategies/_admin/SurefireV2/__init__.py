@@ -613,7 +613,12 @@ class SurefireV2(Strategy):
         pass
 
     def on_close_position(self, order, closed_trade) -> None:
-        pass
+        # Pipeline abort: position closed externally with pipeline_abort meta
+        if self.vars.get('cycle_active') and closed_trade:
+            meta = getattr(closed_trade, 'meta', None) or {}
+            if meta.get('exit_reason') == 'pipeline_abort':
+                self.vars['current_session_pnl'] = closed_trade.pnl if closed_trade else 0
+                self._reset_cycle('pipeline_abort')
 
     def on_ticket_opened(self, order) -> None:
         pass

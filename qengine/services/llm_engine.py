@@ -15,7 +15,7 @@ class LLMEngine:
     def __init__(self):
         self.provider: Optional[str] = None   # 'anthropic', 'openai', 'gemini'
         self.api_key: Optional[str] = None
-        self.model: Optional[str] = None      # e.g., 'gemini-2.5-flash-lite-preview-06-17'
+        self.model: Optional[str] = None      # e.g., 'gemini-2.5-flash'
         self.temperature: float = 0.3
         self.max_tokens: int = 4096
 
@@ -38,7 +38,7 @@ class LLMEngine:
         if gemini_key:
             self.provider = 'gemini'
             self.api_key = gemini_key
-            self.model = _get('LLM_MODEL', 'gemini-2.5-flash-lite-preview-06-17')
+            self.model = _get('LLM_MODEL', 'gemini-2.5-flash')
             return True
 
         anthropic_key = _get('ANTHROPIC_API_KEY')
@@ -456,7 +456,7 @@ Requirements:
         from google import genai
         client = genai.Client(api_key=self.api_key)
         response = client.models.generate_content(
-            model=self.model or 'gemini-2.5-flash-lite-preview-06-17',
+            model=self.model or 'gemini-2.5-flash',
             contents=f'{system_prompt}\n\n{user_prompt}',
             config={
                 'temperature': self.temperature,
