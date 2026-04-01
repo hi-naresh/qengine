@@ -353,3 +353,104 @@ class GridPilot(Pipeline):
             'gate': {'percentile': 80, 'window': 500, 'enabled': True},
             'abort': {'enabled': True, 'mode': 'eval'},
         }
+
+    @classmethod
+    def architecture(cls) -> dict:
+        return {
+            'summary': 'Three-layer protection pipeline for grid/martingale strategies. '
+                       'Scores market danger, gates risky entries, and aborts losing cycles via Q-learning.',
+            'designed_for': ['Grid strategies', 'Martingale strategies', 'SurefireHedge variants'],
+            'research_basis': 'Phase2 research: 20yr EUR-USD, 60,370 cycles, 103 busts analyzed',
+            'layers': [
+                {
+                    'name': 'DangerScorer',
+                    'order': 1,
+                    'type': 'observation',
+                    'hook': 'on_before()',
+                    'description': 'Real-time market risk assessment producing a danger score in [0, 1]',
+                    'algorithm': 'Weighted sum of 7 z-scored features → sigmoid normalization',
+                    'output': 'Single float [0, 1] per candle (0 = safe, 1 = dangerous)',
+                    'features': [
+                        {'key': 'D1_range_atr', 'weight': 0.30, 'inverted': True, 'description': 'Daily range / ATR — low = choppy = danger'},
+                        {'key': '5m_chop', 'weight': 0.15, 'inverted': False, 'description': 'Choppiness index (5m) — high = danger'},
+                        {'key': '15m_chop', 'weight': 0.15, 'inverted': False, 'description': 'Choppiness index (15m) — high = danger'},
+                        {'key': 'D1_chop', 'weight': 0.10, 'inverted': False, 'description': 'Choppiness index (daily) — high = danger'},
+                        {'key': '5m_adx', 'weight': 0.10, 'inverted': True, 'description': 'ADX trend strength (5m) — low = no trend = danger'},
+                        {'key': '5m_hurst', 'weight': 0.10, 'inverted': True, 'description': 'Hurst exponent (5m) — near 0.5 = random walk = danger'},
+                        {'key': '1H_atr_ratio', 'weight': 0.10, 'inverted': False, 'description': 'ATR 14/50 ratio (1H) — high = volatile = danger'},
+                    ],
+                    'normalization': 'Welford online normalizer (seeded with pre-trained stats from 60K cycles)',
+                    'config_keys': {
+                        'warmup': 'Candles before scoring begins (default: 50, 0 if seeded)',
+                        'pretrained_params': 'Pre-computed feature means/stds (auto-loaded from models/)',
+                    },
+                },
+                {
+                    'name': 'EntryGate',
+                    'order': 2,
+                    'type': 'entry_control',
+                    'hook': 'gate_entry()',
+                    'description': 'Blocks strategy entries when danger exceeds a rolling percentile threshold',
+                    'algorithm': 'Rolling window percentile threshold on danger scores',
+                    'output': 'Boolean allow/block decision per entry attempt',
+                    'mechanism': 'Maintains sorted rolling window → computes Nth percentile → blocks if danger > threshold',
+                    'config_keys': {
+                        'percentile': 'Block threshold as percentile of recent scores (default: 80 = block top 20%)',
+                        'window': 'Rolling window size in candles (default: 500)',
+                        'enabled': 'Toggle gate on/off (default: true)',
+                    },
+                    'stats_tracked': ['allow_accuracy', 'entries_blocked', 'avg_danger_at_block'],
+                },
+                {
+                    'name': 'QAbort',
+                    'order': 3,
+                    'type': 'exit_control',
+                    'hook': 'suggest_exit() → should_abort()',
+                    'description': 'Tabular Q-learning agent that decides whether to abort a losing cycle mid-trade',
+                    'algorithm': 'Tabular Q-learning with epsilon-greedy exploration',
+                    'output': 'Binary action: continue or abort (force close_all)',
+                    'state_space': {
+                        'total_states': 1625,
+                        'dimensions': [
+                            {'name': 'hedge_level', 'bins': 13, 'range': '0-12'},
+                            {'name': 'duration_bin', 'bins': 5, 'edges': [5, 10, 20, 50], 'unit': 'bars'},
+                            {'name': 'danger_at_entry', 'bins': 5, 'edges': [0.3, 0.5, 0.7, 0.85]},
+                            {'name': 'danger_now', 'bins': 5, 'edges': [0.3, 0.5, 0.7, 0.85]},
+                        ],
+                        'actions': {'0': 'continue', '1': 'abort'},
+                    },
+                    'pretrained': {
+                        'states_visited': 449,
+                        'prefer_abort': 45,
+                        'prefer_continue': 404,
+                        'bust_rate_reduction': '-32%',
+                        'abort_rate': '0.16%',
+                    },
+                    'modes': [
+                        {'name': 'eval', 'description': 'Frozen policy — no learning, no exploration (production)'},
+                        {'name': 'train', 'description': 'Full RL — epsilon-greedy exploration + Q-updates (research)'},
+                        {'name': 'online', 'description': 'Learns from experience, minimal exploration (legacy)'},
+                    ],
+                    'config_keys': {
+                        'enabled': 'Toggle abort agent on/off (default: true)',
+                        'mode': 'Operating mode: eval, train, or online (default: eval)',
+                        'alpha': 'Learning rate (default: 0.01)',
+                        'gamma': 'Discount factor (default: 0.95)',
+                        'epsilon': 'Exploration rate for train mode (default: 0.15)',
+                    },
+                },
+            ],
+            'lifecycle': [
+                {'hook': 'on_before()', 'description': 'DangerScorer extracts features and updates score every candle'},
+                {'hook': 'gate_entry()', 'description': 'EntryGate checks danger vs threshold, blocks if too high'},
+                {'hook': 'on_open_position()', 'description': 'Records danger at entry, starts Q-learning episode'},
+                {'hook': 'suggest_exit()', 'description': 'QAbort evaluates state and may force close_all'},
+                {'hook': 'on_cycle_end()', 'description': 'Feeds P&L reward to Q-learner, snapshots convergence'},
+            ],
+            'composition_rules': {
+                'gate_entry': 'AND — all pipelines must allow (any veto blocks)',
+                'adjust_size': 'Multiplicative chain (each scales previous output)',
+                'suggest_exit': 'Most aggressive action wins (close_all > partial > tighten_sl > set_tp)',
+                'filter_order': 'Sequential chain — any None cancels the order',
+            },
+        }

@@ -14,17 +14,312 @@
       </div>
     </div>
 
-    <!-- ═══ Configuration Panel (when not running + no results) ═══ -->
-    <div v-if="!running && !hasResults" class="card max-w-2xl">
-      <h2 class="text-sm font-semibold text-surface-300 mb-4">Configure Autopilot Run</h2>
-      <p class="text-xs text-surface-500 mb-4">Set up a backtest configuration first in the Backtest page, then launch Autopilot to automatically tune parameters while pipelines learn.</p>
-      <div class="text-center py-8">
-        <p class="text-surface-500 text-sm">Autopilot sessions are launched from the Backtest page.</p>
-        <p class="text-xs text-surface-600 mt-1">Select "Pipeline" mode, configure your strategy, and click "Run Autopilot".</p>
-        <router-link to="/backtest" class="btn-primary btn-sm mt-4 inline-flex items-center gap-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0l-3.75-3.75M17.25 21L21 17.25"/></svg>
-          Go to Backtest
-        </router-link>
+    <!-- ═══ Pipeline Registry + Launch (when not running + no results) ═══ -->
+    <div v-if="!running && !hasResults" class="space-y-6">
+
+      <!-- Loading state -->
+      <div v-if="loadingPipelines" class="card text-center py-8">
+        <div class="inline-block w-5 h-5 border-2 border-surface-600 border-t-brand-400 rounded-full animate-spin"></div>
+        <p class="text-xs text-surface-500 mt-2">Loading pipeline registry...</p>
+      </div>
+
+      <!-- No pipelines -->
+      <div v-else-if="!registeredPipelines.length" class="card text-center py-8">
+        <svg class="w-10 h-10 text-surface-700 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>
+        <p class="text-surface-500 text-sm">No pipelines registered</p>
+        <p class="text-xs text-surface-600 mt-1">Create a pipeline in the Pipelines page to get started.</p>
+      </div>
+
+      <!-- Pipeline Cards -->
+      <template v-else>
+        <div v-for="pipeline in registeredPipelines" :key="pipeline.name" class="space-y-4">
+
+          <!-- Pipeline Header Card -->
+          <div class="card">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <div class="w-8 h-8 rounded-lg bg-brand-500/15 flex items-center justify-center shrink-0">
+                    <svg class="w-4 h-4 text-brand-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/></svg>
+                  </div>
+                  <h2 class="text-lg font-bold text-surface-100">{{ pipeline.name }}</h2>
+                </div>
+                <p v-if="pipeline.architecture?.summary" class="text-xs text-surface-400 leading-relaxed mb-3">{{ pipeline.architecture.summary }}</p>
+
+                <!-- Target strategies -->
+                <div v-if="pipeline.architecture?.designed_for?.length" class="flex flex-wrap gap-1.5 mb-3">
+                  <span v-for="target in pipeline.architecture.designed_for" :key="target"
+                        class="px-2 py-0.5 bg-surface-800 border border-surface-700 rounded text-[10px] text-surface-400">
+                    {{ target }}
+                  </span>
+                </div>
+
+                <!-- Research basis -->
+                <div v-if="pipeline.architecture?.research_basis" class="flex items-center gap-1.5 text-[10px] text-surface-500">
+                  <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"/></svg>
+                  {{ pipeline.architecture.research_basis }}
+                </div>
+              </div>
+              <router-link to="/backtest" class="btn-sm bg-brand-500/20 text-brand-400 hover:bg-brand-500/30 flex items-center gap-1.5 shrink-0">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+                Run in Backtest
+              </router-link>
+            </div>
+          </div>
+
+          <!-- Layer Architecture -->
+          <div v-if="pipeline.architecture?.layers?.length" class="space-y-0">
+
+            <!-- Section header -->
+            <div class="flex items-center gap-2 mb-3 px-1">
+              <h3 class="text-xs font-semibold text-surface-500 uppercase tracking-wider">Pipeline Layers</h3>
+              <div class="flex-1 border-b border-surface-800"></div>
+            </div>
+
+            <!-- Layer flow diagram -->
+            <div class="relative">
+              <div v-for="(layer, li) in pipeline.architecture.layers" :key="layer.name" class="relative">
+
+                <!-- Connector line between layers -->
+                <div v-if="li > 0" class="flex justify-center py-1">
+                  <div class="flex flex-col items-center">
+                    <div class="w-px h-4 bg-surface-700"></div>
+                    <svg class="w-3 h-3 text-surface-600 -mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                  </div>
+                </div>
+
+                <!-- Layer card -->
+                <div class="card border-l-2" :class="layerBorderColor(layer.type)">
+                  <div class="flex items-start justify-between gap-3 mb-2">
+                    <div class="flex items-center gap-2">
+                      <div class="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold"
+                           :class="layerBadgeColor(layer.type)">
+                        {{ layer.order }}
+                      </div>
+                      <div>
+                        <h4 class="text-sm font-semibold text-surface-200">{{ layer.name }}</h4>
+                        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                              :class="layerTypeColor(layer.type)">{{ layer.type }}</span>
+                      </div>
+                    </div>
+                    <code class="text-[10px] font-mono text-surface-500 bg-surface-800 px-2 py-0.5 rounded shrink-0">{{ layer.hook }}</code>
+                  </div>
+
+                  <p class="text-xs text-surface-400 mb-3">{{ layer.description }}</p>
+
+                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    <!-- Left: Algorithm & Output -->
+                    <div class="space-y-2">
+                      <div v-if="layer.algorithm" class="p-2 bg-surface-850 rounded">
+                        <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1">Algorithm</div>
+                        <div class="text-xs text-surface-300">{{ layer.algorithm }}</div>
+                      </div>
+                      <div v-if="layer.output" class="p-2 bg-surface-850 rounded">
+                        <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1">Output</div>
+                        <div class="text-xs text-surface-300 font-mono">{{ layer.output }}</div>
+                      </div>
+                      <div v-if="layer.mechanism" class="p-2 bg-surface-850 rounded">
+                        <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1">Mechanism</div>
+                        <div class="text-xs text-surface-300">{{ layer.mechanism }}</div>
+                      </div>
+                      <div v-if="layer.normalization" class="p-2 bg-surface-850 rounded">
+                        <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1">Normalization</div>
+                        <div class="text-xs text-surface-300">{{ layer.normalization }}</div>
+                      </div>
+                    </div>
+
+                    <!-- Right: Config keys -->
+                    <div v-if="layer.config_keys" class="space-y-2">
+                      <div class="p-2 bg-surface-850 rounded">
+                        <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1.5">Configuration</div>
+                        <div class="space-y-1">
+                          <div v-for="(desc, key) in layer.config_keys" :key="key" class="flex items-start gap-2">
+                            <code class="text-[10px] font-mono text-brand-400 bg-brand-500/10 px-1 py-0.5 rounded shrink-0 mt-px">{{ key }}</code>
+                            <span class="text-[10px] text-surface-400">{{ desc }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-if="layer.stats_tracked" class="p-2 bg-surface-850 rounded">
+                        <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1.5">Stats Tracked</div>
+                        <div class="flex flex-wrap gap-1">
+                          <code v-for="s in layer.stats_tracked" :key="s"
+                                class="text-[10px] font-mono text-surface-400 bg-surface-800 px-1.5 py-0.5 rounded">{{ s }}</code>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Features table (DangerScorer) -->
+                  <div v-if="layer.features?.length" class="mt-3">
+                    <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1.5">Input Features</div>
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-[11px]">
+                        <thead>
+                          <tr class="text-surface-600 border-b border-surface-800">
+                            <th class="text-left py-1 px-2">Feature</th>
+                            <th class="text-right py-1 px-2">Weight</th>
+                            <th class="text-center py-1 px-2">Inverted</th>
+                            <th class="text-left py-1 px-2">Description</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="f in layer.features" :key="f.key" class="border-b border-surface-850 hover:bg-surface-800/30">
+                            <td class="py-1 px-2 font-mono text-brand-400">{{ f.key }}</td>
+                            <td class="py-1 px-2 text-right font-mono text-surface-300">
+                              <div class="flex items-center justify-end gap-1.5">
+                                <div class="w-12 h-1.5 bg-surface-800 rounded-full overflow-hidden">
+                                  <div class="h-full bg-brand-500/60 rounded-full" :style="{width: (f.weight * 100 / 0.3) + '%'}"></div>
+                                </div>
+                                {{ (f.weight * 100).toFixed(0) }}%
+                              </div>
+                            </td>
+                            <td class="py-1 px-2 text-center">
+                              <span v-if="f.inverted" class="text-amber-400">~</span>
+                              <span v-else class="text-surface-600">-</span>
+                            </td>
+                            <td class="py-1 px-2 text-surface-400">{{ f.description }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- State space (QAbort) -->
+                  <div v-if="layer.state_space" class="mt-3">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <div class="text-[10px] text-surface-600 uppercase tracking-wider">State Space</div>
+                      <span class="text-[10px] font-mono text-surface-500">{{ layer.state_space.total_states.toLocaleString() }} states total</span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                      <div v-for="dim in layer.state_space.dimensions" :key="dim.name"
+                           class="p-2 bg-surface-850 rounded text-center">
+                        <div class="text-xs font-mono text-surface-300 mb-0.5">{{ dim.name }}</div>
+                        <div class="text-lg font-bold text-surface-200">{{ dim.bins }}</div>
+                        <div class="text-[9px] text-surface-600">
+                          <span v-if="dim.edges">edges: [{{ dim.edges.join(', ') }}]</span>
+                          <span v-else-if="dim.range">range: {{ dim.range }}</span>
+                        </div>
+                        <div v-if="dim.unit" class="text-[9px] text-surface-600">{{ dim.unit }}</div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3 text-[10px]">
+                      <span class="text-surface-600">Actions:</span>
+                      <span v-for="(label, key) in layer.state_space.actions" :key="key"
+                            class="px-1.5 py-0.5 rounded font-mono"
+                            :class="label === 'abort' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'">
+                        {{ key }}: {{ label }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Pretrained stats (QAbort) -->
+                  <div v-if="layer.pretrained" class="mt-3">
+                    <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1.5">Pre-trained Model (Phase2)</div>
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      <div class="p-2 bg-surface-850 rounded text-center">
+                        <div class="text-[10px] text-surface-600">States Visited</div>
+                        <div class="text-sm font-mono text-surface-200">{{ layer.pretrained.states_visited }}</div>
+                      </div>
+                      <div class="p-2 bg-surface-850 rounded text-center">
+                        <div class="text-[10px] text-surface-600">Prefer Abort</div>
+                        <div class="text-sm font-mono text-red-400">{{ layer.pretrained.prefer_abort }}</div>
+                      </div>
+                      <div class="p-2 bg-surface-850 rounded text-center">
+                        <div class="text-[10px] text-surface-600">Prefer Continue</div>
+                        <div class="text-sm font-mono text-green-400">{{ layer.pretrained.prefer_continue }}</div>
+                      </div>
+                      <div class="p-2 bg-surface-850 rounded text-center">
+                        <div class="text-[10px] text-surface-600">Bust Rate Change</div>
+                        <div class="text-sm font-mono text-green-400">{{ layer.pretrained.bust_rate_reduction }}</div>
+                      </div>
+                      <div class="p-2 bg-surface-850 rounded text-center">
+                        <div class="text-[10px] text-surface-600">Abort Rate</div>
+                        <div class="text-sm font-mono text-surface-300">{{ layer.pretrained.abort_rate }}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Modes (QAbort) -->
+                  <div v-if="layer.modes?.length" class="mt-3">
+                    <div class="text-[10px] text-surface-600 uppercase tracking-wider mb-1.5">Operating Modes</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div v-for="m in layer.modes" :key="m.name"
+                           class="p-2 bg-surface-850 rounded">
+                        <code class="text-[10px] font-mono font-bold"
+                              :class="m.name === 'eval' ? 'text-green-400' : m.name === 'train' ? 'text-amber-400' : 'text-surface-500'">
+                          {{ m.name }}
+                        </code>
+                        <div class="text-[10px] text-surface-400 mt-0.5">{{ m.description }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lifecycle & Composition -->
+          <div v-if="pipeline.architecture?.lifecycle?.length || pipeline.architecture?.composition_rules" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+            <!-- Lifecycle hooks -->
+            <div v-if="pipeline.architecture?.lifecycle?.length" class="card">
+              <h3 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Hook Lifecycle (per candle)</h3>
+              <div class="space-y-0">
+                <div v-for="(hook, hi) in pipeline.architecture.lifecycle" :key="hook.hook"
+                     class="flex items-start gap-3 py-2" :class="hi < pipeline.architecture.lifecycle.length - 1 ? 'border-b border-surface-850' : ''">
+                  <div class="flex flex-col items-center shrink-0 mt-0.5">
+                    <div class="w-2 h-2 rounded-full" :class="hookDotColor(hook.hook)"></div>
+                    <div v-if="hi < pipeline.architecture.lifecycle.length - 1" class="w-px h-full min-h-[16px] bg-surface-800 mt-1"></div>
+                  </div>
+                  <div>
+                    <code class="text-[10px] font-mono text-surface-400">{{ hook.hook }}</code>
+                    <div class="text-[11px] text-surface-300 mt-0.5">{{ hook.description }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Composition rules -->
+            <div v-if="pipeline.architecture?.composition_rules" class="card">
+              <h3 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-3">Composition Rules (when stacked)</h3>
+              <div class="space-y-2">
+                <div v-for="(rule, hook) in pipeline.architecture.composition_rules" :key="hook"
+                     class="p-2 bg-surface-850 rounded">
+                  <code class="text-[10px] font-mono text-brand-400">{{ hook }}</code>
+                  <div class="text-[11px] text-surface-300 mt-0.5">{{ rule }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Default config -->
+          <div v-if="pipeline.default_config && Object.keys(pipeline.default_config).length" class="card">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-xs font-semibold text-surface-500 uppercase tracking-wider">Default Configuration</h3>
+              <button @click="copyConfig(pipeline.default_config)" class="text-[10px] text-surface-500 hover:text-surface-300 flex items-center gap-1">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
+                Copy JSON
+              </button>
+            </div>
+            <pre class="text-[11px] font-mono text-surface-400 bg-surface-850 rounded p-3 overflow-x-auto leading-relaxed">{{ JSON.stringify(pipeline.default_config, null, 2) }}</pre>
+          </div>
+
+        </div>
+      </template>
+
+      <!-- Launch CTA -->
+      <div v-if="registeredPipelines.length" class="card bg-surface-850 border border-surface-700">
+        <div class="flex items-center gap-3">
+          <svg class="w-5 h-5 text-surface-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5"/></svg>
+          <div class="flex-1">
+            <p class="text-xs text-surface-300">Ready to run?</p>
+            <p class="text-[10px] text-surface-600">Select "Pipeline" mode in Backtest, configure your strategy, and click "Run Autopilot" to start iterative tuning.</p>
+          </div>
+          <router-link to="/backtest" class="btn-primary btn-sm flex items-center gap-1.5 shrink-0">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0l-3.75-3.75M17.25 21L21 17.25"/></svg>
+            Go to Backtest
+          </router-link>
+        </div>
       </div>
     </div>
 
@@ -161,11 +456,63 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useWebSocket } from '../useWebSocket'
 import { api } from '../api'
 
-// ── State ──
+// ── Pipeline Registry ──
+const registeredPipelines = ref([])
+const loadingPipelines = ref(false)
+
+async function fetchPipelines() {
+  loadingPipelines.value = true
+  try {
+    const data = await api.getRegisteredPipelines()
+    registeredPipelines.value = data
+  } catch (e) {
+    console.error('Failed to load pipelines:', e)
+  } finally {
+    loadingPipelines.value = false
+  }
+}
+
+onMounted(fetchPipelines)
+
+function layerBorderColor(type) {
+  if (type === 'observation') return 'border-l-blue-500/50'
+  if (type === 'entry_control') return 'border-l-amber-500/50'
+  if (type === 'exit_control') return 'border-l-red-500/50'
+  return 'border-l-surface-600'
+}
+
+function layerBadgeColor(type) {
+  if (type === 'observation') return 'bg-blue-500/20 text-blue-400'
+  if (type === 'entry_control') return 'bg-amber-500/20 text-amber-400'
+  if (type === 'exit_control') return 'bg-red-500/20 text-red-400'
+  return 'bg-surface-700 text-surface-400'
+}
+
+function layerTypeColor(type) {
+  if (type === 'observation') return 'bg-blue-500/10 text-blue-400'
+  if (type === 'entry_control') return 'bg-amber-500/10 text-amber-400'
+  if (type === 'exit_control') return 'bg-red-500/10 text-red-400'
+  return 'bg-surface-800 text-surface-500'
+}
+
+function hookDotColor(hook) {
+  if (hook.includes('before')) return 'bg-blue-400'
+  if (hook.includes('gate')) return 'bg-amber-400'
+  if (hook.includes('open_position')) return 'bg-green-400'
+  if (hook.includes('exit') || hook.includes('abort')) return 'bg-red-400'
+  if (hook.includes('cycle_end')) return 'bg-purple-400'
+  return 'bg-surface-500'
+}
+
+function copyConfig(config) {
+  navigator.clipboard.writeText(JSON.stringify(config, null, 2)).catch(() => {})
+}
+
+// ── Autopilot State ──
 const running = ref(false)
 const currentIteration = ref(0)
 const maxIterations = ref(100)

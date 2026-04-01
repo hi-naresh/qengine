@@ -21,7 +21,7 @@ class SavePipelineJson(BaseModel):
 
 @router.get("/registered")
 def get_registered_pipelines():
-    """List all registered pipeline classes with default configs (for backtest dropdown)."""
+    """List all registered pipeline classes with default configs and architecture metadata."""
     from qengine.framework import list_pipelines, get_pipeline_class
     result = []
     for name in list_pipelines():
@@ -30,6 +30,7 @@ def get_registered_pipelines():
             'name': name,
             'description': cls.__doc__.strip() if cls.__doc__ else '',
             'default_config': cls.default_config(),
+            'architecture': cls.architecture(),
         })
     return JSONResponse(content=result)
 

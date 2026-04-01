@@ -144,6 +144,15 @@ class Pipeline(ABC):
         """Default configuration for this pipeline (shown in frontend)."""
         return {}
 
+    @classmethod
+    def architecture(cls) -> dict:
+        """Return pipeline architecture metadata for the frontend.
+
+        Override in subclasses to provide rich layer descriptions.
+        Returns dict with keys: layers, composition_rules, state_space, features, etc.
+        """
+        return {}
+
 
 class PipelineStack:
     """
