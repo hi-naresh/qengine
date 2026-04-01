@@ -111,18 +111,33 @@ def run(
 
     sampler = jh.get_config('env.optimization.sampler', 'bayesian')
 
-    optimizer = Optimizer(
-        session_id,
-        user_config,
-        training_warmup_candles,
-        training_candles,
-        testing_warmup_candles,
-        testing_candles,
-        fast_mode,
-        optimal_total,
-        cpu_cores,
-        sampler=sampler,
-    )
+    # Use MOBO optimizer for multi-objective hedging optimization
+    if sampler == 'mobo':
+        from .mobo import MOBOOptimizer
+        optimizer = MOBOOptimizer(
+            session_id,
+            user_config,
+            training_warmup_candles,
+            training_candles,
+            testing_warmup_candles,
+            testing_candles,
+            fast_mode,
+            optimal_total,
+            cpu_cores,
+        )
+    else:
+        optimizer = Optimizer(
+            session_id,
+            user_config,
+            training_warmup_candles,
+            training_candles,
+            testing_warmup_candles,
+            testing_candles,
+            fast_mode,
+            optimal_total,
+            cpu_cores,
+            sampler=sampler,
+        )
 
     optimizer.run()
 

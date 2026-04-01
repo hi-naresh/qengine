@@ -165,6 +165,7 @@ class Optimizer:
         # Trial counter and completed trials
         self.trial_counter = 0
         self.completed_trials = 0
+        self.pruned_trials = 0
 
         # Build the Optuna sampler based on user selection
         optuna_sampler = self._create_sampler()
@@ -296,33 +297,108 @@ class Optimizer:
         else:
             return optuna.samplers.TPESampler()
 
+    def _detect_hedging_params(self):
+        """Detect if strategy has hedging/martingale hyperparameters"""
+        hp_names = {str(p['name']) for p in self.strategy_hp}
+        return 'sizing_factor' in hp_names and 'max_levels' in hp_names
+
+    @staticmethod
+    def _compute_effective_multiplier(hp):
+        """Compute the effective per-level multiplier from strategy params.
+        For the Surefire strategy: sizing_operator determines how sizing_factor is used.
+          multiplier: m^n  → effective m = sizing_factor
+          sqrt:       (√m)^n → effective m = √sizing_factor
+          linear:     1+n  → effective m ≈ 1 (no geometric growth, safe)
+          fibonacci:  fib(n) → effective m ≈ 1.618 (golden ratio)
+        """
+        sizing_factor = hp.get('sizing_factor', 2.0)
+        sizing_operator = hp.get('sizing_operator', 'multiplier')
+
+        if sizing_operator == 'sqrt':
+            return sizing_factor ** 0.5
+        elif sizing_operator == 'linear':
+            return 1.0  # Linear growth, no geometric risk
+        elif sizing_operator == 'fibonacci':
+            return 1.618  # Golden ratio (φ)
+        else:  # 'multiplier' or unknown
+            return sizing_factor
+
+    def _is_hedging_viable(self, hp):
+        """Check if a hedging configuration is viable using the p*m formula.
+        Risk = (p * m)^N / (m - 1)
+        Critical condition: p * m < 1, otherwise bust probability grows with N.
+
+        Empirical p ≈ 0.566 from 20yr EUR-USD research (60k cycles, 103 busts).
+        We use p = 0.60 as a conservative estimate to account for different pairs/timeframes.
+        """
+        effective_m = self._compute_effective_multiplier(hp)
+        max_levels = hp.get('max_levels', 6)
+
+        # Conservative empirical probability of losing per level
+        p = 0.60
+
+        p_times_m = p * effective_m
+
+        # Hard reject: p*m >= 1.0 means guaranteed ruin with enough cycles
+        if p_times_m >= 1.0:
+            return False, f"p*m={p_times_m:.2f}>=1.0 (m_eff={effective_m:.2f}, N={max_levels})"
+
+        # Soft reject: even with p*m < 1, high max_levels with marginal p*m is risky
+        # Risk per cycle = (p*m)^N / (m-1). Reject if expected bust rate > 1%
+        if effective_m > 1.0:
+            risk_per_cycle = (p_times_m ** max_levels) / (effective_m - 1)
+            if risk_per_cycle > 0.01:  # >1% bust probability per cycle
+                return False, f"bust_risk={risk_per_cycle:.3f}>1% (p*m={p_times_m:.2f}, N={max_levels})"
+
+        return True, ""
+
     def _ask_trial(self):
         """Ask Optuna for the next trial parameters using the configured sampler.
+        For hedging strategies, rejects analytically-doomed configurations
+        before they waste an expensive backtest.
         Returns (optuna_trial, hp_dict) where hp_dict maps param names to values."""
-        trial = self.study.ask()
-        hp = {}
-        for param in self.strategy_hp:
-            param_name = str(param['name'])
-            param_type = param['type']
-            if isinstance(param_type, type):
-                param_type = param_type.__name__
-            else:
-                param_type = param_type.strip("'").strip('"')
+        is_hedging = self._detect_hedging_params()
+        max_prune_attempts = 10 if is_hedging else 0
 
-            if param_type == 'int':
-                step = param.get('step') or 1
-                hp[param_name] = trial.suggest_int(param_name, param['min'], param['max'], step=step)
-            elif param_type == 'float':
-                step = param.get('step')
-                if step is not None:
-                    hp[param_name] = trial.suggest_float(param_name, param['min'], param['max'], step=step)
+        for attempt in range(max_prune_attempts + 1):
+            trial = self.study.ask()
+            hp = {}
+            for param in self.strategy_hp:
+                param_name = str(param['name'])
+                param_type = param['type']
+                if isinstance(param_type, type):
+                    param_type = param_type.__name__
                 else:
-                    hp[param_name] = trial.suggest_float(param_name, param['min'], param['max'])
-            elif param_type == 'categorical':
-                hp[param_name] = trial.suggest_categorical(param_name, param['options'])
-            else:
-                raise ValueError(f"Unsupported hyperparameter type: {param_type}")
+                    param_type = param_type.strip("'").strip('"')
 
+                if param_type == 'int':
+                    step = param.get('step') or 1
+                    hp[param_name] = trial.suggest_int(param_name, param['min'], param['max'], step=step)
+                elif param_type == 'float':
+                    step = param.get('step')
+                    if step is not None:
+                        hp[param_name] = trial.suggest_float(param_name, param['min'], param['max'], step=step)
+                    else:
+                        hp[param_name] = trial.suggest_float(param_name, param['min'], param['max'])
+                elif param_type == 'categorical':
+                    hp[param_name] = trial.suggest_categorical(param_name, param['options'])
+                else:
+                    raise ValueError(f"Unsupported hyperparameter type: {param_type}")
+
+            # Analytical pruning for hedging strategies
+            if is_hedging and attempt < max_prune_attempts:
+                viable, reason = self._is_hedging_viable(hp)
+                if not viable:
+                    # Tell Optuna this trial is pruned (scored 0) so it learns to avoid this region
+                    self.study.tell(trial, 0.0001)
+                    self.pruned_trials += 1
+                    if jh.is_debugging():
+                        logger.log_optimize_mode(f"Pruned trial (attempt {attempt+1}): {reason}", self.session_id)
+                    continue  # Try again
+
+            return trial, hp
+
+        # If all attempts were pruned, return the last one anyway (let backtest confirm)
         return trial, hp
 
     def _process_trial_result(self, result):
@@ -347,6 +423,7 @@ class Optimizer:
             'leverage': config['env']['exchanges'][router.routes[0].exchange].get('futures_leverage', 30),
             'cpu_cores': self.cpu_cores,
             'sampler': self.sampler_name,
+            'pruned_trials': self.pruned_trials,
         }
         sync_publish('general_info', general_info)
 

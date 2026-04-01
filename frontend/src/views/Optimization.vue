@@ -37,8 +37,22 @@
       <!-- Left: Config Panel -->
       <div class="md:col-span-1 lg:col-span-1 space-y-4" v-show="!running || showConfig">
         <div class="card">
-          <h2 class="text-sm font-semibold mb-1 text-surface-300">Configuration</h2>
-          <p class="text-[11px] text-surface-500 mb-4">Pick a strategy and date range -- the optimizer will search for the best hyperparameters</p>
+          <!-- Optimizer Mode Subtabs -->
+          <div class="flex items-center gap-1 p-0.5 bg-surface-800 rounded-lg mb-4">
+            <button @click="form.optimizerMode = 'standard'; if (form.sampler === 'mobo') form.sampler = 'bayesian'"
+              class="flex-1 px-3 py-1.5 text-xs rounded-md transition-colors"
+              :class="form.optimizerMode === 'standard' ? 'bg-surface-700 text-surface-100 font-medium' : 'text-surface-500 hover:text-surface-300'">
+              Standard
+            </button>
+            <button @click="form.optimizerMode = 'mobo'; form.sampler = 'mobo'"
+              class="flex-1 px-3 py-1.5 text-xs rounded-md transition-colors"
+              :class="form.optimizerMode === 'mobo' ? 'bg-purple-500/20 text-purple-300 font-medium' : 'text-surface-500 hover:text-surface-300'">
+              MOBO (Hedging)
+            </button>
+          </div>
+
+          <h2 class="text-sm font-semibold mb-1 text-surface-300">{{ form.optimizerMode === 'mobo' ? 'MOBO Configuration' : 'Configuration' }}</h2>
+          <p class="text-[11px] text-surface-500 mb-4">{{ form.optimizerMode === 'mobo' ? 'Multi-objective optimizer for hedging strategies — finds Pareto-optimal tradeoffs between profit and bust risk' : 'Pick a strategy and date range -- the optimizer will search for the best hyperparameters' }}</p>
 
           <div class="space-y-3">
             <div>
@@ -120,7 +134,7 @@
               </select>
             </div>
 
-            <div>
+            <div v-if="form.optimizerMode === 'standard'">
               <label class="label">Search Algorithm</label>
               <select v-model="form.sampler" class="select">
                 <option value="bayesian">Bayesian (TPE)</option>
@@ -131,6 +145,13 @@
               <div class="text-[10px] text-surface-500 mt-1">
                 {{ form.sampler === 'bayesian' ? 'Intelligent search — converges faster with fewer trials' : form.sampler === 'cma-es' ? 'Best for continuous (int/float) parameters only — auto-falls back to Bayesian if strategy has categorical params' : form.sampler === 'bust-aware' ? 'Bayesian + avoids negative expectancy and high-drawdown parameter regions' : 'Uniform random sampling — maximum parallelism' }}
               </div>
+            </div>
+            <div v-else class="p-2.5 bg-purple-500/5 border border-purple-500/15 rounded-lg">
+              <div class="flex items-center gap-2 mb-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                <span class="text-xs font-medium text-purple-300">Multi-Objective Bayesian</span>
+              </div>
+              <p class="text-[10px] text-surface-400 leading-relaxed">GP surrogates model profit and drawdown simultaneously. Analytical p*m pruning eliminates doomed configs before backtesting. Returns a Pareto frontier of non-dominated solutions.</p>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -233,6 +254,8 @@
                 <div class="flex justify-between"><span class="text-surface-500">Objective</span><span class="text-surface-200">{{ generalInfo.objective_function }}</span></div>
                 <div class="flex justify-between"><span class="text-surface-500">Algorithm</span><span class="text-surface-200">{{ samplerLabel(generalInfo.sampler) }}</span></div>
                 <div class="flex justify-between"><span class="text-surface-500">CPU Cores</span><span class="text-surface-200">{{ generalInfo.cpu_cores }}</span></div>
+                <div v-if="generalInfo.pruned_trials > 0" class="flex justify-between"><span class="text-surface-500">Pruned (p*m)</span><span class="text-amber-400 font-mono">{{ generalInfo.pruned_trials }}</span></div>
+                <div v-if="generalInfo.pareto_size" class="flex justify-between"><span class="text-surface-500">Pareto Front</span><span class="text-purple-400 font-mono">{{ generalInfo.pareto_size }}</span></div>
                 <div v-if="progress.eta > 0" class="flex justify-between"><span class="text-surface-500">ETA</span><span class="text-surface-200">{{ formatEta(progress.eta) }}</span></div>
               </div>
               <div class="flex items-center gap-2 pt-1">
@@ -797,6 +820,7 @@ const form = ref({
   testingStartDate: '2024-06-01',
   testingFinishDate: '2024-09-01',
   balance: 10000,
+  optimizerMode: 'standard',
   objectiveFunction: 'sharpe',
   sampler: 'bayesian',
   warmUpCandles: 240,
@@ -992,7 +1016,7 @@ function _freshDefaults() {
       strategy: strategies.value[0]?.name || 'ForexMA',
       trainingStartDate: '2024-01-01', trainingFinishDate: '2024-06-01',
       testingStartDate: '2024-06-01', testingFinishDate: '2024-09-01',
-      balance: 10000, objectiveFunction: 'sharpe', sampler: 'bayesian', warmUpCandles: 240,
+      balance: 10000, optimizerMode: 'standard', objectiveFunction: 'sharpe', sampler: 'bayesian', warmUpCandles: 240,
       trials: 200, optimalTotal: 100, bestCandidatesCount: 20,
       cpuCores: Math.min(6, maxCpuCores.value), fastMode: true,
     },
@@ -1146,7 +1170,7 @@ function formatParamValue(val) {
 }
 
 function samplerLabel(s) {
-  const map = { 'bayesian': 'Bayesian (TPE)', 'random': 'Random', 'cma-es': 'CMA-ES', 'bust-aware': 'Bust-Aware' }
+  const map = { 'bayesian': 'Bayesian (TPE)', 'random': 'Random', 'cma-es': 'CMA-ES', 'bust-aware': 'Bust-Aware', 'mobo': 'MOBO (GP)' }
   return map[s] || s || 'Bayesian (TPE)'
 }
 
@@ -1230,6 +1254,7 @@ function buildState() {
     testingStartDate: form.value.testingStartDate,
     testingFinishDate: form.value.testingFinishDate,
     balance: form.value.balance,
+    optimizerMode: form.value.optimizerMode,
     objectiveFunction: form.value.objectiveFunction,
     sampler: form.value.sampler,
     warmUpCandles: form.value.warmUpCandles,
