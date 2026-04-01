@@ -1093,7 +1093,8 @@ function buildSessionsFromTrades(tradesList) {
     return s
   })
   standalone.forEach((t, i) => {
-    result.push({ session: `standalone-${i + 1}`, trades: [t], total_pnl: t.pnl || t.PNL || 0, total_fee: t.fee || 0, opened_at: t.opened_at, closed_at: t.closed_at, outcome: 'standalone', levels: 0, trade_count: 1 })
+    const exitReason = t.meta?.exit_reason || 'standalone'
+    result.push({ session: `standalone-${i + 1}`, trades: [t], total_pnl: t.pnl || t.PNL || 0, total_fee: t.fee || 0, opened_at: t.opened_at, closed_at: t.closed_at, outcome: exitReason, levels: 0, trade_count: 1 })
   })
   return result
 }
@@ -1112,6 +1113,9 @@ function sessionOutcomeLabel(outcome) {
   if (outcome === 'tp_hit') return 'TP Hit'
   if (outcome === 'bucket_hit') return 'Bucket Hit'
   if (outcome === 'max_levels') return 'Max Levels'
+  if (outcome === 'max_level_sl') return 'Max Level SL'
+  if (outcome === 'terminated') return 'Terminated'
+  if (outcome === 'pipeline_abort') return 'Pipeline Abort'
   if (outcome === 'standalone') return 'Single'
   return outcome || '-'
 }

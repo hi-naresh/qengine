@@ -225,6 +225,8 @@ def hedge_sessions() -> List[dict]:
     # standalone trades as single-trade sessions
     for i, t in enumerate(standalone):
         td = t.to_dict_with_orders
+        meta = getattr(t, 'meta', {})
+        outcome = meta.get('exit_reason', 'standalone')
         result.append({
             'session': f'standalone-{i + 1}',
             'trades': [td],
@@ -232,7 +234,7 @@ def hedge_sessions() -> List[dict]:
             'total_fee': round(t.fee, 6),
             'opened_at': t.opened_at,
             'closed_at': t.closed_at,
-            'outcome': 'standalone',
+            'outcome': outcome,
             'levels': 0,
             'trade_count': 1,
             'max_float': 0.0,

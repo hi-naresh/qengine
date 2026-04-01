@@ -59,6 +59,8 @@ class ConnectionManager:
                 async for ch, message in self.redis_subscriber.iter():
                     # Parse the message and broadcast to all clients
                     message_dict = json.loads(message)
+                    # Intercept exception/error events and track as ErrorReports
+                    _track_redis_error_event(message_dict)
                     await self.broadcast(message_dict)
             except asyncio.CancelledError:
                 # Task was cancelled as part of shutdown
@@ -114,6 +116,68 @@ class ConnectionManager:
             except Exception as e:
                 jh.terminal_debug(f"Redis punsubscribe error: {str(e)}")
             jh.terminal_debug("Redis unsubscribed - no more active connections")
+
+
+def _track_redis_error_event(message_dict: dict):
+    """Intercept exception and error events from Redis and store as ErrorReports.
+    Uses ONLY stdlib imports (json, os, uuid, time) to guarantee it works.
+    This runs in the main process — the ONLY reliable place to capture subprocess errors."""
+    import json as _json, os as _os, uuid as _uuid, time as _time, sys as _sys
+
+    try:
+        event = message_dict.get('event', '')
+        data = message_dict.get('data')
+        if not data or not isinstance(data, dict):
+            return
+
+        report = None
+
+        if event.endswith('.exception') or event.endswith('.playground_exception'):
+            error_msg = data.get('error', 'Unknown error')
+            session_type = event.split('.')[0] if '.' in event else 'system'
+            error_type = error_msg.split(':')[0].strip() if ':' in error_msg else None
+            report = {
+                'id': str(_uuid.uuid4()),
+                'session_id': None,
+                'session_type': session_type,
+                'error_type': error_type,
+                'message': str(error_msg)[:10000],
+                'traceback': data.get('traceback', ''),
+                'context': None,
+                'status': 'new',
+                'issue_id': None,
+                'user_id': None,
+                'created_at': int(_time.time() * 1000),
+            }
+
+        # NOTE: .error_log events are NOT tracked — they are follow-up messages
+        # (e.g. "Session terminated") that always accompany an .exception event.
+
+        if report is None:
+            return
+
+        # 1. Write directly to file (GUARANTEED to work — no qengine imports)
+        error_dir = 'storage/logs/error-reports'
+        _os.makedirs(error_dir, exist_ok=True)
+        fpath = _os.path.join(error_dir, f"{report['created_at']}_{report['id'][:8]}.json")
+        with open(fpath, 'w') as f:
+            _json.dump(report, f)
+
+        print(f"[ERROR_TRACKER] Captured {event} -> {fpath}", file=_sys.stderr)
+
+        # 2. Also try Redis hash + DB via track_error (best-effort, for faster reads)
+        try:
+            from qengine.services.error_tracker import _store_to_redis, _store_to_db
+            _store_to_redis(report)
+            _store_to_db(report)
+        except Exception:
+            pass
+
+    except Exception as e:
+        import sys
+        print(f"[WS_MANAGER] _track_redis_error_event FAILED: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
 
 
 # Create a global instance

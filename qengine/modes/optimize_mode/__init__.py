@@ -56,6 +56,12 @@ def run(
     # validate routes
     validate_routes(router)
 
+    # Validate dates before loading candles
+    for label, val in [('training_start_date', training_start_date), ('training_finish_date', training_finish_date),
+                       ('testing_start_date', testing_start_date), ('testing_finish_date', testing_finish_date)]:
+        if not val or not val.strip():
+            raise ValueError(f"'{label}' is required and cannot be empty.")
+
     # load historical candles
     training_warmup_candles, training_candles, testing_warmup_candles, testing_candles = _get_training_and_testing_candles(
         training_start_date,
@@ -103,17 +109,35 @@ def run(
         if jh.is_debugging():
             jh.debug(f"Created new optimization session with ID: {session_id}")
 
-    optimizer = Optimizer(
-        session_id,
-        user_config,
-        training_warmup_candles,
-        training_candles,
-        testing_warmup_candles,
-        testing_candles,
-        fast_mode,
-        optimal_total,
-        cpu_cores
-    )
+    sampler = jh.get_config('env.optimization.sampler', 'bayesian')
+
+    # Use MOBO optimizer for multi-objective hedging optimization
+    if sampler == 'mobo':
+        from .mobo import MOBOOptimizer
+        optimizer = MOBOOptimizer(
+            session_id,
+            user_config,
+            training_warmup_candles,
+            training_candles,
+            testing_warmup_candles,
+            testing_candles,
+            fast_mode,
+            optimal_total,
+            cpu_cores,
+        )
+    else:
+        optimizer = Optimizer(
+            session_id,
+            user_config,
+            training_warmup_candles,
+            training_candles,
+            testing_warmup_candles,
+            testing_candles,
+            fast_mode,
+            optimal_total,
+            cpu_cores,
+            sampler=sampler,
+        )
 
     optimizer.run()
 

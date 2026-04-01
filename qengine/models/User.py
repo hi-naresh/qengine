@@ -6,13 +6,13 @@ import qengine.helpers as jh
 
 
 ALL_FEATURES = [
-    'dashboard', 'brokers', 'strategies', 'backtest', 'optimization',
+    'dashboard', 'strategies', 'backtest', 'optimization',
     'monte_carlo', 'live', 'import_data', 'tools', 'llm_studio',
     'issues', 'settings'
 ]
 
 DEFAULT_USER_FEATURES = [
-    'dashboard', 'brokers', 'strategies', 'backtest',
+    'dashboard', 'strategies', 'backtest',
     'monte_carlo', 'live', 'import_data', 'tools', 'llm_studio',
     'issues', 'settings'
 ]

@@ -1270,7 +1270,9 @@ def is_price_near(order_price, price_to_compare, percentage_threshold=0.00015):
 
 def gzip_compress(data):
     """Compress data using gzip."""
-    json_data = json.dumps(data).encode('utf-8')
+    import simplejson
+    from qengine.libs.custom_json import NpEncoder
+    json_data = simplejson.dumps(data, ignore_nan=True, cls=NpEncoder).encode('utf-8')
     # Compress the JSON string
     return gzip.compress(json_data)
 

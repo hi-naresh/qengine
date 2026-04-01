@@ -21,6 +21,12 @@ QENGINE_DIR = os.path.dirname(os.path.abspath(__file__))
 async def lifespan(app):
     # ── Startup: restore saved settings from DB ──
     _restore_saved_settings()
+    # ── Ensure ErrorReport table exists ──
+    try:
+        from qengine.services.error_tracker import ensure_table
+        ensure_table()
+    except Exception:
+        pass
     yield
     from qengine.services.db import database
     database.close_connection()
@@ -145,6 +151,9 @@ from qengine.controllers.market_data_controller import router as market_data_rou
 from qengine.controllers.settings_controller import router as settings_router
 from qengine.controllers.playground_controller import router as playground_router
 from qengine.controllers.issue_controller import router as issue_router
+from qengine.controllers.framework_controller import router as framework_router
+from qengine.controllers.autopilot_controller import router as autopilot_router
+from qengine.controllers.report_controller import router as report_router
 
 # register routers
 fastapi_app.include_router(websocket_router)
@@ -169,6 +178,9 @@ fastapi_app.include_router(market_data_router)
 fastapi_app.include_router(settings_router)
 fastapi_app.include_router(playground_router)
 fastapi_app.include_router(issue_router)
+fastapi_app.include_router(framework_router)
+fastapi_app.include_router(autopilot_router)
+fastapi_app.include_router(report_router)
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 # Live Trade Plugin
@@ -193,4 +205,13 @@ async def favicon():
 @fastapi_app.get("/")
 @fastapi_app.get("/{rest_of_path:path}")
 async def dashboard(rest_of_path: str = ""):
-    return FileResponse(f"{QENGINE_DIR}/static/index.html")
+    from starlette.responses import Response
+    import os
+    html_path = f"{QENGINE_DIR}/static/index.html"
+    with open(html_path, 'rb') as f:
+        content = f.read()
+    return Response(
+        content=content,
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
+    )

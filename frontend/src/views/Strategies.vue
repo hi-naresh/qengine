@@ -38,7 +38,7 @@
           <span class="text-xs text-surface-500">{{ llmConfigured ? 'LLM Connected' : 'LLM Not Configured' }}</span>
         </div>
       </div>
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div class="lg:col-span-2 space-y-3">
           <div>
             <label class="label">Describe your strategy</label>
@@ -226,7 +226,7 @@
 
       <!-- Sub-tab: Playground -->
       <div v-show="strategyViewTab === 'playground'">
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <!-- Left: Config Panel -->
         <div class="lg:col-span-1 space-y-4">
           <div class="card">

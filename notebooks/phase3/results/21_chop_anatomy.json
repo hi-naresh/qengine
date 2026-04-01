@@ -1,0 +1,91 @@
+{
+  "baseline": {
+    "n_cycles": 13609,
+    "n_wins": 7890,
+    "n_busts": 73,
+    "win_rate": 57.98,
+    "bust_rate": 0.54,
+    "net_pnl": 32486.19,
+    "avg_win_pnl": 17.79,
+    "avg_bust_pnl": -880.62,
+    "profit_factor": 1.3,
+    "bust_erase_ratio": 49.5,
+    "avg_level": 1.92,
+    "max_level": 12,
+    "avg_bars": 112.3,
+    "level_dist": {
+      "0": 4619,
+      "1": 2989,
+      "2": 2009,
+      "3": 1424,
+      "4": 918,
+      "5": 575,
+      "6": 345,
+      "7": 264,
+      "8": 179,
+      "9": 94,
+      "10": 67,
+      "11": 54,
+      "12": 72
+    }
+  },
+  "indicator_auc": {
+    "adx_100": 0.5436,
+    "adx_200": 0.5436,
+    "adx_50": 0.5436,
+    "atr_ratio": 0.5584,
+    "choppiness_index_100": 0.5247,
+    "choppiness_index_200": 0.5454,
+    "choppiness_index_50": 0.5276,
+    "efficiency_ratio_100": 0.5589,
+    "efficiency_ratio_200": 0.5248,
+    "efficiency_ratio_50": 0.5018,
+    "range_vs_atr_100": 0.5322,
+    "range_vs_atr_200": 0.5496,
+    "range_vs_atr_50": 0.5377
+  },
+  "indicator_ranking": [
+    "efficiency_ratio_100",
+    "atr_ratio",
+    "range_vs_atr_200",
+    "choppiness_index_200",
+    "adx_100",
+    "adx_200",
+    "adx_50",
+    "range_vs_atr_50",
+    "range_vs_atr_100",
+    "choppiness_index_50",
+    "efficiency_ratio_200",
+    "choppiness_index_100",
+    "efficiency_ratio_50"
+  ],
+  "early_warning": {
+    "10": {
+      "bust_mean": 0.2663,
+      "win_mean": 0.2854,
+      "separation": 0.0191
+    },
+    "20": {
+      "bust_mean": 0.2783,
+      "win_mean": 0.2889,
+      "separation": 0.0105
+    },
+    "50": {
+      "bust_mean": 0.2799,
+      "win_mean": 0.3188,
+      "separation": 0.0389
+    },
+    "100": {
+      "bust_mean": 0.3059,
+      "win_mean": 0.327,
+      "separation": 0.0211
+    },
+    "200": {
+      "bust_mean": 0.3739,
+      "win_mean": 0.3504,
+      "separation": 0.0235
+    }
+  },
+  "best_predictor": "efficiency_ratio_100",
+  "best_auc": 0.5589
+}

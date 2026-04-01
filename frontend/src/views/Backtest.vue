@@ -45,9 +45,9 @@
     </div>
 
     <!-- ═══ NEW RUN TAB ═══ -->
-    <div v-show="pageTab === 'run'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div v-show="pageTab === 'run'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <!-- Config Panel (Left) -->
-      <div class="lg:col-span-1 space-y-4">
+      <div class="md:col-span-1 lg:col-span-1 space-y-4">
         <div class="card">
           <h2 class="text-sm font-semibold mb-1 text-surface-300">Configuration</h2>
           <p class="text-[11px] text-surface-500 mb-4">Select a broker, symbol, timeframe, strategy, and date range to simulate</p>
@@ -217,8 +217,25 @@
             </div>
             </div>
 
-            <!-- Hyperparameters (auto-loaded from strategy) - collapsible -->
-            <div v-if="btHyperParams.length" class="pt-2">
+            <!-- Backtest Mode Toggle -->
+            <div class="pt-3">
+              <div class="flex items-center gap-1 p-1 bg-surface-800 rounded-lg">
+                <button @click="form.backtestMode = 'normal'" class="flex-1 px-3 py-1.5 text-xs rounded-md transition-colors text-center"
+                  :class="form.backtestMode === 'normal' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
+                  Normal
+                </button>
+                <button @click="form.backtestMode = 'pipeline'" class="flex-1 px-3 py-1.5 text-xs rounded-md transition-colors text-center"
+                  :class="form.backtestMode === 'pipeline' ? 'bg-brand-500/20 text-brand-400' : 'text-surface-500 hover:text-surface-300'">
+                  Pipeline
+                </button>
+              </div>
+              <p class="text-[10px] text-surface-600 mt-1">
+                {{ form.backtestMode === 'normal' ? 'Standard backtest with strategy hyperparameters' : 'Intelligent layers — danger scoring, entry gating, Q-learning abort' }}
+              </p>
+            </div>
+
+            <!-- ═ NORMAL MODE: Hyperparameters ═ -->
+            <div v-if="form.backtestMode === 'normal' && btHyperParams.length" class="pt-2">
               <button @click="showHyperparams = !showHyperparams" class="flex items-center justify-between w-full text-left mb-1">
                 <div>
                   <h3 class="text-xs font-semibold text-surface-400">Hyperparameters</h3>
@@ -249,6 +266,25 @@
               </div>
             </div>
 
+            <!-- ═ PIPELINE MODE: Pipeline selection ═ -->
+            <div v-if="form.backtestMode === 'pipeline'" class="pt-2 space-y-2">
+              <div v-if="availablePipelines.length" class="space-y-2">
+                <div v-for="(pc, idx) in form.pipelineConfigs" :key="idx" class="p-2 bg-surface-800 rounded space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <select v-model="pc.name" class="select text-xs py-1" @change="onPipelineSelect(idx)">
+                      <option v-for="p in availablePipelines" :key="p.name" :value="p.name">{{ p.name }}</option>
+                    </select>
+                    <button v-if="form.pipelineConfigs.length > 1" @click="removePipeline(idx)" class="text-surface-500 hover:text-red-400 text-sm">&times;</button>
+                  </div>
+                  <div v-if="pc.name" class="text-[10px] text-surface-600">
+                    {{ availablePipelines.find(p => p.name === pc.name)?.description || '' }}
+                  </div>
+                </div>
+                <button @click="addPipeline" class="text-xs text-brand-400 hover:text-brand-300">+ Add Pipeline</button>
+              </div>
+              <div v-else class="text-[10px] text-surface-600 py-2">No pipelines registered. Create one from the Pipelines page.</div>
+            </div>
+
             <!-- No data warning -->
             <div v-if="!dataRange && form.exchange" class="p-2 bg-amber-500/10 rounded text-xs text-amber-400">
               No candle data found for {{ form.exchange }} / {{ form.routes[0]?.symbol }}.
@@ -261,7 +297,7 @@
                 <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 Running...
               </span>
-              <span v-else>Run Backtest</span>
+              <span v-else>{{ form.backtestMode === 'pipeline' ? 'Run Pipeline' : 'Run Backtest' }}</span>
             </button>
             <button v-if="running" @click="cancelBacktest" class="btn-secondary w-full text-sm">
               Cancel
@@ -278,7 +314,7 @@
       </div>
 
       <!-- Results Panel (Right) -->
-      <div class="lg:col-span-2 space-y-4 relative">
+      <div class="md:col-span-1 lg:col-span-2 space-y-4 relative">
         <!-- Rich Progress Card -->
         <div v-if="running || (progress.current === 100 && message)" class="card p-5 space-y-4">
           <div class="flex items-center gap-5">
@@ -361,6 +397,83 @@
             <div class="bg-surface-800/60 rounded-lg px-3 py-2">
               <div class="text-[10px] text-surface-600 uppercase tracking-wider">Trades</div>
               <div class="text-sm font-semibold text-surface-200 tabular-nums">{{ progress.trades }}</div>
+            </div>
+          </div>
+
+          <!-- Live Pipeline Stats (during execution) -->
+          <div v-if="running && progress.pipelineDanger !== null" class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div class="bg-surface-800/60 rounded-lg px-3 py-2">
+              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Danger Score</div>
+              <div class="flex items-center gap-2">
+                <div class="text-sm font-semibold tabular-nums font-mono"
+                     :class="progress.pipelineDanger > 0.7 ? 'text-red-400' : progress.pipelineDanger > 0.5 ? 'text-amber-400' : 'text-green-400'">
+                  {{ progress.pipelineDanger?.toFixed(3) }}
+                </div>
+                <!-- Mini gauge bar -->
+                <div class="flex-1 h-1.5 bg-surface-900 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full transition-all duration-500"
+                       :class="progress.pipelineDanger > 0.7 ? 'bg-red-500' : progress.pipelineDanger > 0.5 ? 'bg-amber-500' : 'bg-green-500'"
+                       :style="{width: (progress.pipelineDanger * 100) + '%'}"></div>
+                </div>
+              </div>
+              <div class="text-[9px] text-surface-600 mt-0.5">mean: {{ progress.pipelineDangerMean?.toFixed(3) ?? '-' }}</div>
+            </div>
+            <div class="bg-surface-800/60 rounded-lg px-3 py-2">
+              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Entries Blocked</div>
+              <div class="text-sm font-semibold text-amber-400 tabular-nums">{{ progress.pipelineBlocks || 0 }}</div>
+            </div>
+            <div class="bg-surface-800/60 rounded-lg px-3 py-2">
+              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Aborts</div>
+              <div class="text-sm font-semibold text-red-400 tabular-nums">{{ progress.pipelineAborts || 0 }}</div>
+            </div>
+            <div class="bg-surface-800/60 rounded-lg px-3 py-2">
+              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Cycles</div>
+              <div class="text-sm font-semibold text-surface-200 tabular-nums">{{ progress.pipelineCycles || 0 }}</div>
+            </div>
+            <div class="bg-surface-800/60 rounded-lg px-3 py-2">
+              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Pipeline Status</div>
+              <div class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full" :class="progress.pipelineDanger > 0.7 ? 'bg-red-400 animate-pulse' : 'bg-green-400'"></span>
+                <span class="text-xs" :class="progress.pipelineDanger > 0.7 ? 'text-red-400' : 'text-green-400'">
+                  {{ progress.pipelineDanger > 0.7 ? 'High Risk' : progress.pipelineDanger > 0.5 ? 'Elevated' : 'Normal' }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Mini Chart: Equity + Danger overlay -->
+          <div v-if="running && liveEquityHistory.length > 2 && progress.pipelineDangerHistory" class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div>
+              <div class="text-[10px] text-surface-600 mb-0.5 px-1">Live Equity</div>
+              <div class="w-full h-[100px] bg-surface-800/60 rounded overflow-hidden">
+                <canvas ref="liveMiniChartEl" class="w-full h-full"></canvas>
+              </div>
+            </div>
+            <div>
+              <div class="text-[10px] text-surface-600 mb-0.5 px-1">Live Danger Score</div>
+              <div class="w-full h-[100px] bg-surface-800/60 rounded overflow-hidden">
+                <canvas ref="liveDangerMiniEl" class="w-full h-full"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Decision Feed -->
+          <div v-if="running && livePipelineDecisions.length > 0" class="bg-surface-800/40 rounded-lg p-2 max-h-[120px] overflow-y-auto">
+            <div class="text-[10px] text-surface-600 mb-1 px-1 flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+              Pipeline Decision Feed
+            </div>
+            <div v-for="(d, i) in [...livePipelineDecisions].reverse().slice(0, 15)" :key="i"
+                 class="flex items-center gap-2 py-0.5 px-1 text-[10px] font-mono">
+              <span class="text-surface-600 w-28 shrink-0">{{ formatLiveTs(d.ts) }}</span>
+              <span class="px-1 py-0.5 rounded text-[9px] shrink-0"
+                    :class="d.decision === 'BLOCKED' ? 'bg-red-500/20 text-red-400' :
+                            d.decision === 'ABORT' ? 'bg-amber-500/20 text-amber-400' :
+                            'bg-green-500/20 text-green-400'">{{ d.decision }}</span>
+              <span class="text-surface-500">danger</span>
+              <span :class="d.danger > 0.7 ? 'text-red-400' : d.danger > 0.5 ? 'text-amber-400' : 'text-surface-300'">{{ d.danger?.toFixed(3) }}</span>
+              <span v-if="d.threshold" class="text-surface-600">thr {{ d.threshold.toFixed(3) }}</span>
+              <span v-if="d.level != null" class="text-surface-500">L{{ d.level }}</span>
             </div>
           </div>
 
@@ -568,6 +681,331 @@
               </div>
             </div>
             
+            <!-- Pipeline Analytics -->
+            <div v-if="pipelineStats" class="mb-4 space-y-4">
+              <div v-for="(ps, route) in pipelineStats" :key="route">
+                <!-- Config badge + title -->
+                <div class="flex items-center gap-2 mb-2">
+                  <h3 class="text-xs font-semibold text-surface-500">Pipeline Analytics</h3>
+                  <span class="text-surface-600 text-[10px]">{{ route }}</span>
+                  <div v-if="ps.config" class="flex gap-1 ml-auto">
+                    <span class="px-1.5 py-0.5 bg-brand-500/10 text-brand-400 text-[9px] rounded font-mono">{{ ps.config.pipeline || ps.pipeline_name || 'Pipeline' }}</span>
+                    <span v-if="ps.gate?.percentile" class="px-1.5 py-0.5 bg-surface-700 text-surface-400 text-[9px] rounded font-mono">Gate p{{ ps.gate.percentile }}</span>
+                    <span v-if="ps.abort?.enabled" class="px-1.5 py-0.5 bg-surface-700 text-surface-400 text-[9px] rounded font-mono">Q-Abort</span>
+                    <span class="px-1.5 py-0.5 bg-surface-700 text-[9px] rounded font-mono" :class="ps.scorer?.warmed_up ? 'text-green-400' : 'text-amber-400'">{{ ps.scorer?.warmed_up ? 'Scorer active' : 'Warming up' }}</span>
+                  </div>
+                </div>
+
+                <!-- Overview row -->
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm mb-3">
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-[10px]">Cycles</div>
+                    <div class="font-mono text-surface-100">{{ ps.cycles?.total || ps.cycles_completed || 0 }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-[10px]">Win Rate</div>
+                    <div class="font-mono" :class="(ps.cycles?.win_rate||0) >= 0.5 ? 'text-green-400' : 'text-red-400'">{{ ((ps.cycles?.win_rate||0)*100).toFixed(1) }}%</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-[10px]">Entries Blocked</div>
+                    <div class="font-mono text-amber-400">{{ ps.entries_blocked || 0 }} <span class="text-surface-600 text-[10px]">({{ ((ps.block_rate||0)*100).toFixed(1) }}%)</span></div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-[10px]">Aborts</div>
+                    <div class="font-mono text-red-400">{{ ps.aborts_triggered || 0 }} <span class="text-surface-600 text-[10px]">({{ ((ps.abort_rate||0)*100).toFixed(1) }}%)</span></div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-[10px]">Avg Danger</div>
+                    <div class="font-mono text-surface-100">{{ ps.danger?.mean != null ? ps.danger.mean.toFixed(3) : '-' }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-[10px]">Protection</div>
+                    <div class="font-mono text-green-400">{{ ps.protection?.total_protection_value ? '+' + ps.protection.total_protection_value.toFixed(2) : '-' }}</div>
+                  </div>
+                </div>
+
+                <!-- Entry Gate Intelligence -->
+                <details v-if="ps.gate" class="mb-3 group" open>
+                  <summary class="text-[10px] font-semibold text-surface-500 mb-1 cursor-pointer hover:text-surface-400">Entry Gate</summary>
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Allow Accuracy:</span>
+                      <span class="font-mono ml-1" :class="(ps.gate.allow_accuracy||0) >= 0.6 ? 'text-green-400' : 'text-amber-400'">{{ ((ps.gate.allow_accuracy||0)*100).toFixed(1) }}%</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Correct:</span>
+                      <span class="font-mono text-green-400 ml-1">{{ ps.gate.correct_allows || 0 }}</span>
+                      <span class="text-surface-600"> / Wrong: </span>
+                      <span class="font-mono text-red-400">{{ ps.gate.wrong_allows || 0 }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Avg Danger @ Block:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.gate.avg_danger_at_block?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">PnL of Allowed:</span>
+                      <span class="font-mono ml-1" :class="(ps.gate.pnl_of_allowed||0) >= 0 ? 'text-green-400' : 'text-red-400'">{{ (ps.gate.pnl_of_allowed||0).toFixed(2) }}</span>
+                    </div>
+                  </div>
+                  <!-- Decision quality row -->
+                  <div class="mt-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Wrong Allow Avg Danger:</span>
+                      <span class="font-mono text-red-400 ml-1">{{ ps.gate.wrong_allow_avg_danger?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Correct Allow Avg Danger:</span>
+                      <span class="font-mono text-green-400 ml-1">{{ ps.gate.correct_allow_avg_danger?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Wrong Allow Loss:</span>
+                      <span class="font-mono text-red-400 ml-1">{{ (ps.gate.wrong_allow_total_loss||0).toFixed(2) }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Est. Saved by Blocks:</span>
+                      <span class="font-mono text-green-400 ml-1">+{{ (ps.gate.est_pnl_saved_by_blocks||0).toFixed(2) }}</span>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Q-Abort Intelligence -->
+                <details v-if="ps.abort" class="mb-3 group" open>
+                  <summary class="text-[10px] font-semibold text-surface-500 mb-1 cursor-pointer hover:text-surface-400">
+                    Q-Learning Abort
+                    <span v-if="ps.abort.pretrained" class="ml-1 px-1 py-0.5 rounded text-[8px] font-mono bg-blue-900/50 text-blue-300">PRE-TRAINED</span>
+                    <span v-if="ps.abort.mode" class="ml-1 px-1 py-0.5 rounded text-[8px] font-mono bg-surface-700 text-surface-400">{{ ps.abort.mode }}</span>
+                  </summary>
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Avg Level @ Abort:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.abort.avg_level_at_abort?.toFixed(1) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Avg Danger @ Abort:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.abort.avg_danger_at_abort?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Q-Margin:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.abort.q_margin_at_abort?.toFixed(4) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">States:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.abort.states_visited || 0 }}/{{ ps.abort.total_states || 0 }}</span>
+                      <span class="text-surface-600 ml-1">({{ ((ps.abort.coverage||0)*100).toFixed(1) }}%)</span>
+                    </div>
+                  </div>
+                  <!-- Abort quality -->
+                  <div class="mt-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Avg PnL @ Abort:</span>
+                      <span class="font-mono ml-1" :class="(ps.abort.avg_pnl_at_abort||0) < 0 ? 'text-red-400' : 'text-green-400'">{{ ps.abort.avg_pnl_at_abort?.toFixed(2) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Cut Losses:</span>
+                      <span class="font-mono text-green-400 ml-1">{{ ps.abort.aborts_at_loss || 0 }}</span>
+                      <span class="text-surface-600"> / Cut Profits: </span>
+                      <span class="font-mono text-red-400">{{ ps.abort.aborts_at_profit || 0 }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Aborted Cycle PnL:</span>
+                      <span class="font-mono ml-1" :class="(ps.abort.aborted_cycle_total_pnl||0) >= 0 ? 'text-green-400' : 'text-red-400'">{{ (ps.abort.aborted_cycle_total_pnl||0).toFixed(2) }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Saved by Aborts:</span>
+                      <span class="font-mono text-green-400 ml-1">+{{ (ps.abort.pnl_saved_by_aborts||0).toFixed(2) }}</span>
+                    </div>
+                  </div>
+                  <!-- Policy summary -->
+                  <div v-if="ps.abort.abort_preferred_states != null" class="mt-1 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Abort-preferred:</span>
+                      <span class="font-mono text-red-400 ml-1">{{ ps.abort.abort_preferred_states }}</span>
+                      <span class="text-surface-600"> states</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Continue-preferred:</span>
+                      <span class="font-mono text-green-400 ml-1">{{ ps.abort.continue_preferred_states }}</span>
+                      <span class="text-surface-600"> states</span>
+                    </div>
+                    <div v-if="ps.abort.q_mean != null" class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Q range:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.abort.q_min?.toFixed(4) }} ~ {{ ps.abort.q_max?.toFixed(4) }}</span>
+                    </div>
+                    <div v-if="ps.abort.total_visits" class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Total decisions:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.abort.total_visits?.toLocaleString() }}</span>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Risk Intelligence -->
+                <details v-if="ps.risk_intel" class="mb-3 group">
+                  <summary class="text-[10px] font-semibold text-surface-500 mb-1 cursor-pointer hover:text-surface-400">Risk Intelligence</summary>
+                  <!-- Danger → Outcome buckets table -->
+                  <div v-if="ps.risk_intel.danger_buckets" class="mb-2">
+                    <table class="w-full text-[10px]">
+                      <thead>
+                        <tr class="text-surface-500 border-b border-surface-700">
+                          <th class="text-left py-1 px-2">Danger Bucket</th>
+                          <th class="text-right py-1 px-2">Count</th>
+                          <th class="text-right py-1 px-2">Win Rate</th>
+                          <th class="text-right py-1 px-2">PnL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(b, label) in ps.risk_intel.danger_buckets" :key="label"
+                            class="border-b border-surface-800"
+                            :class="b.count === 0 ? 'opacity-30' : ''">
+                          <td class="py-1 px-2 font-mono"
+                              :class="label === 'extreme' ? 'text-red-400' : label === 'high' ? 'text-orange-400' : label === 'medium' ? 'text-amber-400' : label === 'low' ? 'text-green-400' : 'text-green-300'">{{ label }}</td>
+                          <td class="text-right py-1 px-2 font-mono text-surface-300">{{ b.count }}</td>
+                          <td class="text-right py-1 px-2 font-mono" :class="b.win_rate >= 0.5 ? 'text-green-400' : 'text-red-400'">{{ (b.win_rate*100).toFixed(1) }}%</td>
+                          <td class="text-right py-1 px-2 font-mono" :class="b.pnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ b.pnl.toFixed(2) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <!-- High-danger + bust analysis -->
+                  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">High-Danger Entries:</span>
+                      <span class="font-mono text-red-400 ml-1">{{ ps.risk_intel.high_danger_entries || 0 }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">High-Danger Win Rate:</span>
+                      <span class="font-mono ml-1" :class="(ps.risk_intel.high_danger_entry_winrate||0) >= 0.5 ? 'text-green-400' : 'text-red-400'">{{ ((ps.risk_intel.high_danger_entry_winrate||0)*100).toFixed(1) }}%</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Avg Danger Before Bust:</span>
+                      <span class="font-mono text-red-400 ml-1">{{ ps.risk_intel.avg_danger_before_bust?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Max Danger During Bust:</span>
+                      <span class="font-mono text-red-400 ml-1">{{ ps.risk_intel.avg_max_danger_during_bust?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                  </div>
+                  <!-- Peak danger window -->
+                  <div v-if="ps.risk_intel.peak_danger_window" class="mt-1 p-1.5 bg-red-500/5 border border-red-500/10 rounded text-[10px]">
+                    <span class="text-surface-500">Most Dangerous Period:</span>
+                    <span class="font-mono text-red-400 ml-1">{{ formatTimestamp(ps.risk_intel.peak_danger_window.start_ts) }} — {{ formatTimestamp(ps.risk_intel.peak_danger_window.end_ts) }}</span>
+                    <span class="text-surface-500 ml-2">Avg Danger:</span>
+                    <span class="font-mono text-red-400 ml-1">{{ ps.risk_intel.peak_danger_window.avg_danger.toFixed(3) }}</span>
+                  </div>
+                </details>
+
+                <!-- Per-Level Performance -->
+                <details v-if="ps.level_performance && Object.keys(ps.level_performance).length" class="mb-3 group">
+                  <summary class="text-[10px] font-semibold text-surface-500 mb-1 cursor-pointer hover:text-surface-400">Per-Level Performance</summary>
+                  <div class="space-y-1">
+                    <div v-for="(data, level) in ps.level_performance" :key="level" class="flex items-center gap-2">
+                      <span class="text-[10px] font-mono text-surface-400 w-6">L{{ level }}</span>
+                      <div class="flex-1 h-4 bg-surface-900 rounded-sm overflow-hidden flex">
+                        <div class="h-full bg-green-500/60 transition-all" :style="{width: data.count > 0 ? (data.wins/data.count*100)+'%' : '0%'}"></div>
+                        <div class="h-full bg-red-500/60 transition-all" :style="{width: data.count > 0 ? ((data.count-data.wins)/data.count*100)+'%' : '0%'}"></div>
+                      </div>
+                      <span class="text-[10px] font-mono text-surface-400 w-8 text-right">{{ data.count }}x</span>
+                      <span class="text-[10px] font-mono w-12 text-right" :class="(data.win_rate||0) >= 0.5 ? 'text-green-400' : 'text-red-400'">{{ ((data.win_rate||0)*100).toFixed(0) }}%</span>
+                      <span class="text-[10px] font-mono w-16 text-right" :class="data.pnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ data.pnl.toFixed(2) }}</span>
+                      <span v-if="data.avg_danger != null" class="text-[10px] font-mono text-surface-500 w-10 text-right">d{{ data.avg_danger.toFixed(2) }}</span>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Danger Distribution -->
+                <details v-if="ps.danger" class="mb-3 group">
+                  <summary class="text-[10px] font-semibold text-surface-500 mb-1 cursor-pointer hover:text-surface-400">Danger Score Distribution</summary>
+                  <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Current:</span>
+                      <span class="font-mono ml-1" :class="(ps.danger.current||0) > 0.7 ? 'text-red-400' : (ps.danger.current||0) > 0.5 ? 'text-amber-400' : 'text-green-400'">{{ ps.danger.current?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Mean / Std:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.danger.mean?.toFixed(3) ?? '-' }} / {{ ps.danger.std?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">@ Entry:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.danger.avg_at_entry?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">@ Exit:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.danger.avg_at_exit?.toFixed(3) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">High Danger:</span>
+                      <span class="font-mono text-red-400 ml-1">{{ ((ps.danger.high_danger_pct||0)*100).toFixed(1) }}%</span>
+                    </div>
+                  </div>
+                  <!-- Quartiles bar -->
+                  <div v-if="ps.danger.quartiles" class="mt-1.5 flex items-center gap-2 text-[10px] text-surface-500">
+                    <span>{{ ps.danger.quartiles.min.toFixed(2) }}</span>
+                    <div class="flex-1 h-2 bg-surface-800 rounded-full overflow-hidden flex">
+                      <div class="h-full bg-green-500/30" :style="{width: ps.danger.quartiles.p25*100+'%'}"></div>
+                      <div class="h-full bg-amber-500/30" :style="{width: (ps.danger.quartiles.p50-ps.danger.quartiles.p25)*100+'%'}"></div>
+                      <div class="h-full bg-orange-500/30" :style="{width: (ps.danger.quartiles.p75-ps.danger.quartiles.p50)*100+'%'}"></div>
+                      <div class="h-full bg-red-500/30" :style="{width: (ps.danger.quartiles.max-ps.danger.quartiles.p75)*100+'%'}"></div>
+                    </div>
+                    <span>{{ ps.danger.quartiles.max.toFixed(2) }}</span>
+                  </div>
+                </details>
+
+                <!-- Cycle Outcomes by Exit Reason -->
+                <details v-if="ps.cycles?.pnl_by_exit && Object.keys(ps.cycles.pnl_by_exit).length" class="mb-3 group">
+                  <summary class="text-[10px] font-semibold text-surface-500 mb-1 cursor-pointer hover:text-surface-400">Cycle Outcomes</summary>
+                  <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Avg PnL:</span>
+                      <span class="font-mono ml-1" :class="(ps.cycles.avg_pnl||0) >= 0 ? 'text-green-400' : 'text-red-400'">{{ ps.cycles.avg_pnl?.toFixed(2) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Avg Win / Loss:</span>
+                      <span class="font-mono text-green-400 ml-1">{{ ps.cycles.avg_win?.toFixed(2) ?? '-' }}</span>
+                      <span class="text-surface-600"> / </span>
+                      <span class="font-mono text-red-400">{{ ps.cycles.avg_loss?.toFixed(2) ?? '-' }}</span>
+                    </div>
+                    <div class="p-1.5 bg-surface-800/60 rounded">
+                      <span class="text-surface-500">Avg Level / Duration:</span>
+                      <span class="font-mono text-surface-300 ml-1">{{ ps.cycles.avg_level?.toFixed(1) ?? '-' }} / {{ ps.cycles.avg_duration?.toFixed(0) ?? '-' }} bars</span>
+                    </div>
+                  </div>
+                  <div class="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+                    <div v-for="(ex, reason) in ps.cycles.pnl_by_exit" :key="reason"
+                         class="px-2 py-1 bg-surface-800 rounded flex items-center gap-1.5">
+                      <span class="px-1 py-0.5 rounded text-[9px] font-mono"
+                            :class="reason === 'bucket_hit' ? 'bg-green-500/20 text-green-400' :
+                                    reason === 'pipeline_abort' ? 'bg-amber-500/20 text-amber-400' :
+                                    reason.includes('max_level') ? 'bg-red-500/20 text-red-400' :
+                                    'bg-surface-700 text-surface-400'">{{ reason }}</span>
+                      <span class="text-surface-500">{{ ex.count }}x</span>
+                      <span class="font-mono" :class="ex.pnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ ex.pnl.toFixed(2) }}</span>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- Scorer Features Health -->
+                <details v-if="ps.scorer?.features" class="mb-3 group">
+                  <summary class="text-[10px] font-semibold text-surface-500 mb-1 cursor-pointer hover:text-surface-400">
+                    Scorer Features
+                    <span v-if="ps.scorer.seeded" class="ml-1 px-1 py-0.5 rounded text-[8px] font-mono bg-blue-900/50 text-blue-300">SEEDED</span>
+                    <span class="text-surface-600 font-normal">({{ ps.scorer.warmed_up ? 'active' : 'warming up' }})</span>
+                  </summary>
+                  <div class="mt-1 grid grid-cols-1 md:grid-cols-2 gap-1 text-[10px]">
+                    <div v-for="(f, key) in ps.scorer.features" :key="key"
+                         class="flex items-center justify-between px-2 py-1 bg-surface-800/40 rounded">
+                      <span class="text-surface-400 font-mono">{{ key }}</span>
+                      <div class="flex items-center gap-3 text-surface-500">
+                        <span>w={{ f.weight }}</span>
+                        <span v-if="f.inverted" class="text-amber-500">inv</span>
+                        <span>n={{ f.observations }}</span>
+                        <span class="font-mono text-surface-300">{{ f.mean.toFixed(3) }} +/- {{ f.std.toFixed(3) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+              </div>
+            </div>
+
             <!-- Hyperparameters -->
             <div v-if="hyperparameters && hyperparameters.length" class="mt-4">
               <h3 class="text-xs font-semibold text-surface-500 mb-2">Hyperparameters</h3>
@@ -643,6 +1081,58 @@
                 <div class="text-[10px] text-surface-500 mb-0.5 px-1">Margin Usage</div>
                 <div ref="marginChartEl" class="w-full h-[180px] bg-surface-800 rounded"></div>
               </div>
+              <div v-if="dangerChartData.length">
+                <div class="text-[10px] text-surface-500 mb-0.5 px-1">Danger Score (Pipeline)</div>
+                <div ref="dangerChartEl" class="w-full h-[180px] bg-surface-800 rounded"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pipeline Intelligence Tab -->
+          <div v-if="activeTab === 'pipeline'">
+            <PipelineIntelligence :stats="pipelineStats" />
+            <!-- A/B Comparison -->
+            <div class="mt-8 border-t border-surface-700/50 pt-6">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="text-sm font-semibold text-surface-300">A/B Comparison</h3>
+                  <p class="text-[10px] text-surface-500">Run the same backtest without pipelines to measure impact</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span v-if="comparisonRunning" class="flex items-center gap-1.5 text-xs text-amber-400"><span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> Running baseline... {{ comparisonProgress }}%</span>
+                  <button v-if="!comparisonRunning && !baselineMetrics" @click="runBaselineComparison" :disabled="running" class="btn-sm bg-surface-700 hover:bg-surface-600 text-surface-200 flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg> Compare without Pipeline</button>
+                  <button v-if="baselineMetrics && !comparisonRunning" @click="runBaselineComparison" class="btn-sm bg-surface-800 hover:bg-surface-700 text-surface-400 text-[10px]">Re-run</button>
+                </div>
+              </div>
+              <!-- Comparison progress bar -->
+              <div v-if="comparisonRunning" class="mb-4">
+                <div class="w-full h-1.5 bg-surface-800 rounded-full overflow-hidden">
+                  <div class="h-full bg-amber-500 transition-all duration-300 rounded-full" :style="{width: comparisonProgress + '%'}"></div>
+                </div>
+              </div>
+              <!-- Comparison error -->
+              <div v-if="comparisonError" class="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-xs text-red-400">{{ comparisonError }}</div>
+              <div v-if="baselineMetrics && metrics" class="space-y-4">
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div v-for="m in comparisonDeltas" :key="m.key" class="p-3 bg-surface-800 rounded-lg border border-surface-700/50">
+                    <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-1">{{ m.label }}</div>
+                    <div class="flex items-end gap-2"><span class="font-mono text-sm" :class="m.pipeline >= m.baseline ? 'text-green-400' : 'text-red-400'">{{ m.pipelineFormatted }}</span><span class="font-mono text-[10px] text-surface-600">vs {{ m.baselineFormatted }}</span></div>
+                    <div class="mt-1"><span class="font-mono text-xs px-1.5 py-0.5 rounded" :class="m.deltaPositive ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'">{{ m.deltaPositive ? '+' : '' }}{{ m.deltaFormatted }}</span></div>
+                  </div>
+                </div>
+                <div v-if="baselineEquityCurve?.length && equityCurve?.length" class="card">
+                  <h4 class="text-xs font-semibold text-surface-400 mb-3">Equity Curve Overlay</h4>
+                  <div ref="comparisonEquityEl" class="w-full h-[300px]"></div>
+                </div>
+                <div class="p-4 rounded-lg border" :class="pipelineWins ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'">
+                  <div class="flex items-center gap-2 mb-2">
+                    <svg v-if="pipelineWins" class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <svg v-else class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                    <span class="text-sm font-semibold" :class="pipelineWins ? 'text-green-400' : 'text-red-400'">{{ pipelineWins ? 'Pipeline improves performance' : 'Pipeline reduces performance' }}</span>
+                  </div>
+                  <p class="text-xs text-surface-400">Net profit {{ pipelineWins ? 'increased' : 'decreased' }} by <span class="font-mono font-semibold" :class="pipelineWins ? 'text-green-400' : 'text-red-400'">{{ Math.abs(pipelineNetDelta).toFixed(2) }}%</span> with pipeline. Max drawdown: <span class="font-mono text-surface-300">{{ (baselineMetrics.max_drawdown_percentage || 0).toFixed(1) }}%</span> to <span class="font-mono text-surface-300">{{ (metrics.max_drawdown_percentage || 0).toFixed(1) }}%</span>.</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -705,6 +1195,10 @@
                       <span class="text-xs text-surface-400">{{ s.trade_count }} trade{{ s.trade_count !== 1 ? 's' : '' }}</span>
                       <span class="text-xs" :class="sessionOutcomeClass(s.outcome)">{{ sessionOutcomeLabel(s.outcome) }}</span>
                       <span v-if="s.levels > 0" class="text-xs text-surface-500">L{{ s.levels }}</span>
+                      <span v-if="s.pipeline?.danger_at_entry != null" class="w-2 h-2 rounded-full inline-block"
+                            :class="s.pipeline.danger_at_entry > 0.7 ? 'bg-red-400' : s.pipeline.danger_at_entry > 0.5 ? 'bg-amber-400' : 'bg-green-400'"
+                            :title="`Danger: ${s.pipeline.danger_at_entry.toFixed(3)}`"></span>
+                      <span v-if="s.pipeline?.abort_triggers > 0" class="text-[10px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono">{{ s.pipeline.abort_triggers }} abort</span>
                       <span v-if="s.margin_block_leg != null" class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-bold">Margin Block L{{ s.margin_block_leg }}</span>
                     </div>
                     <div class="flex items-center gap-4">
@@ -754,6 +1248,32 @@
                       </div>
                       <div v-if="s.margin_block_leg != null">
                         <span class="text-red-500 font-bold">Margin Block at Level {{ s.margin_block_leg }}</span>
+                      </div>
+                    </div>
+                    <!-- Pipeline context row -->
+                    <div v-if="s.pipeline" class="flex flex-wrap gap-4 px-3 py-2 bg-surface-850 border-b border-surface-700 text-[10px]">
+                      <div>
+                        <span class="text-surface-500">Danger @ Entry:</span>
+                        <span class="font-mono ml-1" :class="(s.pipeline.danger_at_entry||0) > 0.7 ? 'text-red-400' : (s.pipeline.danger_at_entry||0) > 0.5 ? 'text-amber-400' : 'text-green-400'">{{ s.pipeline.danger_at_entry?.toFixed(3) ?? '-' }}</span>
+                      </div>
+                      <div>
+                        <span class="text-surface-500">Max Danger:</span>
+                        <span class="font-mono ml-1" :class="(s.pipeline.max_danger||0) > 0.7 ? 'text-red-400' : 'text-surface-300'">{{ s.pipeline.max_danger?.toFixed(3) ?? '-' }}</span>
+                      </div>
+                      <div>
+                        <span class="text-surface-500">Danger @ Exit:</span>
+                        <span class="font-mono text-surface-300 ml-1">{{ s.pipeline.danger_at_exit?.toFixed(3) ?? '-' }}</span>
+                      </div>
+                      <div>
+                        <span class="text-surface-500">Abort Checks:</span>
+                        <span class="font-mono text-surface-300 ml-1">{{ s.pipeline.abort_checks }}</span>
+                      </div>
+                      <div v-if="s.pipeline.abort_triggers > 0">
+                        <span class="text-amber-400 font-bold">{{ s.pipeline.abort_triggers }} abort(s) triggered</span>
+                      </div>
+                      <div v-if="s.pipeline.gate_blocks_before_entry > 0">
+                        <span class="text-surface-500">Gate Blocks Before Entry:</span>
+                        <span class="font-mono text-amber-400 ml-1">{{ s.pipeline.gate_blocks_before_entry }}</span>
                       </div>
                     </div>
                     <table class="w-full text-xs">
@@ -1714,6 +2234,7 @@ import { useProcessManager } from '../useProcessManager'
 import { useGuides } from '../useGuides'
 import MetricTooltip from '../components/MetricTooltip.vue'
 import SectionGuide from '../components/SectionGuide.vue'
+import PipelineIntelligence from '../components/PipelineIntelligence.vue'
 
 const pm = useProcessManager()
 const currentRoute = useRoute()
@@ -1763,6 +2284,22 @@ const exposureHasTpSl = ref(false)
 const exposureMeta = ref({})  // contract_size, leverage, price
 const exposureSizeDisplay = ref('lots')  // 'lots' or 'units' for display toggle
 const llmConfigured = ref(false)
+const pipelineStats = ref(null)
+const availablePipelines = ref([])
+const livePipelineDecisions = ref([])
+const liveEquityHistory = ref([])
+const _seenDecisions = new Set()
+const liveMiniChartEl = ref(null)
+const liveDangerMiniEl = ref(null)
+
+// A/B Comparison (pipeline vs no-pipeline)
+const comparisonTaskId = ref(null)
+const comparisonRunning = ref(false)
+const comparisonProgress = ref(0)
+const baselineMetrics = ref(null)
+const baselineEquityCurve = ref(null)
+const comparisonError = ref('')
+const comparisonEquityEl = ref(null)
 
 // Results tabs
 const activeTab = ref('summary')
@@ -1798,6 +2335,7 @@ const loadingChart = ref(false)
 const equityChartEl = ref(null)
 const floatingPnlChartEl = ref(null)
 const marginChartEl = ref(null)
+const dangerChartEl = ref(null)
 const sessionEquityEl = ref(null)
 const btTradeChartRef = ref(null)
 const btChartCandles = ref([])
@@ -1884,6 +2422,8 @@ const form = ref({
   fastMode: false,
   benchmark: false,
   costModel: true,
+  backtestMode: 'normal',   // 'normal' or 'pipeline'
+  pipelineConfigs: [],      // [{name, ...config}]
 })
 
 // Route management
@@ -1907,6 +2447,20 @@ function addDataRoute() {
 }
 function removeDataRoute(idx) {
   form.value.data_routes.splice(idx, 1)
+}
+
+// Pipeline management
+function addPipeline() {
+  const first = availablePipelines.value[0]
+  form.value.pipelineConfigs.push({ name: first?.name || '' })
+}
+function removePipeline(idx) {
+  form.value.pipelineConfigs.splice(idx, 1)
+}
+function onPipelineSelect(idx) {
+  // Reset config when pipeline type changes (keep name)
+  const name = form.value.pipelineConfigs[idx].name
+  form.value.pipelineConfigs[idx] = { name }
 }
 
 // Symbols that have data for the selected exchange
@@ -2023,6 +2577,11 @@ watch(() => form.value.routes[0]?.strategy, (newStrat, oldStrat) => {
     loadBacktestHyperparams(newStrat)
   }
 })
+watch(() => form.value.backtestMode, (mode) => {
+  if (mode === 'pipeline' && form.value.pipelineConfigs.length === 0 && availablePipelines.value.length) {
+    form.value.pipelineConfigs.push({ name: availablePipelines.value[0].name })
+  }
+})
 
 // ── Exposure Table (pre-run) ──
 let _exposureDebounce = null
@@ -2064,6 +2623,9 @@ const resultTabs = computed(() => {
   if (hedgeSessions.value.length) {
     tabs.push({ id: 'sessions', label: 'Sessions', count: hedgeSessions.value.length })
   }
+  if (pipelineStats.value && Object.keys(pipelineStats.value).length) {
+    tabs.push({ id: 'pipeline', label: 'Pipeline Intelligence' })
+  }
   tabs.push({ id: 'trades', label: 'Trades', count: trades.value.length })
   tabs.push({ id: 'costs', label: 'Costs' })
   tabs.push({ id: 'logs', label: 'Logs', count: backtestLogs.value.length || undefined })
@@ -2082,6 +2644,38 @@ function pickMetricsFrom(src, keys) {
     .filter(([key]) => key in src)
     .map(([key, label]) => ({ key, label, value: src[key] }))
 }
+
+// ── A/B Comparison computed ──
+const comparisonDeltas = computed(() => {
+  if (!metrics.value || !baselineMetrics.value) return []
+  const keys = [
+    { key: 'net_profit_percentage', label: 'Net Profit %', fmt: v => v.toFixed(2) + '%', higherBetter: true },
+    { key: 'win_rate', label: 'Win Rate', fmt: v => (v * 100).toFixed(1) + '%', higherBetter: true },
+    { key: 'profit_factor', label: 'Profit Factor', fmt: v => v.toFixed(2), higherBetter: true },
+    { key: 'max_drawdown_percentage', label: 'Max Drawdown', fmt: v => v.toFixed(1) + '%', higherBetter: false },
+    { key: 'total', label: 'Total Trades', fmt: v => String(v), higherBetter: null },
+    { key: 'sharpe_ratio', label: 'Sharpe Ratio', fmt: v => v.toFixed(2), higherBetter: true },
+  ]
+  return keys.map(k => {
+    const p = metrics.value[k.key] ?? 0
+    const b = baselineMetrics.value[k.key] ?? 0
+    const delta = p - b
+    const positive = k.higherBetter === null ? delta >= 0 : (k.higherBetter ? delta >= 0 : delta <= 0)
+    return {
+      key: k.key, label: k.label,
+      pipeline: p, baseline: b,
+      pipelineFormatted: k.fmt(p), baselineFormatted: k.fmt(b),
+      deltaFormatted: k.fmt(delta), deltaPositive: positive,
+    }
+  })
+})
+
+const pipelineNetDelta = computed(() => {
+  if (!metrics.value || !baselineMetrics.value) return 0
+  return (metrics.value.net_profit_percentage || 0) - (baselineMetrics.value.net_profit_percentage || 0)
+})
+
+const pipelineWins = computed(() => pipelineNetDelta.value >= 0)
 
 // Metric key lists (reused for both run results and history detail)
 const perfKeys = [
@@ -2299,6 +2893,9 @@ function sessionOutcomeLabel(outcome) {
   if (outcome === 'tp_hit') return 'TP Hit'
   if (outcome === 'bucket_hit') return 'Bucket Hit'
   if (outcome === 'max_levels') return 'Max Levels'
+  if (outcome === 'max_level_sl') return 'Max Level SL'
+  if (outcome === 'terminated') return 'Terminated'
+  if (outcome === 'pipeline_abort') return 'Pipeline Abort'
   if (outcome === 'standalone') return 'Single'
   return outcome || '-'
 }
@@ -2455,6 +3052,29 @@ useWebSocket((msg) => {
   // msg.id is the session UUID (ws_manager converts PID → client_id before broadcast).
   if (!event?.startsWith('backtest.')) return
 
+  // Handle A/B comparison backtest events (must be checked before workspace routing)
+  if (id && id === comparisonTaskId.value) {
+    if (event === 'backtest.progressbar') {
+      comparisonProgress.value = data?.current || 0
+    } else if (event === 'backtest.metrics') {
+      baselineMetrics.value = data
+      comparisonRunning.value = false
+      comparisonProgress.value = 100
+    } else if (event === 'backtest.equity_curve') {
+      baselineEquityCurve.value = data
+      nextTick(() => drawComparisonEquity())
+    } else if (event === 'backtest.exception') {
+      comparisonRunning.value = false
+      comparisonProgress.value = 0
+      comparisonError.value = data?.error || 'Baseline comparison failed'
+    } else if (event === 'backtest.termination') {
+      comparisonRunning.value = false
+      comparisonProgress.value = 0
+      comparisonError.value = 'Baseline comparison was terminated'
+    }
+    return
+  }
+
   // Determine which workspace this event belongs to
   const targetWsId = id ? _findWorkspaceForTask(id) : null
   const isActiveWs = !targetWsId || targetWsId === activeWorkspaceId.value
@@ -2509,6 +3129,29 @@ useWebSocket((msg) => {
       marginUsed: data?.margin_used ?? null,
       session: data?.session ?? null,
       trades: data?.trades ?? 0,
+      pipelineDanger: data?.pipeline_danger ?? null,
+      pipelineDangerMean: data?.pipeline_danger_mean ?? null,
+      pipelineBlocks: data?.pipeline_blocks ?? null,
+      pipelineAborts: data?.pipeline_aborts ?? null,
+      pipelineCycles: data?.pipeline_cycles ?? null,
+      pipelineDangerHistory: data?.pipeline_danger_history ?? null,
+      pipelineDecisions: data?.pipeline_decisions ?? null,
+    }
+    // Accumulate pipeline decisions for live feed
+    if (data?.pipeline_decisions?.length) {
+      for (const d of data.pipeline_decisions) {
+        const key = `${d.type}-${d.ts}-${d.decision}`
+        if (!_seenDecisions.has(key)) {
+          _seenDecisions.add(key)
+          livePipelineDecisions.value.push(d)
+          if (livePipelineDecisions.value.length > 50) livePipelineDecisions.value.shift()
+        }
+      }
+    }
+    // Accumulate equity history for live mini-chart
+    if (data?.equity != null) {
+      liveEquityHistory.value.push({ ts: data.current_date || Date.now(), equity: data.equity })
+      if (liveEquityHistory.value.length > 120) liveEquityHistory.value.shift()
     }
     if (currentTaskId.value) pm.update(currentTaskId.value, { progress: data?.current || 0, eta: data?.estimated_remaining_seconds || 0 })
   } else if (event === 'backtest.equity_curve') {
@@ -2562,6 +3205,8 @@ useWebSocket((msg) => {
     hyperparameters.value = data
   } else if (event === 'backtest.general_info') {
     generalInfo.value = data
+  } else if (event === 'backtest.pipeline_stats') {
+    pipelineStats.value = data
   } else if (event === 'backtest.exception') {
     error.value = data?.error || 'Backtest failed'
     errorTrace.value = data?.traceback || ''
@@ -2803,10 +3448,11 @@ function buildSessionsFromTrades(tradesList) {
     return s
   })
   standalone.forEach((t, i) => {
+    const exitReason = t.meta?.exit_reason || 'standalone'
     result.push({
       session: `standalone-${i + 1}`, trades: [t], total_pnl: t.pnl || t.PNL || 0,
       total_fee: t.fee || 0, opened_at: t.opened_at, closed_at: t.closed_at,
-      outcome: 'standalone', levels: 0, trade_count: 1,
+      outcome: exitReason, levels: 0, trade_count: 1,
     })
   })
   return result
@@ -2857,6 +3503,68 @@ function formatProgressDate(ts) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function formatLiveTs(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function drawLiveMiniChart(canvasEl, data, color, label) {
+  if (!canvasEl || !data.length) return
+  const dpr = window.devicePixelRatio || 1
+  const w = canvasEl.clientWidth
+  const h = canvasEl.clientHeight
+  canvasEl.width = w * dpr
+  canvasEl.height = h * dpr
+  const ctx = canvasEl.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  const pad = { top: 8, right: 8, bottom: 4, left: 8 }
+  const pw = w - pad.left - pad.right
+  const ph = h - pad.top - pad.bottom
+  const n = data.length
+  const vals = data.map(d => d.value)
+  const minV = Math.min(...vals)
+  const maxV = Math.max(...vals)
+  const range = maxV - minV || 1
+
+  ctx.clearRect(0, 0, w, h)
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom)
+  grad.addColorStop(0, color + '30')
+  grad.addColorStop(1, color + '05')
+  ctx.fillStyle = grad
+  ctx.beginPath()
+  ctx.moveTo(pad.left, pad.top + ph)
+  for (let i = 0; i < n; i++) {
+    const x = pad.left + (n > 1 ? pw * i / (n - 1) : pw / 2)
+    const y = pad.top + ph * (1 - (vals[i] - minV) / range)
+    ctx.lineTo(x, y)
+  }
+  ctx.lineTo(pad.left + pw, pad.top + ph)
+  ctx.closePath()
+  ctx.fill()
+
+  // Line
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  for (let i = 0; i < n; i++) {
+    const x = pad.left + (n > 1 ? pw * i / (n - 1) : pw / 2)
+    const y = pad.top + ph * (1 - (vals[i] - minV) / range)
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+  }
+  ctx.stroke()
+
+  // Current value label
+  ctx.fillStyle = color
+  ctx.font = '10px monospace'
+  ctx.textAlign = 'right'
+  ctx.fillText(vals[n - 1].toFixed(label === 'danger' ? 3 : 2), w - pad.right, pad.top + 10)
+}
+
 const elapsedTime = computed(() => {
   if (!runStartedAt.value) return ''
   const diff = Math.floor((elapsedNow.value - runStartedAt.value) / 1000)
@@ -2887,6 +3595,17 @@ function downloadUrl(type, sid) {
   const id = sid || sessionId.value
   return `/download/backtest/${type}/${id}?token=${token}`
 }
+
+const dangerChartData = computed(() => {
+  if (!pipelineStats.value) return []
+  // Aggregate danger scores from all routes
+  for (const route of Object.values(pipelineStats.value)) {
+    if (route.danger_scores?.length) {
+      return route.danger_scores.map(d => ({ time: d[0] / 1000, value: d[1] }))
+    }
+  }
+  return []
+})
 
 // ── Chart data helpers ──
 function extractEquityValues(data) {
@@ -2919,8 +3638,8 @@ function extractSeriesData(curveData) {
 }
 
 // ── Synced Lightweight Charts ──
-const lwCharts = { equity: null, pnl: null, margin: null }
-const lwSeries = { equity: null, pnl: null, margin: null }
+const lwCharts = { equity: null, pnl: null, margin: null, danger: null }
+const lwSeries = { equity: null, pnl: null, margin: null, danger: null }
 let syncingCharts = false
 
 function chartTheme() {
@@ -3005,7 +3724,7 @@ function renderHistoryCharts() {
 }
 
 function destroySyncedCharts() {
-  for (const key of ['equity', 'pnl', 'margin']) {
+  for (const key of ['equity', 'pnl', 'margin', 'danger']) {
     if (lwCharts[key]) {
       lwCharts[key].remove()
       lwCharts[key] = null
@@ -3032,7 +3751,7 @@ function syncVisibleRange(sourceKey) {
   if (!source) { syncingCharts = false; return }
   const range = source.timeScale().getVisibleLogicalRange()
   if (!range) { syncingCharts = false; return }
-  for (const key of ['equity', 'pnl', 'margin']) {
+  for (const key of ['equity', 'pnl', 'margin', 'danger']) {
     if (key !== sourceKey && lwCharts[key]) {
       lwCharts[key].timeScale().setVisibleLogicalRange(range)
     }
@@ -3043,7 +3762,7 @@ function syncVisibleRange(sourceKey) {
 function syncCrosshair(sourceKey, param) {
   if (syncingCharts) return
   syncingCharts = true
-  for (const key of ['equity', 'pnl', 'margin']) {
+  for (const key of ['equity', 'pnl', 'margin', 'danger']) {
     if (key !== sourceKey && lwCharts[key]) {
       if (param.time) {
         lwCharts[key].setCrosshairPosition(undefined, param.time, lwSeries[key])
@@ -3078,6 +3797,28 @@ function renderSyncedCharts() {
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     })
     lwSeries.equity.setData(eqData)
+
+    // Abort markers on equity curve
+    if (pipelineStats.value) {
+      const abortMarkers = []
+      for (const ps of Object.values(pipelineStats.value)) {
+        for (const ad of (ps.abort_decisions || [])) {
+          if (ad.action === 'abort') {
+            abortMarkers.push({
+              time: ad.ts / 1000,
+              position: 'aboveBar',
+              color: '#f59e0b',
+              shape: 'arrowDown',
+              text: `Abort L${ad.level}`,
+            })
+          }
+        }
+      }
+      if (abortMarkers.length) {
+        lwSeries.equity.setMarkers(abortMarkers.sort((a, b) => a.time - b.time))
+      }
+    }
+
     lwCharts.equity.timeScale().fitContent()
     lwCharts.equity.timeScale().subscribeVisibleLogicalRangeChange(() => syncVisibleRange('equity'))
     lwCharts.equity.subscribeCrosshairMove((p) => syncCrosshair('equity', p))
@@ -3141,10 +3882,62 @@ function renderSyncedCharts() {
     lwCharts.margin.timeScale().subscribeVisibleLogicalRangeChange(() => syncVisibleRange('margin'))
     lwCharts.margin.subscribeCrosshairMove((p) => syncCrosshair('margin', p))
   }
+
+  // Danger score chart (pipeline)
+  if (dangerChartEl.value && dangerChartData.value.length) {
+    lwCharts.danger = createSyncedChart(dangerChartEl.value)
+    lwSeries.danger = lwCharts.danger.addSeries(AreaSeries, {
+      lineColor: '#f59e0b',
+      topColor: 'rgba(245,158,11,0.25)',
+      bottomColor: 'rgba(245,158,11,0.02)',
+      lineWidth: 2,
+      priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
+    })
+    lwSeries.danger.setData(dangerChartData.value)
+
+    // Gate threshold overlay (dashed red line)
+    if (pipelineStats.value) {
+      for (const ps of Object.values(pipelineStats.value)) {
+        if (ps.gate_threshold_series?.length) {
+          lwSeries.dangerThreshold = lwCharts.danger.addSeries(LineSeries, {
+            color: '#ef4444',
+            lineWidth: 1,
+            lineStyle: 2,
+            priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
+          })
+          lwSeries.dangerThreshold.setData(
+            ps.gate_threshold_series.map(d => ({ time: d[0] / 1000, value: d[1] }))
+          )
+          break
+        }
+      }
+      // Decision markers on danger chart
+      const markers = []
+      for (const ps of Object.values(pipelineStats.value)) {
+        for (const gd of (ps.gate_decisions || [])) {
+          if (!gd.allowed) {
+            markers.push({ time: gd.ts / 1000, position: 'aboveBar', color: '#ef4444', shape: 'arrowDown', text: 'BLK' })
+          }
+        }
+        for (const ad of (ps.abort_decisions || [])) {
+          if (ad.action === 'abort') {
+            markers.push({ time: ad.ts / 1000, position: 'belowBar', color: '#f59e0b', shape: 'arrowUp', text: `ABT L${ad.level}` })
+          }
+        }
+      }
+      if (markers.length) {
+        lwSeries.danger.setMarkers(markers.sort((a, b) => a.time - b.time))
+      }
+    }
+
+    lwCharts.danger.timeScale().fitContent()
+    lwCharts.danger.timeScale().subscribeVisibleLogicalRangeChange(() => syncVisibleRange('danger'))
+    lwCharts.danger.subscribeCrosshairMove((p) => syncCrosshair('danger', p))
+  }
 }
 
 function fitAllCharts() {
-  for (const key of ['equity', 'pnl', 'margin']) {
+  for (const key of ['equity', 'pnl', 'margin', 'danger']) {
     if (lwCharts[key]) lwCharts[key].timeScale().fitContent()
   }
 }
@@ -3257,6 +4050,16 @@ async function runBacktest() {
   btChartCandles.value = []
   btChartRawCandles.value = []
   btChartOrders.value = []
+  pipelineStats.value = null
+  livePipelineDecisions.value = []
+  liveEquityHistory.value = []
+  _seenDecisions.clear()
+  baselineMetrics.value = null
+  baselineEquityCurve.value = null
+  comparisonTaskId.value = null
+  comparisonRunning.value = false
+  comparisonProgress.value = 0
+  comparisonError.value = ''
   btChartVisible.value = false
   if (btTradeChartRef.value) btTradeChartRef.value.destroy()
   progress.value = { current: 0, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
@@ -3338,12 +4141,167 @@ async function runBacktest() {
       fast_mode: form.value.fastMode,
       benchmark: form.value.benchmark,
       cost_model: form.value.costModel,
-      hyperparameters: buildBtHyperparamsPayload(),
+      hyperparameters: form.value.backtestMode === 'normal' ? buildBtHyperparamsPayload() : null,
+      ...(form.value.backtestMode === 'pipeline' && form.value.pipelineConfigs.length ? {
+        pipelines: form.value.pipelineConfigs.filter(p => p.name),
+      } : {}),
     })
   } catch (e) {
     error.value = e.message
     running.value = false
   }
+}
+
+async function runBaselineComparison() {
+  if (comparisonRunning.value || running.value) return
+  comparisonRunning.value = true
+  comparisonProgress.value = 0
+  comparisonError.value = ''
+  baselineMetrics.value = null
+  baselineEquityCurve.value = null
+
+  const id = crypto.randomUUID()
+  comparisonTaskId.value = id
+
+  const routes = form.value.routes.map(r => ({
+    exchange: form.value.exchange,
+    symbol: r.symbol,
+    timeframe: r.timeframe,
+    strategy: r.strategy,
+  }))
+  const dataRoutes = form.value.data_routes.map(dr => ({
+    exchange: form.value.exchange,
+    symbol: dr.symbol,
+    timeframe: dr.timeframe,
+  }))
+
+  try {
+    await api.runBacktest({
+      id,
+      exchange: form.value.exchange,
+      routes,
+      data_routes: dataRoutes,
+      config: {
+        warm_up_candles: form.value.warmUpCandles,
+        logging: { order_submission: false, order_cancellation: false, order_execution: false, position_opened: false, position_increased: false, position_reduced: false, position_closed: false, shorter_period_candles: false, trading_candles: false, balance_update: false },
+        exchanges: {
+          [form.value.exchange]: {
+            name: form.value.exchange,
+            type: '',
+            fee: 0,
+            balance: form.value.balance,
+          }
+        },
+      },
+      start_date: form.value.startDate,
+      finish_date: form.value.endDate,
+      debug_mode: false,
+      export_chart: false,
+      export_tradingview: false,
+      export_csv: false,
+      export_json: false,
+      fast_mode: true,
+      benchmark: false,
+      cost_model: form.value.costModel,
+      hyperparameters: buildBtHyperparamsPayload(),
+      // No pipelines — this is the baseline run
+    })
+  } catch (e) {
+    comparisonRunning.value = false
+    comparisonError.value = 'Baseline comparison failed: ' + e.message
+  }
+}
+
+function drawComparisonEquity() {
+  const el = comparisonEquityEl.value
+  if (!el) return
+
+  // Extract [{time, value}] from backend curve format
+  const pipeline = extractSeriesData(equityCurve.value)
+  const baseline = extractSeriesData(baselineEquityCurve.value)
+  if (!pipeline.length || !baseline.length) return
+
+  const dpr = window.devicePixelRatio || 1
+  const w = el.clientWidth
+  const h = el.clientHeight
+  if (!w || !h) return
+
+  let canvas = el.querySelector('canvas')
+  if (!canvas) {
+    canvas = document.createElement('canvas')
+    el.innerHTML = ''
+    el.appendChild(canvas)
+  }
+  canvas.width = w * dpr
+  canvas.height = h * dpr
+  canvas.style.width = w + 'px'
+  canvas.style.height = h + 'px'
+
+  const ctx = canvas.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  const pad = { top: 30, right: 20, bottom: 35, left: 65 }
+  const pw = w - pad.left - pad.right
+  const ph = h - pad.top - pad.bottom
+
+  const allVals = [...pipeline.map(d => d.value), ...baseline.map(d => d.value)]
+  const minV = Math.min(...allVals)
+  const maxV = Math.max(...allVals)
+  const range = maxV - minV || 1
+
+  ctx.fillStyle = '#1a1b23'
+  ctx.fillRect(0, 0, w, h)
+
+  // Grid
+  ctx.strokeStyle = '#1e1f2b'
+  ctx.lineWidth = 1
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + ph * i / 4
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke()
+  }
+
+  function drawLine(data, color, lw) {
+    const n = data.length
+    ctx.strokeStyle = color
+    ctx.lineWidth = lw
+    ctx.beginPath()
+    for (let i = 0; i < n; i++) {
+      const x = pad.left + (n > 1 ? pw * i / (n - 1) : pw / 2)
+      const y = pad.top + ph * (1 - (data[i].value - minV) / range)
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+    }
+    ctx.stroke()
+  }
+
+  // Draw baseline first (dimmer)
+  drawLine(baseline, '#64748b', 1.5)
+  // Draw pipeline on top (brighter)
+  drawLine(pipeline, '#4ade80', 2)
+
+  // Y-axis labels
+  ctx.fillStyle = '#666'
+  ctx.font = '10px sans-serif'
+  ctx.textAlign = 'right'
+  for (let i = 0; i <= 4; i++) {
+    const v = minV + range * (1 - i / 4)
+    ctx.fillText(v.toFixed(0), pad.left - 5, pad.top + ph * i / 4 + 4)
+  }
+
+  // X-axis label
+  ctx.textAlign = 'center'
+  ctx.fillText('Time', pad.left + pw / 2, h - 5)
+
+  // Legend
+  ctx.textAlign = 'left'
+  const lx = pad.left + 10
+  ctx.fillStyle = '#4ade80'
+  ctx.fillRect(lx, pad.top + 5, 16, 3)
+  ctx.fillStyle = '#aaa'
+  ctx.fillText('With Pipeline', lx + 22, pad.top + 10)
+  ctx.fillStyle = '#64748b'
+  ctx.fillRect(lx, pad.top + 18, 16, 3)
+  ctx.fillStyle = '#aaa'
+  ctx.fillText('Without Pipeline', lx + 22, pad.top + 23)
 }
 
 async function cancelBacktest() {
@@ -3964,6 +4922,21 @@ async function loadBtChartData() {
   } catch { /* chart data not available */ }
 }
 
+// Live mini chart updates
+watch(() => liveEquityHistory.value.length, () => {
+  if (liveMiniChartEl.value && liveEquityHistory.value.length > 2) {
+    drawLiveMiniChart(liveMiniChartEl.value, liveEquityHistory.value.map(d => ({ value: d.equity })), '#818cf8', 'equity')
+  }
+  if (liveDangerMiniEl.value && progress.value.pipelineDangerHistory?.length) {
+    drawLiveMiniChart(liveDangerMiniEl.value, progress.value.pipelineDangerHistory.map(d => ({ value: d[1] })), '#f59e0b', 'danger')
+  }
+})
+
+// Draw comparison equity when element mounts or baseline data arrives
+watch([comparisonEquityEl, baselineEquityCurve], () => {
+  nextTick(() => setTimeout(drawComparisonEquity, 50))
+})
+
 // Chart re-render on tab switch
 watch(activeTab, async (tab) => {
   if (tab === 'charts') {
@@ -3975,6 +4948,10 @@ watch(activeTab, async (tab) => {
     if (equityCurve.value.length) {
       renderSyncedCharts()
     }
+  }
+  if (tab === 'pipeline' && baselineEquityCurve.value) {
+    await nextTick()
+    setTimeout(drawComparisonEquity, 50)
   }
 })
 
@@ -4012,6 +4989,11 @@ onMounted(async () => {
   await loadExistingCandles()
   onExchangeChange()
   await loadSessions()
+
+  // Load available pipelines (non-blocking — ok if endpoint not available)
+  api.getRegisteredPipelines().then(pRes => {
+    availablePipelines.value = Array.isArray(pRes) ? pRes : (pRes.data || [])
+  }).catch(() => {})
 
   // Auto-detect running backtests and resume progress display
   const activeSessions = sessions.value.filter(s => s.is_active)
@@ -4065,6 +5047,27 @@ onMounted(async () => {
     const llmRes = await api.llmStatus()
     llmConfigured.value = llmRes.configured
   } catch { /* ignore */ }
+
+  // Handle ?hp=<json> query param (from Autopilot "Load into Backtest")
+  const qHp = currentRoute.query.hp
+  if (qHp) {
+    try {
+      const hpValues = JSON.parse(qHp)
+      // Wait for btHyperParams to be loaded, then override values
+      const applyHp = () => {
+        if (btHyperParams.value.length) {
+          for (const [key, val] of Object.entries(hpValues)) {
+            const hp = btHyperParams.value.find(h => h.name === key)
+            if (hp) hp.value = val
+          }
+        }
+      }
+      // Try immediately, and also watch for delayed load
+      applyHp()
+      const stopWatch = watch(btHyperParams, () => { applyHp(); stopWatch() }, { deep: true })
+      setTimeout(() => stopWatch(), 5000) // cleanup after 5s
+    } catch { /* ignore invalid JSON */ }
+  }
 
   // Handle ?session=<id> query param (from process manager "view results")
   const qSession = currentRoute.query.session

@@ -13,10 +13,10 @@
           {{ llmStatus.configured ? `${llmStatus.provider} - ${llmStatus.model}` : 'LLM not configured' }}
         </span>
       </div>
-      <router-link v-if="!llmStatus.configured" to="/settings" class="btn-sm btn-primary">Configure</router-link>
+      <router-link v-if="!llmStatus.configured" to="/settings?tab=LLM" class="btn-sm btn-primary">Configure</router-link>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <!-- Generate Panel -->
       <div class="space-y-4">
         <div class="card">

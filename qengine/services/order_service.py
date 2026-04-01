@@ -269,6 +269,11 @@ def get_entry_orders(exchange: str, symbol: str) -> List[Order]:
     if p.is_close:
         return store.orders.get_orders(exchange, symbol).copy()
 
+    # In CFD hedge mode, net qty can be ~0 while tickets are open (type="close")
+    # Return all active non-canceled orders since both sides are valid entries
+    if p.type == 'close':
+        return [o for o in store.orders.get_active_orders(exchange, symbol) if not o.is_canceled]
+
     all_orders = store.orders.get_active_orders(exchange, symbol)
     p_side = jh.type_to_side(p.type)
     entry_orders = [o for o in all_orders if (o.side == p_side and not o.is_canceled)]

@@ -45,79 +45,81 @@ def get_fitness(
             fast_mode=fast_mode
         )['metrics']
 
-        # Calculate fitness score
-        if training_metrics['total'] > 5:
-            total_effect_rate = log10(training_metrics['total']) / log10(optimal_total)
-            total_effect_rate = min(total_effect_rate, 1)
-            objective_function_config = jh.get_config('env.optimization.objective_function', 'sharpe')
-            
-            # Get the ratio based on objective function
-            if objective_function_config == 'sharpe':
-                ratio = training_metrics['sharpe_ratio']
-                ratio_normalized = jh.normalize(ratio, -.5, 5)
-            elif objective_function_config == 'calmar':
-                ratio = training_metrics['calmar_ratio']
-                ratio_normalized = jh.normalize(ratio, -.5, 30)
-            elif objective_function_config == 'sortino':
-                ratio = training_metrics['sortino_ratio']
-                ratio_normalized = jh.normalize(ratio, -.5, 15)
-            elif objective_function_config == 'omega':
-                ratio = training_metrics['omega_ratio']
-                ratio_normalized = jh.normalize(ratio, -.5, 5)
-            elif objective_function_config == 'serenity':
-                ratio = training_metrics['serenity_index']
-                ratio_normalized = jh.normalize(ratio, -.5, 15)
-            elif objective_function_config == 'smart sharpe':
-                ratio = training_metrics['smart_sharpe']
-                ratio_normalized = jh.normalize(ratio, -.5, 5)
-            elif objective_function_config == 'smart sortino':
-                ratio = training_metrics['smart_sortino']
-                ratio_normalized = jh.normalize(ratio, -.5, 15)
-            else:
-                raise ValueError(
-                    f'The entered ratio configuration `{objective_function_config}` for the optimization is unknown. '
-                    f'Choose between sharpe, calmar, sortino, serenity, smart sharpe, smart sortino and omega.'
-                )
-
-            # If the ratio is negative then the configuration is not usable
-            if ratio < 0:
-                score = 0.0001
-                logger.log_optimize_mode(f"NEGATIVE RATIO: hp is not usable => {objective_function_config}: {ratio}, total: {training_metrics['total']}", session_id )
-                # Still run testing backtest so we have metrics for the objective curve
-                try:
-                    testing_metrics = isolated_backtest(
-                        inputs, routes, data_routes,
-                        candles=testing_candles, warmup_candles=testing_warmup_candles,
-                        hyperparameters=hp, fast_mode=fast_mode
-                    )['metrics']
-                except Exception:
-                    testing_metrics = {}
-                return score, training_metrics, testing_metrics
-
-            # Run backtest for testing period
-            testing_metrics = isolated_backtest(
-                inputs,
-                routes,
-                data_routes,
-                candles=testing_candles,
-                warmup_candles=testing_warmup_candles,
-                hyperparameters=hp,
-                fast_mode=fast_mode
-            )['metrics']
-
-            # Calculate fitness score
-            score = total_effect_rate * ratio_normalized
-            if np.isnan(score):
-                logger.log_optimize_mode(f'Score is nan. hp configuration is invalid', session_id)
-                score = 0.0001
-            else:
-                logger.log_optimize_mode(f"hp config is usable => {objective_function_config}: {round(ratio, 2)}, total: {training_metrics['total']}, "
-                                       f"pnl%: {round(training_metrics['net_profit_percentage'], 2)}%, win-rate: {round(training_metrics['win_rate']*100, 2)}%", session_id)
-        else:
-            logger.log_optimize_mode('Less than 5 trades in the training data. hp configuration is invalid', session_id)
+        # Gate: require minimum trades for statistical significance
+        min_trades = max(5, optimal_total // 10)
+        if training_metrics['total'] < min_trades:
+            logger.log_optimize_mode(
+                f'Only {training_metrics["total"]} trades (need {min_trades}). hp configuration is invalid', session_id)
             score = 0.0001
-            # Keep training_metrics (even partial) so objective curve has data
             testing_metrics = {}
+            return score, training_metrics, testing_metrics
+
+        objective_function_config = jh.get_config('env.optimization.objective_function', 'sharpe')
+
+        # Map objective function to metric key and normalization range
+        ratio_config = {
+            'sharpe':       ('sharpe_ratio',   -.5, 5),
+            'calmar':       ('calmar_ratio',   -.5, 30),
+            'sortino':      ('sortino_ratio',  -.5, 15),
+            'omega':        ('omega_ratio',    -.5, 5),
+            'serenity':     ('serenity_index', -.5, 15),
+            'smart sharpe': ('smart_sharpe',   -.5, 5),
+            'smart sortino':('smart_sortino',  -.5, 15),
+        }
+
+        if objective_function_config not in ratio_config:
+            raise ValueError(
+                f'Unknown objective function `{objective_function_config}`. '
+                f'Choose from: {", ".join(ratio_config.keys())}.'
+            )
+
+        metric_key, norm_min, norm_max = ratio_config[objective_function_config]
+        ratio = training_metrics[metric_key]
+
+        # Negative ratio = not viable
+        if ratio < 0:
+            score = 0.0001
+            logger.log_optimize_mode(
+                f"NEGATIVE RATIO: {objective_function_config}: {ratio}, total: {training_metrics['total']}", session_id)
+            try:
+                testing_metrics = isolated_backtest(
+                    inputs, routes, data_routes,
+                    candles=testing_candles, warmup_candles=testing_warmup_candles,
+                    hyperparameters=hp, fast_mode=fast_mode
+                )['metrics']
+            except Exception:
+                testing_metrics = {}
+            return score, training_metrics, testing_metrics
+
+        # Run testing backtest
+        testing_metrics = isolated_backtest(
+            inputs, routes, data_routes,
+            candles=testing_candles, warmup_candles=testing_warmup_candles,
+            hyperparameters=hp, fast_mode=fast_mode
+        )['metrics']
+
+        # Score = normalized ratio (pure metric score)
+        # Trade count is a gate (above), not a multiplier — avoids penalizing
+        # strategies that trade less frequently but with high quality
+        score = jh.normalize(ratio, norm_min, norm_max)
+
+        # Small bonus (up to 10%) for reaching the target trade count,
+        # to break ties between equally-rated strategies
+        if training_metrics['total'] < optimal_total:
+            trade_bonus = 0.1 * (log10(training_metrics['total']) / log10(optimal_total))
+        else:
+            trade_bonus = 0.1
+        score = score * (0.9 + trade_bonus)
+
+        if np.isnan(score):
+            logger.log_optimize_mode(f'Score is nan. hp configuration is invalid', session_id)
+            score = 0.0001
+        else:
+            logger.log_optimize_mode(
+                f"hp config is usable => {objective_function_config}: {round(ratio, 2)}, "
+                f"total: {training_metrics['total']}, "
+                f"pnl%: {round(training_metrics['net_profit_percentage'], 2)}%, "
+                f"win-rate: {round(training_metrics['win_rate']*100, 2)}%", session_id)
 
         return score, training_metrics, testing_metrics
 

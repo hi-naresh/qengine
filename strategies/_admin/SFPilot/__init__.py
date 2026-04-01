@@ -1,34 +1,28 @@
 """
-SurefirePilot — SurefireV2 hedge strategy with GridPilot protection framework.
+SFPilot — SurefireV2 hedge strategy with circuit breakers and safety sizing.
 
 Identical hedge mechanics to SurefireV2 (indicator signal + bucket exit + CFD tickets),
-but wrapped with:
-  - DangerScorer: continuous market danger assessment (7 features, online)
-  - Entry Gate: blocks entry when danger > 95th percentile
-  - Q-Abort: learned mid-cycle abort at dangerous (level, duration, danger) states
-  - Stats Collector: tracks cycles, busts, aborts, danger distributions
+with added safety layers:
+  - Circuit breakers: daily loss limit, consecutive bust halt, ATR expansion guard
+  - Session filtering: restrict entries to London/NY/overlap hours
+  - Safety sizing: margin-aware position sizing via SafetySizing
 
-Works in both backtest and live modes without code changes.
+Works with any pipeline (GridPilot etc.) — pipeline intelligence is injected
+externally via the backtest/live config. No framework coupling.
 """
 import math
-import os
 from collections import deque
 
 import qengine.helpers as jh
 import qengine.indicators as ta
-from qengine.framework.pilot_strategy import PilotStrategy
+from qengine.strategies import Strategy
 from qengine.services.safety_sizing import SafetySizing
 
 _FIB = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
 _BARS_PER_DAY = {'1m': 1440, '5m': 288, '15m': 96, '1h': 24, '4h': 6}
 
-# Default path for pre-trained Q-table
-_DEFAULT_Q_TABLE = os.path.join(
-    os.path.dirname(__file__), '..', '..', 'notebooks', 'phase2', 'data', 'q_table_v2.npy'
-)
 
-
-class SurefirePilot(PilotStrategy):
+class SFPilot(Strategy):
 
     def __init__(self):
         super().__init__()
@@ -65,37 +59,19 @@ class SurefirePilot(PilotStrategy):
         self.vars['_consecutive_busts'] = 0
         self.vars['_cycle_outcomes'] = deque(maxlen=200)
 
-    # ── FRAMEWORK CONFIG ────────────────────────────────────────────
-
-    def pilot_config(self) -> dict:
-        q_path = self.hp.get('pilot_q_table_path') or _DEFAULT_Q_TABLE
-        if not os.path.isabs(q_path):
-            q_path = os.path.abspath(q_path)
-
-        return {
-            'enable_danger_scorer': self.hp.get('pilot_enable_danger', True),
-            'enable_entry_gate': self.hp.get('pilot_enable_gate', True),
-            'enable_q_abort': self.hp.get('pilot_enable_abort', True),
-            'entry_gate_percentile': self.hp.get('pilot_gate_pct', 95),
-            'q_table_path': q_path if os.path.exists(q_path) else None,
-            'q_alpha': self.hp.get('pilot_q_alpha', 0.01),
-            'q_epsilon': self.hp.get('pilot_q_epsilon', 0.0),
-        }
-
     # ── HYPERPARAMETERS ─────────────────────────────────────────────
 
     def hyperparameters(self):
         return [
-            # Strategy params (same as SurefireV2)
-            {'name': 'initial_size',    'type': float, 'min': 0.1,  'max': 50.0, 'default': 2.0},
+            {'name': 'initial_size',    'type': float, 'min': 0.1,  'max': 50.0, 'default': 0.5},
             {'name': 'sizing_operator', 'type': 'categorical',
              'options': ['multiplier', 'sqrt', 'linear', 'fibonacci'], 'default': 'sqrt'},
             {'name': 'sizing_factor',   'type': float, 'min': 1.1,  'max': 5.0,  'default': 2.0},
-            {'name': 'max_levels',      'type': int,   'min': 0,    'max': 8,    'default': 6},
-            {'name': 'bucket_pct',      'type': float, 'min': 0.01, 'max': 1.0,  'default': 0.1},
+            {'name': 'max_levels',      'type': int,   'min': 0,    'max': 8,    'default': 12},
+            {'name': 'bucket_pct',      'type': float, 'min': 0.01, 'max': 1.0,  'default': 0.03},
             {'name': 'signal_mode',     'type': 'categorical',
              'options': ['ema', 'rsi', 'macd', 'supertrend', 'ema_rsi', 'ema_macd', 'triple'],
-             'default': 'ema'},
+             'default': 'rsi'},
             {'name': 'atr_period',      'type': int,   'min': 10,   'max': 20,   'default': 14},
             {'name': 'hedge_atr_mult',  'type': float, 'min': 0.3,  'max': 3.0,  'default': 1.5},
             {'name': 'ema_fast',        'type': int,   'min': 5,    'max': 20,   'default': 8},
@@ -110,19 +86,11 @@ class SurefirePilot(PilotStrategy):
             {'name': 'st_factor',       'type': float, 'min': 1.5,  'max': 5.0,  'default': 3.0},
             {'name': 'session_filter',  'type': 'categorical',
              'options': ['london', 'new_york', 'overlap', 'london_ny', 'any'],
-             'default': 'london_ny'},
+             'default': 'any'},
             {'name': 'cooldown_bars',   'type': int,   'min': 1,    'max': 50,   'default': 10},
             {'name': 'max_daily_loss_pct', 'type': float, 'min': 1.0, 'max': 5.0, 'default': 2.0},
             {'name': 'max_consec_busts',   'type': int,   'min': 2,   'max': 10,  'default': 3},
             {'name': 'atr_expansion_mult', 'type': float, 'min': 1.5, 'max': 3.0, 'default': 2.0},
-
-            # Pilot framework params
-            {'name': 'pilot_enable_danger', 'type': 'categorical', 'options': [True, False], 'default': True},
-            {'name': 'pilot_enable_gate',   'type': 'categorical', 'options': [True, False], 'default': True},
-            {'name': 'pilot_enable_abort',  'type': 'categorical', 'options': [True, False], 'default': True},
-            {'name': 'pilot_gate_pct',      'type': int,   'min': 85, 'max': 99, 'default': 95},
-            {'name': 'pilot_q_alpha',       'type': float, 'min': 0.001, 'max': 0.1, 'default': 0.01},
-            {'name': 'pilot_q_epsilon',     'type': float, 'min': 0.0, 'max': 0.1, 'default': 0.0},
         ]
 
     # ── PROPERTIES ──────────────────────────────────────────────────
@@ -402,9 +370,9 @@ class SurefirePilot(PilotStrategy):
             'exit_reason': exit_reason,
         }
 
-    # ── PILOT ENTRY (overrides PilotStrategy) ───────────────────────
+    # ── ENTRY SIGNALS ───────────────────────────────────────────────
 
-    def pilot_should_long(self) -> bool:
+    def should_long(self) -> bool:
         if self.vars['cycle_active']:
             return False
         if not self._can_enter():
@@ -412,7 +380,7 @@ class SurefirePilot(PilotStrategy):
         direction = self._get_signal()
         return direction == 'long' if direction else False
 
-    def pilot_should_short(self) -> bool:
+    def should_short(self) -> bool:
         if self.vars['cycle_active']:
             return False
         if not self._can_enter():
@@ -458,18 +426,20 @@ class SurefirePilot(PilotStrategy):
         self.vars['order_in_session'] = 1
         self.chart_label = f'S{self.vars["session_number"]}.L0'
 
-    # ── PILOT UPDATE POSITION (overrides PilotStrategy) ─────────────
+    # ── POSITION MANAGEMENT ─────────────────────────────────────────
 
-    def pilot_update_position(self):
+    def update_position(self):
         if not self.vars['cycle_active']:
             return
 
         current_price = self.price
 
-        # Bucket check
+        # Bucket check — take profit when floating PnL hits threshold
         floating = self._session_floating_pnl()
         if floating >= self._bucket_threshold():
             self.vars['current_session_pnl'] = floating
+            # Mark cycle handled before closing (so on_close_position knows it's not an abort)
+            self.vars['cycle_active'] = False
             self.close_all_tickets(current_price, meta=self._session_meta('bucket_hit'))
             self._reset_cycle('bucket_hit')
             return
@@ -487,24 +457,25 @@ class SurefirePilot(PilotStrategy):
             sl_hit = ((last_dir == 'long' and current_price <= hedge_price) or
                       (last_dir == 'short' and current_price >= hedge_price))
             if sl_hit:
-                self._handle_max_level_sl(hedge_price)
+                self.vars['current_session_pnl'] = self._session_floating_pnl()
+                self.vars['cycle_active'] = False
+                self.close_all_tickets(hedge_price, meta=self._session_meta('max_level_sl'))
+                self._reset_cycle('max_level_sl')
             return
 
-        # Hedge trigger
+        # Hedge trigger — add opposing leg
         hedge_hit = ((last_dir == 'long' and current_price <= hedge_price) or
                      (last_dir == 'short' and current_price >= hedge_price))
         if hedge_hit:
             self._handle_hedge_trigger(hedge_price)
 
-    def _handle_max_level_sl(self, sl_price: float):
-        self.vars['current_session_pnl'] = self._session_floating_pnl()
-        self.close_all_tickets(sl_price, meta=self._session_meta('max_level_sl'))
-        self._reset_cycle('max_level_sl')
-
     def _handle_hedge_trigger(self, hedge_price: float):
         level = self.vars['level'] + 1
         if level >= self.max_levels:
-            self._handle_max_level_sl(hedge_price)
+            self.vars['current_session_pnl'] = self._session_floating_pnl()
+            self.vars['cycle_active'] = False
+            self.close_all_tickets(hedge_price, meta=self._session_meta('max_level_sl'))
+            self._reset_cycle('max_level_sl')
             return
 
         self.vars['level'] = level
@@ -530,19 +501,14 @@ class SurefirePilot(PilotStrategy):
         self.vars['order_in_session'] += 1
         self.chart_label = f'S{self.vars["session_number"]}.L{level}'
 
-    # ── ABORT (overrides PilotStrategy._execute_abort) ──────────────
-
-    def _execute_abort(self):
-        """Q-abort: close all tickets and reset cycle."""
-        self.vars['current_session_pnl'] = self._session_floating_pnl()
-        self.vars['last_cycle_outcome'] = 'q_abort'
-        self.close_all_tickets(self.price, meta=self._session_meta('q_abort'))
-        self._reset_cycle('q_abort')
-
     # ── CALLBACKS ───────────────────────────────────────────────────
 
-    def pilot_on_close_position(self, order, closed_trade):
-        pass
+    def on_close_position(self, order, closed_trade) -> None:
+        # If cycle was still active when position closed, it was a pipeline abort
+        # (strategy always sets cycle_active=False before its own close_all_tickets)
+        if self.vars.get('cycle_active'):
+            self.vars['current_session_pnl'] = closed_trade.pnl if closed_trade else 0
+            self._reset_cycle('pipeline_abort')
 
     def on_open_position(self, order) -> None:
         pass
@@ -571,18 +537,12 @@ class SurefirePilot(PilotStrategy):
         return (day_start - self.balance) / day_start * 100.0
 
     def watch_list(self) -> list:
-        pilot_stats = self._pilot.stats if self._pilot else {}
-        danger = self._pilot.danger if self._pilot else 0.5
         return [
             ['session', self.vars['session_number']],
             ['level', self.vars['level']],
             ['max_levels', self.max_levels],
             ['tickets_open', self.position.ticket_count],
             ['signal', self._get_signal() or 'HALT'],
-            ['danger', f'{danger:.3f}'],
-            ['pilot_gates', pilot_stats.get('gates_blocked', 0)],
-            ['pilot_aborts', pilot_stats.get('aborts', 0)],
-            ['pilot_busts', pilot_stats.get('busts', 0)],
             ['base_qty', round(self._base_qty(), 2)],
             ['hedge_pips', round(self.hedge_distance, 1)],
             ['bucket_target', round(self._bucket_threshold(), 2)],
@@ -597,12 +557,9 @@ class SurefirePilot(PilotStrategy):
     def before_terminate(self):
         if self.vars['cycle_active'] and self.position.is_open:
             self.vars['current_session_pnl'] = self._session_floating_pnl()
+            self.vars['cycle_active'] = False
             self.close_all_tickets(self.price, meta=self._session_meta('terminated'))
             self._reset_cycle('terminated')
-
-        # Save framework state for next session
-        if self._pilot:
-            self._pilot.save_state()
 
     def terminate(self):
         pass

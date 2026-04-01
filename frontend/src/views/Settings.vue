@@ -162,7 +162,7 @@
         <div class="space-y-3">
           <div>
             <label class="label">Provider</label>
-            <select v-model="llmForm.provider" class="select">
+            <select v-model="llmForm.provider" class="select" :disabled="llmLocked">
               <option value="gemini">Google Gemini</option>
               <option value="anthropic">Anthropic Claude</option>
               <option value="openai">OpenAI GPT</option>
@@ -171,11 +171,11 @@
           <div>
             <div class="flex items-center justify-between">
               <label class="label">API Key</label>
-              <button @click="showLlmGuide = !showLlmGuide" class="text-[10px] text-brand-400 hover:underline mb-1">
+              <button v-if="!llmLocked" @click="showLlmGuide = !showLlmGuide" class="text-[10px] text-brand-400 hover:underline mb-1">
                 {{ showLlmGuide ? 'Hide guide' : 'How to get a key?' }}
               </button>
             </div>
-            <div v-if="showLlmGuide && llmGuides[llmForm.provider]" class="mb-2 p-3 bg-surface-800 rounded-lg">
+            <div v-if="!llmLocked && showLlmGuide && llmGuides[llmForm.provider]" class="mb-2 p-3 bg-surface-800 rounded-lg">
               <ol class="space-y-1.5">
                 <li v-for="(step, i) in llmGuides[llmForm.provider].steps" :key="i" class="flex gap-2 text-xs text-surface-400">
                   <span class="text-brand-400/60 shrink-0">{{ i + 1 }}.</span>
@@ -184,18 +184,18 @@
               </ol>
               <p class="text-[11px] text-surface-500 mt-2 italic">{{ llmGuides[llmForm.provider].note }}</p>
             </div>
-            <input v-model="llmForm.api_key" type="password" class="input" placeholder="Enter API key" />
+            <input v-model="llmForm.api_key" type="password" class="input" placeholder="Enter API key" :disabled="llmLocked" />
           </div>
           <div>
             <label class="label">Model (optional)</label>
-            <input v-model="llmForm.model" class="input font-mono" :placeholder="defaultModel" />
-            <div class="flex items-center justify-between mt-1.5">
+            <input v-model="llmForm.model" class="input font-mono" :placeholder="defaultModel" :disabled="llmLocked" />
+            <div v-if="!llmLocked" class="flex items-center justify-between mt-1.5">
               <p class="text-[10px] text-surface-600">e.g. <code class="bg-surface-800 px-1 rounded">{{ modelOptions[0]?.id || defaultModel }}</code></p>
               <button @click="showModelGuide = !showModelGuide" class="text-[10px] text-brand-400 hover:underline">
                 {{ showModelGuide ? 'Hide models' : 'Which model should I use?' }}
               </button>
             </div>
-            <div v-if="showModelGuide" class="mt-2 p-2.5 bg-surface-800 rounded-lg space-y-1.5">
+            <div v-if="!llmLocked && showModelGuide" class="mt-2 p-2.5 bg-surface-800 rounded-lg space-y-1.5">
               <div v-for="m in modelOptions" :key="m.id"
                 class="flex items-start gap-2 text-[11px] px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-surface-700"
                 :class="(llmForm.model === m.id || (!llmForm.model && m.recommended)) ? 'bg-brand-600/10' : ''"
@@ -213,7 +213,7 @@
           </div>
           <div>
             <label class="label">Temperature</label>
-            <input v-model.number="llmForm.temperature" type="number" step="0.1" min="0" max="1" class="input" />
+            <input v-model.number="llmForm.temperature" type="number" step="0.1" min="0" max="1" class="input" :disabled="llmLocked" />
             <p class="text-xs text-surface-600 mt-1.5 leading-relaxed">
               Controls randomness in AI responses. <strong class="text-surface-400">0.0</strong> = deterministic (same input gives same output).
               <strong class="text-surface-400">1.0</strong> = maximum creativity.
@@ -224,9 +224,13 @@
             </p>
           </div>
           <div class="flex gap-2">
-            <button @click="saveLLM" class="btn-primary flex-1" :disabled="savingLLM">
-              {{ savingLLM ? 'Saving & Testing...' : 'Save & Test Connection' }}
-            </button>
+            <button v-if="llmLocked" @click="llmEditing = true" class="btn-secondary flex-1">Update</button>
+            <template v-else>
+              <button @click="saveLLM" class="btn-primary flex-1" :disabled="savingLLM">
+                {{ savingLLM ? 'Saving & Testing...' : 'Save & Test Connection' }}
+              </button>
+              <button v-if="llmEditing" @click="llmEditing = false" class="btn-secondary">Cancel</button>
+            </template>
             <button v-if="llmSettings.configured" @click="deleteLLM" class="btn-danger">Remove</button>
           </div>
           <div v-if="testingLLM" class="flex items-center gap-2 text-xs text-surface-400">
@@ -238,39 +242,252 @@
       </div>
     </div>
 
-    <!-- Broker Keys -->
-    <div v-if="activeTab === 'Broker Keys'" class="max-w-lg space-y-4">
-      <div class="card">
-        <p class="text-sm text-surface-400 mb-3">Broker API connections are managed from the Brokers page.</p>
-        <a href="#/brokers" class="btn-primary inline-block px-4 py-2 text-sm">Go to Brokers</a>
+    <!-- Brokers -->
+    <div v-if="activeTab === 'Brokers'">
+      <!-- Filter tabs -->
+      <div class="flex gap-2 mb-5">
+        <button @click="brokerTab = 'all'"
+          class="btn-sm" :class="brokerTab === 'all' ? 'bg-brand-600 text-white' : 'bg-surface-800 text-surface-400 hover:text-surface-200'">
+          All
+        </button>
+        <button @click="brokerTab = 'active'"
+          class="btn-sm" :class="brokerTab === 'active' ? 'bg-brand-600 text-white' : 'bg-surface-800 text-surface-400 hover:text-surface-200'">
+          Active
+        </button>
       </div>
 
-      <!-- Export -->
-      <div class="card">
-        <h2 class="text-sm font-semibold mb-3 text-surface-300">Export API Keys</h2>
-        <p class="text-xs text-surface-500 mb-3">Download all broker API keys as a CSV file. Requires password confirmation.</p>
-        <div class="flex items-center gap-3">
-          <input v-model="exportPassword" type="password" class="input flex-1" placeholder="Enter password to confirm" />
-          <button @click="exportApiKeys" class="btn-primary btn-sm" :disabled="exportingKeys || !exportPassword">
-            {{ exportingKeys ? 'Exporting...' : 'Export CSV' }}
+      <div v-if="brokerLoading" class="text-surface-500 text-sm">Loading...</div>
+      <div v-else class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div v-for="broker in filteredBrokerList" :key="broker.id"
+          class="card transition-colors"
+          :class="broker.active ? 'border-brand-600/30' : 'border-surface-700 opacity-70'">
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full" :class="broker.active ? 'bg-green-400' : 'bg-surface-600'"></span>
+              <h3 class="text-sm font-semibold text-surface-100">{{ broker.name }}</h3>
+            </div>
+            <span class="badge-blue text-[10px]">{{ broker.type }}</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-xs mb-4">
+            <div><span class="text-surface-500">Fee</span><div class="text-surface-300 capitalize">{{ broker.fee_model }}</div></div>
+            <div><span class="text-surface-500">Leverage</span><div class="text-surface-300">{{ broker.default_leverage }}x</div></div>
+            <div><span class="text-surface-500">Currency</span><div class="text-surface-300">{{ broker.settlement_currency }}</div></div>
+          </div>
+          <div class="flex flex-wrap gap-1 mb-4">
+            <span v-for="ac in broker.asset_classes" :key="ac"
+              class="px-1.5 py-0.5 text-[10px] rounded bg-surface-800 text-surface-400 capitalize">{{ ac }}</span>
+          </div>
+          <div class="space-y-2 mb-4">
+            <div v-for="(env, envKey) in broker.environments" :key="envKey"
+              class="flex items-center justify-between p-2 rounded-lg"
+              :class="env.configured ? 'bg-green-500/10' : 'bg-surface-800'">
+              <div class="flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full" :class="env.configured ? 'bg-green-400' : 'bg-surface-600'"></span>
+                <span class="text-xs font-medium" :class="env.configured ? 'text-green-400' : 'text-surface-500'">
+                  {{ envKey === 'demo' ? (env.label || 'Demo') : 'Live' }}
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <template v-if="brokerConnStatuses[env.id]?.testing">
+                  <svg class="animate-spin h-3 w-3 text-surface-400" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                </template>
+                <template v-else-if="brokerConnStatuses[env.id]?.connected === true">
+                  <span class="text-[10px] text-green-400">Connected</span>
+                  <span v-if="brokerConnStatuses[env.id]?.details?.balance" class="text-[10px] text-surface-400">
+                    {{ brokerConnStatuses[env.id].details.balance }} {{ brokerConnStatuses[env.id].details.currency }}
+                  </span>
+                </template>
+                <template v-else-if="brokerConnStatuses[env.id]?.connected === false">
+                  <span class="text-[10px] text-red-400">Failed</span>
+                </template>
+                <template v-else>
+                  <span class="text-[10px] text-surface-500">{{ env.configured ? 'Configured' : 'Not connected' }}</span>
+                </template>
+              </div>
+            </div>
+          </div>
+          <button @click="openBrokerModal(broker)"
+            class="w-full text-xs py-2 rounded-lg font-medium transition-colors"
+            :class="broker.active ? 'bg-surface-800 text-surface-300 hover:text-surface-100 hover:bg-surface-700' : 'bg-brand-600 text-white hover:bg-brand-500'">
+            {{ broker.active ? 'Manage' : 'Connect' }}
           </button>
         </div>
-        <p v-if="exportMessage" class="text-xs mt-2" :class="exportError ? 'text-red-400' : 'text-green-400'">{{ exportMessage }}</p>
       </div>
 
-      <!-- Import -->
-      <div class="card">
-        <h2 class="text-sm font-semibold mb-3 text-surface-300">Import API Keys</h2>
-        <p class="text-xs text-surface-500 mb-3">Import broker API keys from a CSV file. Expected columns: Name, Exchange, API Key, API Secret.</p>
-        <div class="space-y-3">
-          <div>
-            <input type="file" ref="importFileInput" accept=".csv" @change="onImportFileChange" class="text-xs text-surface-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-surface-700 file:text-surface-300 hover:file:bg-surface-600" />
+      <!-- Export / Import (collapsible) -->
+      <details class="mt-6">
+        <summary class="text-xs text-surface-500 cursor-pointer hover:text-surface-300">Export / Import API Keys</summary>
+        <div class="mt-3 space-y-4 max-w-lg">
+          <div class="card">
+            <h2 class="text-sm font-semibold mb-3 text-surface-300">Export API Keys</h2>
+            <p class="text-xs text-surface-500 mb-3">Download all broker API keys as a CSV file. Requires password confirmation.</p>
+            <div class="flex items-center gap-3">
+              <input v-model="exportPassword" type="password" class="input flex-1" placeholder="Enter password to confirm" />
+              <button @click="exportApiKeys" class="btn-primary btn-sm" :disabled="exportingKeys || !exportPassword">
+                {{ exportingKeys ? 'Exporting...' : 'Export CSV' }}
+              </button>
+            </div>
+            <p v-if="exportMessage" class="text-xs mt-2" :class="exportError ? 'text-red-400' : 'text-green-400'">{{ exportMessage }}</p>
           </div>
-          <div v-if="importPreview" class="bg-surface-800 rounded p-3 text-xs font-mono text-surface-400 max-h-[150px] overflow-auto whitespace-pre">{{ importPreview }}</div>
-          <button @click="importApiKeys" class="btn-primary btn-sm" :disabled="importingKeys || !importCsvContent">
-            {{ importingKeys ? 'Importing...' : 'Import' }}
+          <div class="card">
+            <h2 class="text-sm font-semibold mb-3 text-surface-300">Import API Keys</h2>
+            <p class="text-xs text-surface-500 mb-3">Import broker API keys from a CSV file. Expected columns: Name, Exchange, API Key, API Secret.</p>
+            <div class="space-y-3">
+              <div>
+                <input type="file" ref="importFileInput" accept=".csv" @change="onImportFileChange" class="text-xs text-surface-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-surface-700 file:text-surface-300 hover:file:bg-surface-600" />
+              </div>
+              <div v-if="importPreview" class="bg-surface-800 rounded p-3 text-xs font-mono text-surface-400 max-h-[150px] overflow-auto whitespace-pre">{{ importPreview }}</div>
+              <button @click="importApiKeys" class="btn-primary btn-sm" :disabled="importingKeys || !importCsvContent">
+                {{ importingKeys ? 'Importing...' : 'Import' }}
+              </button>
+              <p v-if="importMessage" class="text-xs" :class="importError ? 'text-red-400' : 'text-green-400'">{{ importMessage }}</p>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- Broker Config Modal -->
+    <div v-if="brokerModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeBrokerModal">
+      <div class="card w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h2 class="text-base font-semibold">{{ brokerModal.name }}</h2>
+            <span class="text-xs text-surface-500">{{ brokerModal.type }} &middot; {{ brokerModal.api_type }}</span>
+          </div>
+          <button @click="closeBrokerModal" class="text-surface-500 hover:text-surface-200 text-xl leading-none">&times;</button>
+        </div>
+
+        <!-- Environment tabs -->
+        <div class="flex gap-1 mb-4 p-1 bg-surface-800 rounded-lg">
+          <button @click="brokerModalEnv = 'demo'"
+            class="flex-1 text-xs py-1.5 rounded-md font-medium transition-colors"
+            :class="brokerModalEnv === 'demo' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
+            {{ brokerModal.environments.demo.label || 'Demo' }}
           </button>
-          <p v-if="importMessage" class="text-xs" :class="importError ? 'text-red-400' : 'text-green-400'">{{ importMessage }}</p>
+          <button @click="brokerModalEnv = 'live'"
+            class="flex-1 text-xs py-1.5 rounded-md font-medium transition-colors"
+            :class="brokerModalEnv === 'live' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
+            Live
+          </button>
+        </div>
+
+        <!-- Current environment status -->
+        <div v-if="currentBrokerEnvConfig?.configured" class="mb-4 p-3 rounded-lg"
+          :class="currentBrokerEnvStatus?.connected === true ? 'bg-green-500/10' : currentBrokerEnvStatus?.connected === false ? 'bg-red-500/10' : 'bg-surface-800'">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full"
+                :class="currentBrokerEnvStatus?.connected === true ? 'bg-green-400' : currentBrokerEnvStatus?.connected === false ? 'bg-red-400' : 'bg-surface-500'"></span>
+              <span class="text-sm"
+                :class="currentBrokerEnvStatus?.connected === true ? 'text-green-400' : currentBrokerEnvStatus?.connected === false ? 'text-red-400' : 'text-surface-300'">
+                <template v-if="currentBrokerEnvStatus?.connected === true">Connected</template>
+                <template v-else-if="currentBrokerEnvStatus?.connected === false">Connection Failed</template>
+                <template v-else>Configured</template>
+              </span>
+            </div>
+            <div class="flex gap-2">
+              <button @click="brokerRetest" class="text-xs text-surface-400 hover:text-surface-200">Retest</button>
+              <button @click="brokerDisconnect" class="text-xs text-red-400 hover:text-red-300">Disconnect</button>
+            </div>
+          </div>
+          <div v-if="currentBrokerEnvStatus?.connected === true && currentBrokerEnvStatus?.details" class="mt-2 text-xs text-surface-400">
+            <span v-if="currentBrokerEnvStatus.details.balance">
+              Balance: {{ currentBrokerEnvStatus.details.balance }} {{ currentBrokerEnvStatus.details.currency }}
+            </span>
+            <span v-if="currentBrokerEnvStatus.details.account_id" class="ml-3">
+              Account: {{ currentBrokerEnvStatus.details.account_id }}
+              <span v-if="currentBrokerEnvStatus.details.account_type" class="text-surface-500">({{ currentBrokerEnvStatus.details.account_type }})</span>
+            </span>
+          </div>
+          <div v-if="currentBrokerEnvStatus?.connected === false && currentBrokerEnvStatus?.error" class="mt-1 text-xs text-red-400/80">
+            {{ currentBrokerEnvStatus.error }}
+          </div>
+          <div class="text-xs text-surface-500 mt-1">Key: {{ savedBrokerConfigs[currentBrokerEnvId]?.api_key_masked || '****' }}</div>
+        </div>
+
+        <!-- API credentials form -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs text-surface-500 font-medium uppercase tracking-wide">
+              {{ currentBrokerEnvConfig?.configured ? 'Update Credentials' : 'Connect API' }}
+            </h3>
+            <button @click="showBrokerGuide = !showBrokerGuide" class="text-[10px] text-brand-400 hover:underline">
+              {{ showBrokerGuide ? 'Hide guide' : 'How to get credentials?' }}
+            </button>
+          </div>
+
+          <!-- Inline setup guide -->
+          <div v-if="showBrokerGuide" class="p-3 rounded-lg bg-brand-600/5 border border-brand-600/10 space-y-3">
+            <template v-if="brokerGuideKey">
+              <div class="flex gap-1 p-0.5 bg-surface-800 rounded-md">
+                <button @click="brokerGuideTab = 'have_account'"
+                  class="flex-1 text-[10px] py-1.5 rounded font-medium transition-colors"
+                  :class="brokerGuideTab === 'have_account' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
+                  I have an account
+                </button>
+                <button @click="brokerGuideTab = 'need_account'"
+                  class="flex-1 text-[10px] py-1.5 rounded font-medium transition-colors"
+                  :class="brokerGuideTab === 'need_account' ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
+                  I need an account
+                </button>
+              </div>
+              <ol v-if="brokerGuideTab === 'have_account'" class="space-y-1.5">
+                <li v-for="(step, i) in brokerGuides[brokerGuideKey].login" :key="'l'+i" class="flex gap-2 text-[11px] text-surface-400">
+                  <span class="text-brand-400/60 shrink-0">{{ i + 1 }}.</span>
+                  <span v-html="step"></span>
+                </li>
+              </ol>
+              <ol v-else class="space-y-1.5">
+                <li v-for="(step, i) in brokerGuides[brokerGuideKey].signup" :key="'s'+i" class="flex gap-2 text-[11px] text-surface-400">
+                  <span class="text-brand-400/60 shrink-0">{{ i + 1 }}.</span>
+                  <span v-html="step"></span>
+                </li>
+              </ol>
+              <p class="text-[10px] text-surface-500 italic">{{ brokerGuides[brokerGuideKey].note }}</p>
+            </template>
+            <p v-else class="text-xs text-surface-500">Setup guide not available for this broker yet.</p>
+          </div>
+
+          <div v-if="brokerModal.name === 'Interactive Brokers'" class="p-3 rounded-lg bg-surface-800 text-xs text-surface-400">
+            IBKR connects to local TWS/IB Gateway. Ensure it's running on port {{ brokerModalEnv === 'demo' ? '7497' : '7496' }}.
+          </div>
+
+          <div>
+            <label class="label">{{ brokerModal.name === 'IG Markets' ? 'API Key' : 'API Key / Token' }}</label>
+            <input v-model="brokerForm.api_key" type="password" class="input" placeholder="Enter API key" />
+            <p v-if="brokerGuideKey && brokerGuides[brokerGuideKey].fields?.api_key" class="text-[10px] text-surface-600 mt-1">{{ brokerGuides[brokerGuideKey].fields.api_key }}</p>
+          </div>
+          <div v-if="brokerModal.name === 'IG Markets'">
+            <label class="label">Password</label>
+            <input v-model="brokerForm.api_secret" type="password" class="input" placeholder="IG account password" />
+            <p v-if="brokerGuideKey && brokerGuides[brokerGuideKey].fields?.api_secret" class="text-[10px] text-surface-600 mt-1">{{ brokerGuides[brokerGuideKey].fields.api_secret }}</p>
+          </div>
+          <div>
+            <label class="label">{{ brokerModal.name === 'IG Markets' ? 'Username' : 'Account ID' }}</label>
+            <input v-model="brokerForm.account_id" class="input"
+              :placeholder="brokerModal.name === 'IG Markets' ? 'IG username' : 'Account ID'" />
+            <p v-if="brokerGuideKey && brokerGuides[brokerGuideKey].fields?.account_id" class="text-[10px] text-surface-600 mt-1">{{ brokerGuides[brokerGuideKey].fields.account_id }}</p>
+          </div>
+          <div v-if="brokerModal.name === 'IG Markets'">
+            <label class="label">Account ID <span class="text-surface-500 font-normal">(optional — auto-detects CFD account if empty)</span></label>
+            <input v-model="brokerForm.ig_account_id" class="input" placeholder="e.g. ABCDE" />
+          </div>
+
+          <button @click="brokerSaveAndTest" class="btn-primary w-full" :disabled="brokerSaving">
+            {{ brokerSaving ? 'Saving & Testing...' : (currentBrokerEnvConfig?.configured ? 'Update & Test' : 'Connect & Test') }}
+          </button>
+          <p v-if="brokerFormMsg" class="text-xs" :class="brokerFormErr ? 'text-red-400' : 'text-green-400'">{{ brokerFormMsg }}</p>
+        </div>
+
+        <!-- Supported modes -->
+        <div class="mt-5 pt-4 border-t border-surface-700">
+          <span class="text-xs text-surface-500">Supported Modes</span>
+          <div class="flex gap-1 mt-1">
+            <span v-if="currentBrokerEnvModes?.backtesting" class="badge-green text-[10px]">Backtesting</span>
+            <span v-if="currentBrokerEnvModes?.live_trading" class="badge-yellow text-[10px]">Live Trading</span>
+            <span v-if="currentBrokerEnvModes?.paper_trading" class="badge-gray text-[10px]">Paper Trading</span>
+          </div>
         </div>
       </div>
     </div>
@@ -851,7 +1068,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { api, defaultBrokerId, isAdmin, getCurrentUser, setAuth, logout } from '../api'
 import { changelog as parsedChangelog } from '../changelog-parser'
 import { useGuides } from '../useGuides'
@@ -859,8 +1076,9 @@ import { useGuides } from '../useGuides'
 const { showTooltips, showSectionGuides } = useGuides()
 const router = useRouter()
 
-const activeTab = ref('My Profile')
-const allTabs = ['My Profile', 'Preferences', 'LLM', 'Broker Keys', 'Notifications', 'Cost & Randomness', 'Usage & Quotas', 'Maintenance', 'About']
+const route = useRoute()
+const activeTab = ref(route.query.tab || 'My Profile')
+const allTabs = ['My Profile', 'Preferences', 'LLM', 'Brokers', 'Notifications', 'Cost & Randomness', 'Usage & Quotas', 'Maintenance', 'About']
 const adminOnlyTabs = ['Maintenance']
 
 // Profile
@@ -949,18 +1167,20 @@ const llmMessage = ref('')
 const llmError = ref(false)
 const llmForm = ref({ provider: 'gemini', api_key: '', model: '', temperature: 0.3 })
 const llmConnectionStatus = ref({})
+const llmEditing = ref(false)
+
+const llmLocked = computed(() => llmSettings.value.configured && !llmEditing.value)
 
 const defaultModel = computed(() => {
-  const models = { gemini: 'gemini-2.5-flash-lite-preview-06-17', anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' }
+  const models = { gemini: 'gemini-2.5-flash', anthropic: 'claude-sonnet-4-6', openai: 'gpt-4o' }
   return models[llmForm.value.provider] || ''
 })
 
 const modelOptions = computed(() => {
   const opts = {
     gemini: [
-      { id: 'gemini-2.5-flash-lite-preview-06-17', name: 'Gemini 2.5 Flash Lite', desc: 'Fast & free-tier friendly. Best for most use cases.', recommended: true },
-      { id: 'gemini-2.5-flash-preview-05-20', name: 'Gemini 2.5 Flash', desc: 'Smarter than Lite, slightly slower. Good for complex strategies.' },
-      { id: 'gemini-2.5-pro-preview-06-05', name: 'Gemini 2.5 Pro', desc: 'Highest quality. Best for difficult strategy generation. Higher cost.' },
+      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast & free-tier friendly. Best for most use cases.', recommended: true },
+      { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Highest quality. Best for difficult strategy generation. Higher cost.' },
     ],
     anthropic: [
       { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', desc: 'Balanced speed and quality. Best for most use cases.', recommended: true },
@@ -982,6 +1202,95 @@ const selectedBrokerName = computed(() => {
   const b = availableBrokers.value.find(x => x.id === costBroker.value)
   return b ? b.name : costBroker.value
 })
+
+// Broker Management (inline from Brokers page)
+const brokerList = ref([])
+const brokerLoading = ref(true)
+const brokerTab = ref('all')
+const savedBrokerConfigs = ref({})
+const brokerConnStatuses = ref({})
+const brokerModal = ref(null)
+const brokerModalEnv = ref('demo')
+const brokerForm = ref({ api_key: '', api_secret: '', account_id: '', ig_account_id: '' })
+const brokerSaving = ref(false)
+const brokerFormMsg = ref('')
+const brokerFormErr = ref(false)
+const showBrokerGuide = ref(false)
+const brokerGuideTab = ref('have_account')
+
+const brokerGuides = {
+  oanda: {
+    signup: [
+      'Go to <a href="https://hub.oanda.com/apply/demo/" target="_blank" class="text-brand-400 hover:underline">OANDA Demo Signup</a> for a free practice account, or <a href="https://www.oanda.com/apply/" target="_blank" class="text-brand-400 hover:underline">OANDA Live</a> for real trading',
+      'Complete the registration form and verify your email',
+      'For live accounts: complete identity verification (KYC) and fund your account',
+      'Once registered, switch to <strong>"I have an account"</strong> to get your API token',
+    ],
+    login: [
+      'Go to <a href="https://hub.oanda.com/tpa/personal_token" target="_blank" class="text-brand-400 hover:underline">OANDA Personal Token</a> page (log in if prompted)',
+      'Click <strong>"Generate"</strong> to create a new API token',
+      'Copy the token — paste it as <strong>API Key</strong> below',
+      'Your <strong>Account ID</strong> is shown on the same page (format: xxx-xxx-xxxxxxx-xxx)',
+    ],
+    note: 'Demo accounts are free and don\'t expire.',
+    fields: { api_key: 'API Token from Personal Token page', account_id: 'e.g. 001-004-1234567-001' },
+  },
+  ig: {
+    signup: [
+      'Go to <a href="https://www.ig.com/uk/demo-account" target="_blank" class="text-brand-400 hover:underline">IG Demo Account</a> for practice, or <a href="https://www.ig.com/en/create-account" target="_blank" class="text-brand-400 hover:underline">IG Live</a> for real trading',
+      'Complete the application form and verify your email',
+      'For live: complete identity verification and fund your account',
+      'Once registered, switch to <strong>"I have an account"</strong> to get your API key',
+    ],
+    login: [
+      'Go to <a href="https://www.ig.com/uk/myig/settings/api-keys" target="_blank" class="text-brand-400 hover:underline">IG API Keys</a> page (log in if prompted)',
+      'For demo: switch to your <strong>Demo account</strong> at the top of the page',
+      'Click <strong>"Create Web API Demo Credentials"</strong> (demo) or <strong>"Create API key"</strong> (live)',
+      'Copy the <strong>API key</strong> — make sure its status shows <strong class="text-green-400">Enabled</strong>',
+      'Your <strong>Username</strong> = your IG login username',
+      'Your <strong>Password</strong> = your IG login password',
+    ],
+    note: 'IG requires API Key + Username + Password. Account ID is optional (auto-detects CFD). Ensure API key status is Enabled.',
+    fields: { api_key: 'API Key from IG API Keys page', api_secret: 'Your IG login password', account_id: 'Your IG login username' },
+  },
+  ibkr: {
+    signup: [
+      'Go to <a href="https://www.interactivebrokers.com/en/trading/individual.php" target="_blank" class="text-brand-400 hover:underline">Interactive Brokers</a> and open an account',
+      'Complete the application and fund your account',
+      'Download and install <strong>Trader Workstation (TWS)</strong> or <strong>IB Gateway</strong>',
+      'Once installed, follow the <strong>"I have an account"</strong> steps to enable API access',
+    ],
+    login: [
+      'Open <strong>TWS</strong> or <strong>IB Gateway</strong> and log in',
+      'Go to <strong>Edit > Global Configuration > API > Settings</strong>',
+      'Check <strong>"Enable ActiveX and Socket Clients"</strong>',
+      'Set Socket port: <strong>7497</strong> (paper) or <strong>7496</strong> (live)',
+      'Uncheck "Read-Only API" if you want to place orders',
+      'Your <strong>Account ID</strong> is in the top-right of TWS (e.g. U1234567) — paste it below',
+    ],
+    note: 'IBKR uses a local socket connection (no API key). TWS or IB Gateway must be running.',
+    fields: { account_id: 'Account ID from TWS (e.g. U1234567)' },
+  },
+}
+
+const brokerGuideKey = computed(() => {
+  if (!brokerModal.value) return null
+  const name = brokerModal.value.name.toLowerCase()
+  if (name.includes('oanda')) return 'oanda'
+  if (name.includes('ig')) return 'ig'
+  if (name.includes('interactive')) return 'ibkr'
+  return null
+})
+
+const filteredBrokerList = computed(() => {
+  if (brokerTab.value === 'active') return brokerList.value.filter(b => b.active)
+  return brokerList.value
+})
+
+const currentBrokerEnvId = computed(() => brokerModal.value?.environments[brokerModalEnv.value]?.id || '')
+const currentBrokerEnvConfig = computed(() => brokerModal.value?.environments[brokerModalEnv.value] || null)
+const currentBrokerEnvModes = computed(() => currentBrokerEnvConfig.value?.modes || {})
+const currentBrokerEnvStatus = computed(() => brokerConnStatuses.value[currentBrokerEnvId.value] || null)
 
 // Cost Model (per-broker)
 const costBroker = ref('')
@@ -1543,6 +1852,110 @@ async function importApiKeys() {
   }
 }
 
+// --- Broker Management Methods ---
+
+function openBrokerModal(broker) {
+  brokerModal.value = broker
+  if (broker.environments.live.configured && !broker.environments.demo.configured) {
+    brokerModalEnv.value = 'live'
+  } else {
+    brokerModalEnv.value = 'demo'
+  }
+  brokerForm.value = { api_key: '', api_secret: '', account_id: '', ig_account_id: '' }
+  brokerFormMsg.value = ''
+}
+
+function closeBrokerModal() {
+  brokerModal.value = null
+  brokerFormMsg.value = ''
+}
+
+async function brokerSaveAndTest() {
+  const envId = currentBrokerEnvId.value
+  if (!envId) return
+  brokerSaving.value = true
+  brokerFormMsg.value = ''
+  brokerFormErr.value = false
+  try {
+    const additionalFields = {}
+    if (brokerForm.value.ig_account_id) additionalFields.ig_account_id = brokerForm.value.ig_account_id
+    await api.saveBrokerSettings({
+      broker: envId,
+      api_key: brokerForm.value.api_key,
+      api_secret: brokerForm.value.api_secret,
+      account_id: brokerForm.value.account_id,
+      additional_fields: Object.keys(additionalFields).length ? additionalFields : undefined,
+    })
+    brokerFormMsg.value = 'Saved. Testing connection...'
+    brokerConnStatuses.value[envId] = { testing: true }
+    const res = await api.testBrokerConnection({
+      broker: envId,
+      api_key: brokerForm.value.api_key,
+      api_secret: brokerForm.value.api_secret,
+      account_id: brokerForm.value.account_id,
+      additional_fields: Object.keys(additionalFields).length ? additionalFields : undefined,
+    })
+    brokerConnStatuses.value[envId] = res.data
+    if (res.data.connected) {
+      brokerFormMsg.value = 'Connected successfully'
+      brokerFormErr.value = false
+    } else {
+      brokerFormMsg.value = `Saved but connection failed: ${res.data.error}`
+      brokerFormErr.value = true
+    }
+    await refreshBrokerData()
+    brokerForm.value = { api_key: '', api_secret: '', account_id: '', ig_account_id: '' }
+  } catch (e) {
+    brokerFormMsg.value = e.message
+    brokerFormErr.value = true
+  } finally {
+    brokerSaving.value = false
+  }
+}
+
+async function brokerRetest() {
+  const envId = currentBrokerEnvId.value
+  if (!envId) return
+  brokerFormMsg.value = ''
+  brokerConnStatuses.value[envId] = { testing: true }
+  try {
+    const res = await api.testBrokerConnection({ broker: envId, api_key: '', api_secret: '', account_id: '' })
+    brokerConnStatuses.value[envId] = res.data
+  } catch (e) {
+    brokerConnStatuses.value[envId] = { connected: false, error: e.message }
+  }
+}
+
+async function brokerDisconnect() {
+  const envId = currentBrokerEnvId.value
+  if (!envId) return
+  try {
+    await api.deleteBrokerSettings(envId)
+    delete brokerConnStatuses.value[envId]
+    brokerFormMsg.value = 'Disconnected'
+    brokerFormErr.value = false
+    await refreshBrokerData()
+  } catch (e) {
+    brokerFormMsg.value = e.message
+    brokerFormErr.value = true
+  }
+}
+
+async function refreshBrokerData() {
+  try {
+    const [groupedRes, settingsRes] = await Promise.all([
+      api.getBrokersGrouped(),
+      api.getBrokerSettings(),
+    ])
+    brokerList.value = groupedRes.data
+    savedBrokerConfigs.value = settingsRes.data
+    if (brokerModal.value) {
+      const updated = brokerList.value.find(b => b.id === brokerModal.value.id)
+      if (updated) brokerModal.value = updated
+    }
+  } catch (e) { console.error(e) }
+}
+
 // --- About Methods ---
 
 async function loadAboutInfo() {
@@ -1588,6 +2001,7 @@ async function saveLLM() {
     await loadSettings()
     await testLLMConnection(provider, api_key, model, temperature)
     llmForm.value.api_key = ''
+    llmEditing.value = false
   } catch (e) {
     llmMessage.value = e.message
     llmError.value = true
@@ -1602,6 +2016,7 @@ async function deleteLLM() {
     llmMessage.value = 'LLM configuration removed'
     llmError.value = false
     llmConnectionStatus.value = {}
+    llmEditing.value = false
     await loadSettings()
   } catch (e) {
     llmMessage.value = e.message
@@ -1696,9 +2111,10 @@ onMounted(async () => {
     console.error(e)
   }
   initProfileForm()
-  const loads = [loadSettings(), loadNotifKeys(), loadAboutInfo()]
+  const loads = [loadSettings(), loadNotifKeys(), loadAboutInfo(), refreshBrokerData()]
   if (isAdmin()) loads.push(loadStorageInfo())
   else loads.push(loadUserQuotas())
   await Promise.all(loads)
+  brokerLoading.value = false
 })
 </script>

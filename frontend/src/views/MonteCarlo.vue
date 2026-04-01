@@ -35,9 +35,9 @@
     <SectionGuide category="monte-carlo" title="What is Monte Carlo & why it matters" />
 
     <!-- ═══ RUN VIEW ═══ -->
-    <div v-show="pageTab === 'run'" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div v-show="pageTab === 'run'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <!-- Left: Config Panel -->
-      <div class="lg:col-span-1 space-y-4" v-show="!running || showConfig">
+      <div class="md:col-span-1 lg:col-span-1 space-y-4" v-show="!running || showConfig">
         <div class="card">
           <h2 class="text-sm font-semibold mb-1 text-surface-300">Configuration</h2>
           <p class="text-[11px] text-surface-500 mb-4">Backtest first, then run Monte Carlo to see how results hold under randomized trade ordering</p>
@@ -201,7 +201,7 @@
       </div>
 
       <!-- Right: Results Panel -->
-      <div :class="running && !showConfig ? 'lg:col-span-3' : 'lg:col-span-2'" class="space-y-4 min-w-0">
+      <div :class="running && !showConfig ? 'md:col-span-2 lg:col-span-3' : 'md:col-span-1 lg:col-span-2'" class="space-y-4 min-w-0">
         <!-- Error -->
         <div v-if="error" class="card border-red-500/30">
           <div class="flex items-center gap-2 mb-1">

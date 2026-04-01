@@ -54,6 +54,9 @@ export default defineConfig({
       '/orders': { target: 'http://localhost:9000', configure: proxyErrorHandler },
       '/notification': { target: 'http://localhost:9000', configure: proxyErrorHandler },
       '/issues': { target: 'http://localhost:9000', configure: proxyErrorHandler },
+      '/reports': { target: 'http://localhost:9000', configure: proxyErrorHandler },
+      '/pipelines': { target: 'http://localhost:9000', configure: proxyErrorHandler },
+      '/autopilot': { target: 'http://localhost:9000', configure: proxyErrorHandler },
     }
   }
 })
