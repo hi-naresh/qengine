@@ -519,6 +519,18 @@ def main():
     }
     save_results(results, '41_island_evolution')
     log.info("Results saved to 41_island_evolution.json")
+
+    # 15. Copy trained models to pipeline's models/ directory for UI use
+    pipeline_models = Path(__file__).resolve().parents[2] / 'pipelines' / '_shared' / 'IslandPilot' / 'models'
+    pipeline_models.mkdir(parents=True, exist_ok=True)
+    import shutil
+    src_tree = MODELS_DIR / 'regime_tree.pkl'
+    src_genomes = MODELS_DIR / 'island_genomes.json'
+    src_evolver = MODELS_DIR / 'island_evolver.json'
+    for src in [src_tree, src_genomes, src_evolver]:
+        if src.exists():
+            shutil.copy2(str(src), str(pipeline_models / src.name))
+    log.info(f"Models copied to {pipeline_models} (pipeline ready for UI)")
     log.info("Done.")
 
 

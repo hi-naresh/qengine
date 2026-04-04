@@ -20,6 +20,31 @@ from qengine.framework.components.adaptive_sizer import AdaptiveSizer
 
 from .config import DEFAULT_CONFIG, merge_config
 
+# Path to shipped model artifacts (populated after research training)
+_MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
+
+
+def _load_pretrained() -> dict:
+    """Load pre-trained models from the models/ directory if available.
+
+    Returns dict with keys 'regime_tree', 'evolver', 'inferencer' (or empty).
+    """
+    result = {}
+    tree_path = os.path.join(_MODELS_DIR, 'regime_tree.pkl')
+    if os.path.exists(tree_path):
+        result['regime_tree'] = RegimeTree.load(tree_path)
+
+        evolver_path = os.path.join(_MODELS_DIR, 'island_genomes.json')
+        if os.path.exists(evolver_path):
+            result['evolver'] = IslandEvolver.load(evolver_path)
+
+        inferencer_path = os.path.join(_MODELS_DIR, 'inferencer_state.json')
+        if os.path.exists(inferencer_path):
+            result['inferencer'] = RegimeInferencer.load(
+                inferencer_path, result['regime_tree']
+            )
+    return result
+
 
 class IslandPilot(Pipeline):
     """Regime-aware adaptive pipeline with island-model evolution."""
@@ -44,6 +69,9 @@ class IslandPilot(Pipeline):
         self._feature_vector: Optional[np.ndarray] = None
         self._cycle_count: int = 0
         self._sibling_groups: Dict[str, List[str]] = {}
+
+        # Auto-load pre-trained models if available
+        self._load_pretrained_models()
 
     # ------------------------------------------------------------------
     # Pipeline hooks
@@ -342,6 +370,30 @@ class IslandPilot(Pipeline):
                 'runtime': 'json',
             },
         }
+
+    # ------------------------------------------------------------------
+    # Model loading
+    # ------------------------------------------------------------------
+
+    def _load_pretrained_models(self) -> None:
+        """Auto-load pre-trained models from models/ directory on init."""
+        pretrained = _load_pretrained()
+        if not pretrained:
+            return
+
+        self.regime_tree = pretrained.get('regime_tree')
+        self.evolver = pretrained.get('evolver')
+        self.inferencer = pretrained.get('inferencer')
+
+        # If we have a tree but no inferencer, create one
+        if self.regime_tree is not None and self.inferencer is None:
+            self.inferencer = RegimeInferencer(
+                self.regime_tree, self.cfg['inference']
+            )
+
+        # Build sibling groups for migration
+        if self.regime_tree is not None:
+            self._build_sibling_groups()
 
     # ------------------------------------------------------------------
     # Internal helpers
