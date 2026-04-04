@@ -62,15 +62,18 @@ class TestIslandPilotBasics:
         for key in ('regime', 'evolution', 'inference', 'sizing', 'warmup'):
             assert key in cfg, f"Missing key: {key}"
 
-    def test_architecture_returns_dict_with_components(self):
+    def test_architecture_returns_dict_with_layers(self):
         arch = IslandPilot.architecture()
         assert isinstance(arch, dict)
-        assert 'components' in arch
-        assert len(arch['components']) == 5
-        names = {c['name'] for c in arch['components']}
+        assert 'layers' in arch
+        assert len(arch['layers']) == 5
+        names = {c['name'] for c in arch['layers']}
         assert 'FeaturePool' in names
         assert 'RegimeTree' in names
         assert 'IslandEvolver' in names
+        # Training metadata
+        assert arch['requires_training'] is True
+        assert arch['training_status'] in ('trained', 'untrained')
         assert 'RegimeInferencer' in names
         assert 'AdaptiveSizer' in names
 
