@@ -26,6 +26,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# qengine requires cwd to be the project root (checks for strategies/ and storage/ dirs)
+os.chdir(str(PROJECT_ROOT))
+
 import qengine.helpers as jh
 from qengine.research import get_candles
 
