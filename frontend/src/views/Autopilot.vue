@@ -59,11 +59,62 @@
                   <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"/></svg>
                   {{ pipeline.architecture.research_basis }}
                 </div>
+
+                <!-- Training status & requirements -->
+                <div class="flex items-center gap-2 mt-3">
+                  <span v-if="pipeline.architecture?.training_status === 'ready'" class="px-2 py-0.5 rounded text-[10px] font-medium bg-green-500/15 text-green-400 border border-green-500/20">
+                    Ready to use
+                  </span>
+                  <span v-else-if="pipeline.architecture?.training_status === 'trained'" class="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/15 text-blue-400 border border-blue-500/20">
+                    Trained
+                  </span>
+                  <span v-else-if="pipeline.architecture?.requires_training" class="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                    Requires training
+                  </span>
+                  <span v-if="trainingInProgress[pipeline.name]" class="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400 border border-purple-500/20 flex items-center gap-1">
+                    <svg class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                    Training...
+                  </span>
+                </div>
+
+                <!-- Training description -->
+                <p v-if="pipeline.architecture?.training_description" class="text-[10px] text-surface-500 mt-1.5">
+                  {{ pipeline.architecture.training_description }}
+                </p>
+
+                <!-- Training steps (collapsible) -->
+                <div v-if="pipeline.architecture?.training_steps?.length" class="mt-2">
+                  <button @click="toggleTrainingSteps(pipeline.name)" class="text-[10px] text-surface-500 hover:text-surface-300 flex items-center gap-1">
+                    <svg class="w-3 h-3 transition-transform" :class="showTrainingSteps[pipeline.name] ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+                    Training steps
+                  </button>
+                  <ol v-if="showTrainingSteps[pipeline.name]" class="mt-1.5 ml-4 space-y-1">
+                    <li v-for="(step, si) in pipeline.architecture.training_steps" :key="si" class="text-[10px] text-surface-500 list-decimal">
+                      {{ step }}
+                    </li>
+                  </ol>
+                </div>
               </div>
-              <router-link to="/backtest" class="btn-sm bg-brand-500/20 text-brand-400 hover:bg-brand-500/30 flex items-center gap-1.5 shrink-0">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
-                Run in Backtest
-              </router-link>
+
+              <!-- Action buttons -->
+              <div class="flex flex-col gap-2 shrink-0">
+                <button v-if="pipeline.architecture?.requires_training && pipeline.architecture?.training_status !== 'trained' && !trainingInProgress[pipeline.name]"
+                        @click="trainPipeline(pipeline.name)"
+                        class="btn-sm bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 flex items-center gap-1.5">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12a7.5 7.5 0 0015 0m-15 0a7.5 7.5 0 1115 0m-15 0H3m16.5 0H21m-1.5 0H12m-8.457 3.077l1.41-.513m14.095-5.13l1.41-.513M5.106 17.785l1.15-.964m11.49-9.642l1.149-.964M7.501 19.795l.75-1.3m7.5-12.99l.75-1.3m-6.063 16.658l.26-1.477m2.605-14.772l.26-1.477m0 17.726l-.26-1.477M10.698 4.614l-.26-1.477M16.5 19.794l-.75-1.299M7.5 4.205L12 12"/></svg>
+                  Train
+                </button>
+                <router-link to="/backtest"
+                             :class="[
+                               'btn-sm flex items-center gap-1.5',
+                               (!pipeline.architecture?.requires_training || pipeline.architecture?.training_status === 'trained')
+                                 ? 'bg-brand-500/20 text-brand-400 hover:bg-brand-500/30'
+                                 : 'bg-surface-800 text-surface-500 cursor-not-allowed pointer-events-none'
+                             ]">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+                  Run in Backtest
+                </router-link>
+              </div>
             </div>
           </div>
 
@@ -463,6 +514,8 @@ import { api } from '../api'
 // ── Pipeline Registry ──
 const registeredPipelines = ref([])
 const loadingPipelines = ref(false)
+const trainingInProgress = ref({})
+const showTrainingSteps = ref({})
 
 async function fetchPipelines() {
   loadingPipelines.value = true
@@ -476,12 +529,46 @@ async function fetchPipelines() {
   }
 }
 
+function toggleTrainingSteps(name) {
+  showTrainingSteps.value[name] = !showTrainingSteps.value[name]
+}
+
+async function trainPipeline(name) {
+  trainingInProgress.value[name] = true
+  try {
+    await api.trainPipeline(name)
+    // Poll for completion every 10s
+    const poll = setInterval(async () => {
+      await fetchPipelines()
+      const p = registeredPipelines.value.find(pp => pp.name === name)
+      if (p?.architecture?.training_status === 'trained') {
+        clearInterval(poll)
+        trainingInProgress.value[name] = false
+      }
+    }, 10000)
+    // Safety timeout after 20 minutes
+    setTimeout(() => {
+      clearInterval(poll)
+      trainingInProgress.value[name] = false
+      fetchPipelines()
+    }, 1200000)
+  } catch (e) {
+    console.error('Training failed:', e)
+    trainingInProgress.value[name] = false
+  }
+}
+
 onMounted(fetchPipelines)
 
 function layerBorderColor(type) {
   if (type === 'observation') return 'border-l-blue-500/50'
   if (type === 'entry_control') return 'border-l-amber-500/50'
   if (type === 'exit_control') return 'border-l-red-500/50'
+  if (type === 'feature_extractor') return 'border-l-cyan-500/50'
+  if (type === 'classifier') return 'border-l-violet-500/50'
+  if (type === 'optimizer') return 'border-l-emerald-500/50'
+  if (type === 'inferencer') return 'border-l-sky-500/50'
+  if (type === 'sizer') return 'border-l-orange-500/50'
   return 'border-l-surface-600'
 }
 
@@ -489,6 +576,11 @@ function layerBadgeColor(type) {
   if (type === 'observation') return 'bg-blue-500/20 text-blue-400'
   if (type === 'entry_control') return 'bg-amber-500/20 text-amber-400'
   if (type === 'exit_control') return 'bg-red-500/20 text-red-400'
+  if (type === 'feature_extractor') return 'bg-cyan-500/20 text-cyan-400'
+  if (type === 'classifier') return 'bg-violet-500/20 text-violet-400'
+  if (type === 'optimizer') return 'bg-emerald-500/20 text-emerald-400'
+  if (type === 'inferencer') return 'bg-sky-500/20 text-sky-400'
+  if (type === 'sizer') return 'bg-orange-500/20 text-orange-400'
   return 'bg-surface-700 text-surface-400'
 }
 
@@ -496,6 +588,11 @@ function layerTypeColor(type) {
   if (type === 'observation') return 'bg-blue-500/10 text-blue-400'
   if (type === 'entry_control') return 'bg-amber-500/10 text-amber-400'
   if (type === 'exit_control') return 'bg-red-500/10 text-red-400'
+  if (type === 'feature_extractor') return 'bg-cyan-500/10 text-cyan-400'
+  if (type === 'classifier') return 'bg-violet-500/10 text-violet-400'
+  if (type === 'optimizer') return 'bg-emerald-500/10 text-emerald-400'
+  if (type === 'inferencer') return 'bg-sky-500/10 text-sky-400'
+  if (type === 'sizer') return 'bg-orange-500/10 text-orange-400'
   return 'bg-surface-800 text-surface-500'
 }
 
