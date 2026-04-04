@@ -223,8 +223,8 @@ def main():
     log.info(f"Loaded tree ({tree.n_leaves} leaves) and evolver ({len(evolver.populations)} islands)")
 
     # Load test candles
-    log.info("Loading test candles 2021-01-01 to 2025-12-30 ...")
-    warmup, trading = load_candles(start_date='2021-01-01', end_date='2025-12-30')
+    log.info("Loading test candles 2025-07-01 to 2025-12-30 ...")
+    warmup, trading = load_candles(start_date='2025-07-01', end_date='2025-12-30')
     candles = concat_candles(warmup, trading)
     log.info(f"Candles: {len(candles)} bars")
 

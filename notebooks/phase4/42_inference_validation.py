@@ -1,7 +1,7 @@
 """
 42 — Inference Validation
 
-Tests regime classification accuracy on validation data (2018-2021).
+Tests regime classification accuracy on validation data (2024H2-2025H1).
 Evaluates hysteresis settings, confidence calibration, and regime stability.
 """
 
@@ -52,8 +52,8 @@ def main():
     log.info(f"Loaded regime tree: {tree.n_leaves} leaves, {tree.n_macro} macro clusters")
 
     # 2. Load validation candles
-    log.info("Loading validation candles 2018-01-01 to 2021-12-31 ...")
-    warmup, trading = load_candles(start_date='2018-01-01', end_date='2021-12-31')
+    log.info("Loading validation candles 2024-07-01 to 2025-06-30 ...")
+    warmup, trading = load_candles(start_date='2024-07-01', end_date='2025-06-30')
     candles = concat_candles(warmup, trading)
     log.info(f"Candles: {len(candles)} bars ({len(warmup) if warmup.ndim == 2 else 0} warmup)")
 
@@ -204,7 +204,7 @@ def main():
     plt.colorbar(scatter, ax=ax, label='Confidence')
     ax.set_xlabel('Timestamp')
     ax.set_ylabel('Regime ID')
-    ax.set_title('Regime Timeline (validation 2018-2021)')
+    ax.set_title('Regime Timeline (validation 2024H2-2025H1)')
 
     savefig('42_inference_validation')
     log.info("Plot saved")

@@ -209,10 +209,10 @@ def main():
     log.info("Script 40 — Regime Discovery")
     log.info("="*60)
 
-    # 1. Load train candles (2006-2018)
-    log.info("Loading EUR-USD 5m train candles (2006-2018)...")
+    # 1. Load train candles (2020-2024H1)
+    log.info("Loading EUR-USD 5m train candles (2020-2024H1)...")
     warmup, trading = load_candles(
-        start_date='2006-01-02', end_date='2018-12-31',
+        start_date='2020-01-01', end_date='2024-06-30',
         warmup_candles_num=500,
     )
     candles = concat_candles(warmup, trading)

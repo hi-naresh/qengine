@@ -316,9 +316,9 @@ def main():
     log.info(f"Loaded feature selector: {len(selected_indices)} features")
 
     # 2. Load same train candles
-    log.info("Loading EUR-USD 5m train candles (2006-2018)...")
+    log.info("Loading EUR-USD 5m train candles (2020-2024H1)...")
     warmup, trading = load_candles(
-        start_date='2006-01-02', end_date='2018-12-31',
+        start_date='2020-01-01', end_date='2024-06-30',
         warmup_candles_num=500,
     )
     candles = concat_candles(warmup, trading)
