@@ -328,46 +328,120 @@ class IslandPilot(Pipeline):
     @classmethod
     def architecture(cls) -> dict:
         """Return pipeline architecture metadata for the frontend."""
+        # Check if pre-trained models exist
+        models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
+        has_tree = os.path.exists(os.path.join(models_dir, 'regime_tree.pkl'))
+        has_genomes = os.path.exists(os.path.join(models_dir, 'island_genomes.json'))
+        is_trained = has_tree and has_genomes
+
         return {
             'name': 'IslandPilot',
-            'description': 'Regime-aware adaptive pipeline with island-model genetic evolution',
-            'components': [
+            'summary': 'Multi-island evolutionary pipeline that discovers market regimes, '
+                       'evolves per-regime execution configs via genetic algorithm, and applies '
+                       'them at runtime with adaptive position sizing.',
+            'designed_for': ['Martingale strategies', 'SurefireHedge variants', 'UniversalMartingale'],
+            'research_basis': 'Phase4 research: hierarchical GMM regime discovery + island-model GA',
+            'requires_training': True,
+            'training_status': 'trained' if is_trained else 'untrained',
+            'training_description': 'Discovers market regimes from 5yr data, then evolves optimal '
+                                    'execution configs per regime using genetic algorithm (~5-15 min).',
+            'training_steps': [
+                'Compute 25 market features across 5 categories',
+                'Select top features via mutual information',
+                'Build hierarchical regime tree (GMM + BIC)',
+                'Evolve per-regime configs via island-model GA (100 generations)',
+                'Save trained models for runtime use',
+            ],
+            'layers': [
                 {
                     'name': 'FeaturePool',
-                    'role': 'Computes ~25 market features across 5 categories',
+                    'order': 1,
                     'type': 'feature_extractor',
+                    'hook': 'on_before()',
+                    'description': 'Computes ~25 market features across volatility, trend, chop, momentum, and structure categories',
+                    'algorithm': 'Indicator-based feature extraction (NATR, ADX, EMA slopes, Hurst, RSI, etc.)',
+                    'output': 'Feature vector per candle',
                 },
                 {
                     'name': 'RegimeTree',
-                    'role': 'Hierarchical GMM clustering for regime discovery',
+                    'order': 2,
                     'type': 'classifier',
+                    'hook': 'on_before()',
+                    'description': 'Hierarchical GMM clustering — macro regimes split into sub-regimes',
+                    'algorithm': 'Gaussian Mixture Model with BIC model selection at both levels',
+                    'output': 'Probability distribution over 15-80 regime islands',
+                    'config_keys': {
+                        'max_macro': 'Max macro-regimes (default: 10)',
+                        'max_sub': 'Max sub-regimes per macro (default: 8)',
+                        'min_island_cycles': 'Min samples per island before merging (default: 200)',
+                    },
                 },
                 {
                     'name': 'IslandEvolver',
-                    'role': 'Per-regime genetic parameter optimization',
+                    'order': 3,
                     'type': 'optimizer',
+                    'hook': 'on_cycle_end()',
+                    'description': 'Per-regime genetic algorithm with sibling migration',
+                    'algorithm': 'Tournament selection, uniform crossover, Gaussian mutation, elitism',
+                    'output': 'Best execution config (genome) per regime island',
+                    'genome_params': [
+                        'gate_confidence_min', 'sizing_curve', 'sizing_factor', 'max_levels',
+                        'tp_distance_atr_mult', 'hedge_distance_atr_mult', 'abort_aggressiveness',
+                        'base_size_pct', 'hysteresis_margin', 'confidence_sensitivity', 'recovery_aggression',
+                    ],
+                    'config_keys': {
+                        'population_size': 'Individuals per island (default: 30)',
+                        'max_generations': 'Evolution limit (default: 100)',
+                        'migration_interval': 'Generations between sibling migration (default: 5)',
+                    },
                 },
                 {
                     'name': 'RegimeInferencer',
-                    'role': 'Sticky regime classification with hysteresis',
+                    'order': 4,
                     'type': 'inferencer',
+                    'hook': 'on_before() + gate_entry()',
+                    'description': 'Runtime regime classification with sticky hysteresis to prevent whipsaw',
+                    'algorithm': 'Soft GMM probabilities + hard config switching with margin threshold',
+                    'output': 'Current regime ID + confidence score',
+                    'config_keys': {
+                        'min_confidence': 'Minimum probability to accept classification (default: 0.3)',
+                        'default_hysteresis': 'Margin needed to switch regime (default: 0.15)',
+                        'transition_grace_candles': 'Cooldown after switch (default: 5)',
+                    },
                 },
                 {
                     'name': 'AdaptiveSizer',
-                    'role': 'Confidence and drawdown-based position sizing',
+                    'order': 5,
                     'type': 'sizer',
+                    'hook': 'adjust_size()',
+                    'description': 'Multi-factor position sizing: confidence × drawdown × base, bounded by SafetySizing',
+                    'algorithm': 'Three multiplicative factors with hard caps',
+                    'output': 'Adjusted position quantity',
+                    'factors': [
+                        'Island base size (evolved per regime)',
+                        'Confidence scale (regime inference confidence ^ sensitivity)',
+                        'Drawdown recovery (reduces size during drawdowns)',
+                    ],
+                    'config_keys': {
+                        'drawdown_threshold_pct': 'DD% before scaling starts (default: 5.0)',
+                        'min_confidence_scale': 'Floor for confidence factor (default: 0.2)',
+                        'max_risk_per_cycle_pct': 'Hard cap on position size (default: 15.0)',
+                    },
                 },
             ],
-            'hooks': [
-                'on_before', 'gate_entry', 'adjust_size',
-                'filter_order', 'suggest_exit', 'on_cycle_end',
+            'lifecycle': [
+                {'hook': 'on_before()', 'description': 'FeaturePool computes features → RegimeInferencer classifies regime → applies genome'},
+                {'hook': 'gate_entry()', 'description': 'Blocks if confidence < threshold or in grace period after regime switch'},
+                {'hook': 'adjust_size()', 'description': 'AdaptiveSizer scales position by confidence × drawdown factor'},
+                {'hook': 'filter_order()', 'description': 'Injects evolved TP/hedge distances from active genome'},
+                {'hook': 'suggest_exit()', 'description': 'Aborts cycle if danger exceeds evolved aggressiveness threshold'},
+                {'hook': 'on_cycle_end()', 'description': 'Records outcome for fitness tracking and potential online learning'},
             ],
-            'state_space': {
-                'regime_tree': 'pickle',
-                'evolver': 'json',
-                'inferencer': 'json',
-                'sizer': 'json',
-                'runtime': 'json',
+            'composition_rules': {
+                'gate_entry': 'AND — all pipelines must allow (any veto blocks)',
+                'adjust_size': 'Multiplicative chain (each scales previous output)',
+                'suggest_exit': 'Most aggressive action wins (close_all > partial > tighten_sl > set_tp)',
+                'filter_order': 'Sequential chain — any None cancels the order',
             },
         }
 
