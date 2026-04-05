@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from utils import (
     load_candles, concat_candles, save_results, savefig,
-    get_logger, MODELS_DIR, PLOTS_DIR,
+    get_logger, MODELS_DIR, PLOTS_DIR, RESULTS_DIR,
 )
 
 import json

@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from utils import (
     load_candles, concat_candles, save_results, load_results, savefig,
-    get_logger, MODELS_DIR, CycleResult, SimConfig, calc_size,
+    get_logger, MODELS_DIR, RESULTS_DIR, CycleResult, SimConfig, calc_size,
     cycle_summary,
 )
 
