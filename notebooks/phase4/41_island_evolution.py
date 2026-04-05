@@ -19,6 +19,7 @@ from utils import (
 )
 
 import json
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -436,18 +437,27 @@ def main():
     best_global_fitness = -np.inf
     patience_counter = 0
 
+    from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+    n_workers = min(os.cpu_count() or 4, len(active_ids), 8)
+    log.info(f"Using {n_workers} parallel workers for island evaluation")
+
+    evo_cfg = evolver.config
+
+    def _evaluate_and_evolve(lid):
+        pop = evolver.populations[lid]
+        pop.evaluate(fitness_fns[lid])
+        pop.evolve(
+            elitism=evo_cfg.get('elitism', 2),
+            crossover_rate=evo_cfg.get('crossover_rate', 0.7),
+            mutation_rate=evo_cfg.get('mutation_rate', 0.2),
+            mutation_sigma=evo_cfg.get('mutation_sigma', 0.05),
+            tournament_k=evo_cfg.get('tournament_k', 3),
+        )
+
     for gen in range(GA_GENERATIONS):
-        # Evaluate and evolve each island with its own fitness function
-        for lid in active_ids:
-            pop = evolver.populations[lid]
-            pop.evaluate(fitness_fns[lid])
-            pop.evolve(
-                elitism=evolver.config.get('elitism', 2),
-                crossover_rate=evolver.config.get('crossover_rate', 0.7),
-                mutation_rate=evolver.config.get('mutation_rate', 0.2),
-                mutation_sigma=evolver.config.get('mutation_sigma', 0.05),
-                tournament_k=evolver.config.get('tournament_k', 3),
-            )
+        # Evaluate and evolve islands in parallel (threads — shared memory for candles)
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            list(pool.map(_evaluate_and_evolve, active_ids))
 
         # Migration every N generations
         if (gen + 1) % MIGRATION_EVERY == 0:
