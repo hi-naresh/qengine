@@ -184,7 +184,7 @@ def plot_tsne(feature_matrix, labels, selected_indices, n_samples=5000):
         labels_clean = labels_clean[idx]
 
     log.info(f"Running t-SNE on {len(X_clean)} samples...")
-    tsne = TSNE(n_components=2, random_state=42, perplexity=30, n_iter=1000)
+    tsne = TSNE(n_components=2, random_state=42, perplexity=30, max_iter=1000)
     embedding = tsne.fit_transform(X_clean)
 
     unique_labels = np.unique(labels_clean)
@@ -309,7 +309,10 @@ def main():
     log.info("Generating plots...")
     plot_feature_importance(feature_names, selected_indices, scores)
     plot_regime_profiles(profiles, feature_names, selected_indices)
-    plot_tsne(feature_matrix, all_labels, selected_indices, n_samples=5000)
+    try:
+        plot_tsne(feature_matrix, all_labels, selected_indices, n_samples=5000)
+    except Exception as e:
+        log.info(f"t-SNE plot skipped: {e}")
 
     # 9. Save results
     results = {
