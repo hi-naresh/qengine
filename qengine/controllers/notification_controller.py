@@ -11,10 +11,14 @@ router = APIRouter(prefix="/notification", tags=["Notification"])
 @router.get("/api-keys")
 def get_notification_api_keys(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """
-    Get all notification API keys
+    Get all notification API keys.
+    Admins see all keys (shared). Regular users see only their own.
     """
 
-    user_id = current_user.effective_user_id if not current_user.is_admin or current_user.is_impersonating else None
+    if current_user.is_admin and not current_user.is_impersonating:
+        user_id = None  # admins see all
+    else:
+        user_id = current_user.effective_user_id
 
     from qengine.modes.notification_api_keys import get_notification_api_keys
 

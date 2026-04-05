@@ -5,7 +5,7 @@ from qengine.config import config
 from qengine.services.notifier import notify
 from qengine.enums import order_statuses
 from qengine.models.Order import Order
-from qengine.models.ForexCFDExchange import ForexCFDExchange
+from qengine.models.CFDExchange import CFDExchange
 from qengine.store import store
 from qengine.repositories import order_repository
 from qengine.enums import order_types
@@ -58,8 +58,6 @@ def execute_order(order: Order, silent: bool = False) -> None:
     
     order.executed_at = jh.now_to_timestamp()
     order.status = order_statuses.EXECUTED
-    if order.fee is None:
-        order.fee = None
 
     # Set filled_qty if not already set (e.g. by the live driver before calling execute_order)
     if not order.filled_qty:
@@ -99,7 +97,7 @@ def execute_order(order: Order, silent: bool = False) -> None:
 
     # Apply spread and slippage for forex/CFD exchanges (only when cost model is enabled)
     cost_model_enabled = config.get('app', {}).get('cost_model', True)
-    if isinstance(e, ForexCFDExchange) and not jh.is_livetrading():
+    if isinstance(e, CFDExchange) and not jh.is_livetrading():
         # Remove from pending order tracking BEFORE price changes
         e.on_order_execution(order)
 

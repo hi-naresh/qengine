@@ -237,13 +237,11 @@ def get_candles_from_db(
                                                   caching=caching)
         except (CandleNotFoundInDatabase, Exception):
             # Warmup data not available for the full range — clamp to earliest available data.
-            # Query the DB for the earliest candle for this exchange+symbol.
             from qengine.models.Candle import Candle
-            earliest_row = Candle.select(Candle.timestamp).where(
+            earliest_rows = list(Candle.select(Candle.timestamp).where(
                 Candle.exchange == exchange,
                 Candle.symbol == symbol,
-            ).order_by(Candle.timestamp.asc()).limit(1).tuples()
-            earliest_rows = list(earliest_row)
+            ).order_by(Candle.timestamp.asc()).limit(1).tuples())
 
             if earliest_rows and earliest_rows[0][0] < trading_start_date_timestamp:
                 clamped_start = earliest_rows[0][0]
@@ -327,16 +325,7 @@ def _get_candles_from_db(
     
     # Verify the retrieved data covers the requested range
     if len(candles_array) > 0:
-        earliest_available = candles_array[0][0]  # First timestamp
         latest_available = candles_array[-1][0]   # Last timestamp
-        
-        # Check if earliest available timestamp is after the requested start date
-        if earliest_available > start_date_timestamp + 60_000:  # Allow 1 minute tolerance
-            raise CandleNotFoundInDatabase(
-                f"Missing candles for {symbol} on {exchange}. "
-                f"Requested data from {jh.timestamp_to_date(start_date_timestamp)}, "
-                f"but earliest available candle is from {jh.timestamp_to_date(earliest_available)}."
-            )
             
         # For finish date validation, we need to check if we have candles up to exactly one minute
         # before the start of the requested finish date

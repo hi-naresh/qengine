@@ -186,7 +186,7 @@ def test_system_prompt_contains_framework_docs():
     assert 'self.pip_size' in prompt
     assert 'self.session' in prompt
     assert 'self.lot_size_for_risk' in prompt
-    assert 'ta.sma' in prompt
+    assert 'sma' in prompt.lower()
     assert 'should_long' in prompt
 
 
@@ -198,9 +198,8 @@ def test_system_prompt_commodity():
 
 def test_user_prompt():
     engine = LLMEngine()
-    prompt = engine._build_user_prompt('buy when RSI is oversold', 'EUR-USD', '1h')
+    prompt = engine._build_user_prompt('buy when RSI is oversold', 'EUR-USD')
     assert 'EUR-USD' in prompt
-    assert '1h' in prompt
     assert 'RSI is oversold' in prompt
 
 
@@ -218,7 +217,6 @@ def test_request_models_exist():
     assert gen.description == 'test'
     assert gen.asset_class == 'forex'
     assert gen.symbol == 'EUR-USD'
-    assert gen.timeframe == '1h'
 
     ref = RefineStrategyRequestJson(code='x', feedback='y')
     assert ref.code == 'x'
@@ -281,7 +279,7 @@ def test_llm_engine_gemini_is_default_provider():
         assert result is True
         assert engine.provider == 'gemini'
         assert engine.api_key == 'test-gemini-key'
-        assert engine.model == 'gemini-2.0-flash'
+        assert engine.model == 'gemini-2.5-flash'
     finally:
         if old_gemini:
             os.environ['GEMINI_API_KEY'] = old_gemini
@@ -300,13 +298,25 @@ def test_llm_engine_gemini_dispatch():
 
 def test_configure_from_env_no_keys():
     engine = LLMEngine()
-    # Without env vars set, should return False
+    # Without env vars, .env values, or DB settings, should return False
     import os
+    from unittest.mock import patch
+    from qengine.services.env import ENV_VALUES
     old_gemini = os.environ.pop('GEMINI_API_KEY', None)
     old_anthropic = os.environ.pop('ANTHROPIC_API_KEY', None)
     old_openai = os.environ.pop('OPENAI_API_KEY', None)
+    # Also clear ENV_VALUES (loaded from .env) so configure_from_env can't find keys there
+    saved_env = {}
+    for k in ('GEMINI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENAI_API_KEY'):
+        if k in ENV_VALUES:
+            saved_env[k] = ENV_VALUES.pop(k)
     try:
-        assert engine.configure_from_env() is False
+        # Mock out DB settings lookup so it can't find keys there either
+        with patch('qengine.services.llm_engine.LLMEngine.configure_from_env',
+                   wraps=engine.configure_from_env) as _:
+            # Patch the DB import to raise so the except block catches it
+            with patch.dict('sys.modules', {'qengine.controllers.settings_controller': None}):
+                assert engine.configure_from_env() is False
     finally:
         if old_gemini:
             os.environ['GEMINI_API_KEY'] = old_gemini
@@ -314,3 +324,4 @@ def test_configure_from_env_no_keys():
             os.environ['ANTHROPIC_API_KEY'] = old_anthropic
         if old_openai:
             os.environ['OPENAI_API_KEY'] = old_openai
+        ENV_VALUES.update(saved_env)

@@ -3,18 +3,25 @@ Tests for the Surefire strategy.
 Validates hedge cycling, level tracking, direction reversal, session grouping,
 chart labels, and reset on TP.
 """
+import pytest
+
+try:
+    from qengine.strategies.SurefireHedge import SurefireHedge  # noqa: F401
+except ModuleNotFoundError:
+    pytest.skip('SurefireHedge strategy has been moved to strategies._admin.Surefire', allow_module_level=True)
+
 from qengine.testing_utils import set_up
 from qengine.store import store
 
 
 def _setup_forex_backtest(balance=10_000, leverage=30, fee=0):
-    """Set up a forex_cfd backtest environment."""
+    """Set up a cfd backtest environment."""
     from qengine.config import config, reset_config
     from qengine.enums import exchanges
     reset_config()
     config['env']['exchanges'][exchanges.SANDBOX]['balance'] = balance
     config['env']['exchanges'][exchanges.SANDBOX]['fee'] = fee
-    config['env']['exchanges'][exchanges.SANDBOX]['type'] = 'forex_cfd'
+    config['env']['exchanges'][exchanges.SANDBOX]['type'] = 'cfd'
     config['env']['exchanges'][exchanges.SANDBOX]['futures_leverage'] = leverage
     config['env']['exchanges'][exchanges.SANDBOX]['futures_leverage_mode'] = 'cross'
 

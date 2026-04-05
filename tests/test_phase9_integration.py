@@ -3,7 +3,7 @@ Phase 9: End-to-End Integration Tests
 
 Tests the full TradeEngine system across all phases:
 - Exchange initialization with forex config
-- ForexCFDExchange balance/margin/cost mechanics
+- CFDExchange balance/margin/cost mechanics
 - Position lifecycle (open -> modify -> close)
 - Strategy API (forex properties on strategy instances)
 - Live trading enablement
@@ -32,15 +32,12 @@ def _setup_forex_env(exchange='OANDA', symbol='EUR-USD', timeframe='1h',
     from qengine.strategies.ForexMA import ForexMA
     import qengine.helpers as jh
 
-    # Clear cached mode
-    jh.app_mode.cache_clear()
-
     config['app']['trading_mode'] = 'backtest'
 
     # Ensure exchange config exists
     config['env']['exchanges'][exchange] = {
         'fee': 0,
-        'type': 'forex_cfd',
+        'type': 'cfd',
         'futures_leverage_mode': 'cross',
         'futures_leverage': leverage,
         'balance': balance,
@@ -62,19 +59,18 @@ def _setup_forex_env(exchange='OANDA', symbol='EUR-USD', timeframe='1h',
 
 
 def _teardown():
-    import qengine.helpers as jh
-    jh.app_mode.cache_clear()
+    pass
 
 
 # ════════════════════════════════════════════════
-# 9.1  ForexCFDExchange Initialization
+# 9.1  CFDExchange Initialization
 # ════════════════════════════════════════════════
 
 class TestForexExchangeInit:
-    def test_exchange_created_as_forex_cfd(self):
-        from qengine.models.ForexCFDExchange import ForexCFDExchange
+    def test_exchange_created_as_cfd(self):
+        from qengine.models.CFDExchange import CFDExchange
         ex, _ = _setup_forex_env()
-        assert isinstance(ex, ForexCFDExchange)
+        assert isinstance(ex, CFDExchange)
         _teardown()
 
     def test_starting_balance(self):
@@ -125,8 +121,9 @@ class TestCostEngine:
     def test_charge_spread_deducts_from_balance(self):
         ex, _ = _setup_forex_env(balance=10_000)
         ex.set_spread('EUR-USD', 0.00015)  # 1.5 pips
-        cost = ex.charge_spread('EUR-USD', 1.0)
-        # 0.00015 * 100000 * 1.0 = 15.0
+        # charge_spread takes qty in units (not lots). 1 lot = 100,000 units.
+        cost = ex.charge_spread('EUR-USD', 100_000)
+        # 0.00015 * 100000 = 15.0
         assert cost == pytest.approx(15.0)
         assert ex.wallet_balance == pytest.approx(10_000 - 15.0)
         _teardown()
@@ -134,8 +131,9 @@ class TestCostEngine:
     def test_charge_spread_jpy_pair(self):
         ex, _ = _setup_forex_env(symbol='USD-JPY')
         ex.set_spread('USD-JPY', 0.02)  # 2 pips for JPY
-        cost = ex.charge_spread('USD-JPY', 1.0)
-        # 0.02 * 100000 * 1.0 = 2000 (JPY)
+        # charge_spread takes qty in units (not lots). 1 lot = 100,000 units.
+        cost = ex.charge_spread('USD-JPY', 100_000)
+        # 0.02 * 100000 = 2000 (JPY)
         assert cost == pytest.approx(2000.0)
         _teardown()
 
@@ -148,8 +146,10 @@ class TestCostEngine:
     def test_swap_rates_charged(self):
         ex, _ = _setup_forex_env(balance=10_000)
         ex.set_swap_rates('EUR-USD', -5.0, -3.0)  # swap rates per lot per year
-        cost = ex.charge_overnight_swap('EUR-USD', 1.0, 'long')
-        assert cost > 0
+        # charge_overnight_swap takes qty in units (not lots). 1 lot = 100,000 units.
+        cost = ex.charge_overnight_swap('EUR-USD', 100_000, 'long')
+        # rate=-5.0, lots=1.0, cost = -5.0 * 1 * multiplier / 252 → negative (charge)
+        assert cost < 0  # negative means charged
         assert ex.wallet_balance < 10_000
         _teardown()
 
@@ -477,7 +477,21 @@ def client():
     ENV_VALUES['PASSWORD'] = 'test-password-9'
     import qengine
     from qengine.services.web import fastapi_app
+    from qengine.services.auth_dependency import get_current_user, CurrentUser
     from fastapi.testclient import TestClient
+
+    # Override the auth dependency to avoid DB access in tests
+    def _mock_current_user():
+        return CurrentUser(
+            id='test-user',
+            role='admin',
+            username='admin',
+            effective_user_id='test-user',
+            is_admin=True,
+            is_impersonating=False,
+        )
+    fastapi_app.dependency_overrides[get_current_user] = _mock_current_user
+
     return TestClient(fastapi_app)
 
 
@@ -515,7 +529,7 @@ class TestAPIEndpoints:
         assert resp.status_code == 200
         data = resp.json()['data']
         assert data['name'] == 'OANDA'
-        assert data['type'] == 'forex_cfd'
+        assert data['type'] == 'cfd'
         assert data['default_leverage'] >= 1
 
     def test_broker_asset_classes(self, client, auth_header):
@@ -539,7 +553,7 @@ class TestAPIEndpoints:
         assert resp.status_code == 200
         types = resp.json()['data']
         ids = [t['id'] for t in types]
-        assert 'forex_cfd' in ids
+        assert 'cfd' in ids
         assert 'futures' in ids
         assert 'spot' in ids
 
@@ -643,7 +657,7 @@ class TestCrossPhaseConsistency:
         """exchange_service should handle all types in broker_info."""
         from qengine.info import broker_info
         from qengine.modes.utils import get_exchange_type
-        valid_types = {'forex_cfd', 'cfd', 'multi_asset', 'futures', 'spot'}
+        valid_types = {'cfd', 'futures', 'spot'}
         for name, info in broker_info.items():
             ex_type = get_exchange_type(name)
             assert ex_type in valid_types, f'{name} has unhandled type {ex_type}'
@@ -782,7 +796,7 @@ class TestWeekendGapHandling:
 class TestFrontendIntegrity:
     @staticmethod
     def _static_path(*parts):
-        return os.path.join(os.path.dirname(__file__), '..', 'qengine', 'static', 'te', *parts)
+        return os.path.join(os.path.dirname(__file__), '..', 'qengine', 'static', *parts)
 
     @staticmethod
     def _frontend_path(*parts):
@@ -800,7 +814,7 @@ class TestFrontendIntegrity:
         assert any(f.endswith('.css') for f in assets)
 
     def test_all_views_exist(self):
-        expected = ['Dashboard.vue', 'Brokers.vue', 'Instruments.vue', 'Strategies.vue',
+        expected = ['Dashboard.vue', 'Brokers.vue', 'Strategies.vue',
                     'Backtest.vue', 'LiveTrade.vue', 'ImportData.vue', 'LLMStudio.vue',
                     'Settings.vue', 'Login.vue']
         for v in expected:

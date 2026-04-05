@@ -6,7 +6,7 @@ from qengine.config import config, reset_config
 from qengine.enums import exchanges, brokers, sides, timeframes
 from qengine.factories import candles_from_close_prices
 from qengine.modes import backtest_mode
-from qengine.models.ForexCFDExchange import ForexCFDExchange
+from qengine.models.CFDExchange import CFDExchange
 from qengine.models.Position import Position
 from qengine.core.market_hours import market_hours
 from qengine.core.instruments import instrument_registry
@@ -14,12 +14,19 @@ from qengine.store import store
 from qengine.routes import router
 
 
+@pytest.fixture(autouse=True)
+def _cleanup():
+    yield
+    reset_config()
+    store.reset()
+
+
 # ── Helper to set up forex backtesting ──
 
 def setup_forex_backtest(leverage=30, balance=10_000):
     reset_config()
     config['env']['exchanges'][exchanges.SANDBOX]['balance'] = balance
-    config['env']['exchanges'][exchanges.SANDBOX]['type'] = 'forex_cfd'
+    config['env']['exchanges'][exchanges.SANDBOX]['type'] = 'cfd'
     config['env']['exchanges'][exchanges.SANDBOX]['futures_leverage_mode'] = 'cross'
     config['env']['exchanges'][exchanges.SANDBOX]['futures_leverage'] = leverage
 
@@ -41,10 +48,10 @@ def run_forex_backtest(strategy_name, symbol='EUR-USD', leverage=30, candles_cou
     backtest_mode.run('000', False, {}, exchanges.SANDBOX, routes, [], '2019-04-01', '2019-04-02', candles)
 
 
-# ── 2.1 ForexCFDExchange Model Tests ──
+# ── 2.1 CFDExchange Model Tests ──
 
 def test_forex_exchange_instantiation():
-    """Test that ForexCFDExchange can be instantiated via the backtest engine."""
+    """Test that CFDExchange can be instantiated via the backtest engine."""
     setup_forex_backtest()
     router.initiate([
         {'exchange': exchanges.SANDBOX, 'symbol': 'EUR-USD', 'timeframe': '1m', 'strategy': 'Test19'}
@@ -54,8 +61,8 @@ def test_forex_exchange_instantiation():
     initialize_exchanges_state()
 
     exchange = store.exchanges.storage[exchanges.SANDBOX]
-    assert isinstance(exchange, ForexCFDExchange)
-    assert exchange.type == 'forex_cfd'
+    assert isinstance(exchange, CFDExchange)
+    assert exchange.type == 'cfd'
     assert exchange.default_leverage == 30
     assert exchange.wallet_balance == 10_000
 
@@ -70,7 +77,7 @@ def test_forex_exchange_spread():
     initialize_exchanges_state()
 
     exchange = store.exchanges.storage[exchanges.SANDBOX]
-    assert isinstance(exchange, ForexCFDExchange)
+    assert isinstance(exchange, CFDExchange)
 
     # Default spread should be 2 pips
     default_spread = exchange.get_spread('EUR-USD')
@@ -94,9 +101,9 @@ def test_forex_exchange_charge_spread():
     exchange.set_spread('EUR-USD', 0.0002)  # 2 pips
 
     initial_balance = exchange.wallet_balance
-    # Charge spread for 0.1 lots (qty=0.1, contract_size=100000)
-    # cost = 0.0002 * 100000 * 0.1 = 2.0
-    cost = exchange.charge_spread('EUR-USD', 0.1)
+    # Charge spread for 10,000 units (= 0.1 lots, contract_size=100000)
+    # cost = 0.0002 * 10000 = 2.0
+    cost = exchange.charge_spread('EUR-USD', 10_000)
     assert round(cost, 2) == 2.0
     assert round(exchange.wallet_balance, 2) == round(initial_balance - 2.0, 2)
 
@@ -116,10 +123,10 @@ def test_forex_exchange_swap_rates():
     exchange.set_swap_rates('EUR-USD', swap_long=-0.5, swap_short=0.3)
 
     initial_balance = exchange.wallet_balance
-    # charge_overnight_swap for 0.1 lots long
-    # cost = |(-0.5) * 100000 * 0.1 / 365| = |(-5000) / 365| = ~13.70
-    charge = exchange.charge_overnight_swap('EUR-USD', 0.1, 'long')
-    assert charge > 0
+    # charge_overnight_swap for 10,000 units (0.1 lots) long
+    # lots = 10000 / 100000 = 0.1, swap = -0.5 * 0.1 * 1 / 252 ≈ -0.000198
+    # Negative swap_long means charge (balance decreases)
+    exchange.charge_overnight_swap('EUR-USD', 10_000, 'long')
     assert exchange.wallet_balance < initial_balance
 
 
@@ -143,7 +150,7 @@ def test_forex_exchange_no_swap_when_zero():
 # ── 2.2 Forex Backtest Integration ──
 
 def test_forex_backtest_runs():
-    """Test that a simple backtest runs with forex_cfd exchange type."""
+    """Test that a simple backtest runs with cfd exchange type."""
     run_forex_backtest('Test19')
     # If it gets here without error, it passed
 
@@ -165,9 +172,11 @@ def test_position_pip_pnl():
 
     # Mock exchange
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
+    # In CFD mode, position needs a ticket to be considered open
+    pos.open_ticket('long', 1.0, 1.1000, 0)
 
     # 50 pips profit (1.1050 - 1.1000) / 0.0001
     assert round(pos.pip_pnl, 1) == 50.0
@@ -183,9 +192,10 @@ def test_position_pip_pnl_short():
     pos.exchange_name = exchanges.SANDBOX
 
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
+    pos.open_ticket('short', 1.0, 1.1050, 0)
 
     # 50 pips profit (short: entry - current) / pip_size
     assert round(pos.pip_pnl, 1) == 50.0
@@ -200,9 +210,10 @@ def test_position_pip_pnl_jpy_pair():
     pos.exchange_name = exchanges.SANDBOX
 
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
+    pos.open_ticket('long', 1.0, 150.00, 0)
 
     # 50 pips for JPY pair (0.50 / 0.01)
     assert pos.pip_pnl == 50.0
@@ -217,7 +228,7 @@ def test_position_pip_pnl_closed():
     pos.exchange_name = exchanges.SANDBOX
 
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
 
@@ -229,19 +240,20 @@ def test_position_margin_used():
     pos.symbol = 'EUR-USD'
     pos.entry_price = 1.1000
     pos.current_price = 1.1050
-    pos.qty = 0.1  # 0.1 lots
+    pos.qty = 10_000  # 10,000 units (= 0.1 lots)
     pos.exchange_name = exchanges.SANDBOX
 
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
+    pos.open_ticket('long', 10_000, 1.1000, 0)
 
-    # margin = |qty| * contract_size * entry_price * margin_rate
-    # = 0.1 * 100000 * 1.1000 * 0.0333 = 366.3
+    # CFD margin = gross_exposure * current_price * margin_rate
+    # = 10000 * 1.1050 * 0.0333 ≈ 367.97
     margin = pos.margin_used
     assert margin > 0
-    assert round(margin, 1) == 366.3
+    assert round(margin, 1) == 368.0
 
 
 def test_position_margin_used_closed():
@@ -251,7 +263,7 @@ def test_position_margin_used_closed():
     pos.exchange_name = exchanges.SANDBOX
 
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
 
@@ -264,11 +276,11 @@ def test_position_mode_forex():
     pos.exchange_name = exchanges.SANDBOX
 
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
 
-    assert pos.mode == 'forex_cfd'
+    assert pos.mode == 'cfd'
 
 
 def test_position_leverage_forex():
@@ -277,7 +289,7 @@ def test_position_leverage_forex():
     pos.exchange_name = exchanges.SANDBOX
 
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
 
@@ -289,19 +301,20 @@ def test_position_to_dict_forex():
     pos.symbol = 'EUR-USD'
     pos.entry_price = 1.1000
     pos.current_price = 1.1050
-    pos.qty = 0.1
+    pos.qty = 10_000
     pos.exchange_name = exchanges.SANDBOX
 
     class MockExchange:
-        type = 'forex_cfd'
+        type = 'cfd'
         default_leverage = 30
     pos.exchange = MockExchange()
+    pos.open_ticket('long', 10_000, 1.1000, 0)
 
     d = pos.to_dict
     assert 'pip_pnl' in d
     assert 'margin_used' in d
     assert round(d['pip_pnl'], 1) == 50.0
-    assert d['mode'] == 'forex_cfd'
+    assert d['mode'] == 'cfd'
 
 
 # ── 2.4 Market Hours Tests ──
@@ -397,7 +410,7 @@ def test_minutes_to_close_when_closed():
 
 # ── 2.5 Exchange Service Factory Tests ──
 
-def test_exchange_service_creates_forex_cfd():
+def test_exchange_service_creates_cfd():
     setup_forex_backtest()
     router.initiate([
         {'exchange': exchanges.SANDBOX, 'symbol': 'EUR-USD', 'timeframe': '1m', 'strategy': 'Test19'}
@@ -407,8 +420,8 @@ def test_exchange_service_creates_forex_cfd():
     initialize_exchanges_state()
 
     exchange = store.exchanges.storage[exchanges.SANDBOX]
-    assert isinstance(exchange, ForexCFDExchange)
-    assert exchange.type == 'forex_cfd'
+    assert isinstance(exchange, CFDExchange)
+    assert exchange.type == 'cfd'
 
 
 def test_exchange_service_still_creates_futures():

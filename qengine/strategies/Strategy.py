@@ -9,7 +9,7 @@ import qengine.helpers as jh
 import qengine.services.logger as logger
 from qengine import exceptions
 from qengine.enums import sides, order_submitted_via, order_types
-from qengine.models import ClosedTrade, Order, Route, FuturesExchange, SpotExchange, ForexCFDExchange, Position
+from qengine.models import ClosedTrade, Order, Route, FuturesExchange, SpotExchange, CFDExchange, Position
 from qengine.candle_pipelines import BaseCandlesPipeline
 from qengine.services import metrics
 from qengine.services.broker import Broker
@@ -1376,9 +1376,16 @@ class Strategy(ABC):
         total_pnl = sum(r['pnl'] for r in results)
         if self.position.exchange:
             self.position.exchange.add_realized_pnl(total_pnl)
+        session_exit_reason = meta.get('exit_reason') if meta else None
         for i, r in enumerate(results):
             ticket_meta = dict(meta) if meta else {}
             ticket_meta['leg_index'] = i
+            # Preserve session-level outcome for session grouping
+            if session_exit_reason:
+                ticket_meta['session_exit_reason'] = session_exit_reason
+            # Per-ticket exit reason: winning tickets hit TP/bucket, losing tickets hit SL
+            if session_exit_reason in ('tp_hit', 'bucket_hit'):
+                ticket_meta['exit_reason'] = session_exit_reason if r['pnl'] >= 0 else 'sl_hit'
             closed_trade_service.record_ticket_close(self.position, r['ticket'], price, r['pnl'], meta=ticket_meta)
         self.trades_count += len(results)
         # Reset position state
@@ -1405,10 +1412,11 @@ class Strategy(ABC):
                 except Exception as e:
                     logger.error(f'CFD live: failed to submit broker close order: {e}')
 
-        # Fire pipeline learning hook (before strategy callback so vars are still populated)
-        if self._pipelines and store.closed_trades.trades:
-            closed_trade = store.closed_trades.trades[-1]
-            self._pipelines.on_cycle_end(closed_trade.pnl, self)
+        # Fire pipeline learning hook with TOTAL session PnL (not just the last ticket).
+        # close_all_tickets records one ClosedTrade per ticket — the pipeline needs
+        # the aggregate PnL as its reward signal for Q-learning.
+        if self._pipelines and results:
+            self._pipelines.on_cycle_end(total_pnl, self)
 
         # Fire close callback
         if store.closed_trades.trades:
@@ -1897,7 +1905,7 @@ class Strategy(ABC):
             return 1
         elif type(self.position.exchange) is FuturesExchange:
             return self.position.exchange.futures_leverage
-        elif type(self.position.exchange) is ForexCFDExchange:
+        elif type(self.position.exchange) is CFDExchange:
             return self.position.exchange.default_leverage
         else:
             raise ValueError(f'exchange type not supported: "{self.position.exchange}"')
@@ -2016,7 +2024,6 @@ class Strategy(ABC):
     def is_futures_trading(self) -> bool:
         return self.exchange_type == 'futures'
 
-    @property
     @property
     def is_cfd_trading(self) -> bool:
         return self.exchange_type == 'cfd'

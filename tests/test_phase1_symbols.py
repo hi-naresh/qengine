@@ -155,7 +155,7 @@ def test_base_and_quote_asset_forex():
 
 def test_broker_info_oanda():
     info = broker_info[brokers.OANDA]
-    assert info['type'] == 'forex_cfd'
+    assert info['type'] == 'cfd'
     assert info['fee_model'] == 'spread'
     assert info['settlement_currency'] == 'USD'
     assert 'forex' in info['asset_classes']
@@ -173,7 +173,7 @@ def test_broker_info_ig():
 
 def test_broker_info_ibkr():
     info = broker_info[brokers.IBKR]
-    assert info['type'] == 'multi_asset'
+    assert info['type'] == 'cfd'
     assert info['fee_model'] == 'commission'
     assert info['default_leverage'] == 50
 
@@ -187,7 +187,7 @@ def test_backtesting_exchanges_list():
 
 def test_live_trading_exchanges_list():
     assert brokers.OANDA in live_trading_exchanges
-    assert brokers.OANDA_DEMO not in live_trading_exchanges
+    assert brokers.OANDA_DEMO in live_trading_exchanges
 
 
 # ── 1.5 Config Tests ──
@@ -196,7 +196,7 @@ def test_brokers_in_config():
     assert brokers.OANDA in config['env']['exchanges']
     assert brokers.IG_MARKETS in config['env']['exchanges']
     assert brokers.IBKR in config['env']['exchanges']
-    assert config['env']['exchanges'][brokers.OANDA]['type'] == 'forex_cfd'
+    assert config['env']['exchanges'][brokers.OANDA]['type'] == 'cfd'
     assert config['env']['exchanges'][brokers.IBKR]['futures_leverage'] == 50
 
 

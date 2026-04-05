@@ -480,8 +480,8 @@ class TestErrorHandling:
             )
             mock_post.return_value.raise_for_status = MagicMock()
 
-            order_id = mock_oanda_driver._submit_market_order('EUR-USD', 1000, 1.085, 'buy', False)
-            assert order_id == '500'
+            result = mock_oanda_driver._submit_market_order('EUR-USD', 1000, 1.085, 'buy', False)
+            assert result['order_id'] == '500'
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -646,17 +646,17 @@ class TestAPIDriverRegistration:
         mock_driver.market_order.assert_called_once()
 
 
-class TestForexCFDExchangeModel:
-    """Test the ForexCFDExchange model for live mode."""
+class TestCFDExchangeModel:
+    """Test the CFDExchange model for live mode."""
 
     def _make_exchange(self, balance=10000):
-        from qengine.models.ForexCFDExchange import ForexCFDExchange
-        ex = ForexCFDExchange.__new__(ForexCFDExchange)
+        from qengine.models.CFDExchange import CFDExchange
+        ex = CFDExchange.__new__(CFDExchange)
         ex.name = 'test'
         ex.starting_assets = {'USD': balance}
         ex.assets = {'USD': balance}
         ex.fee_rate = 0.0
-        ex.type = 'forex_cfd'
+        ex.type = 'cfd'
         ex.settlement_currency = 'USD'
         ex.default_leverage = 30
         ex._spread_config = {}

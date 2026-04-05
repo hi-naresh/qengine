@@ -227,6 +227,8 @@ class Position:
 
     @property
     def exchange_type(self) -> str:
+        if self.exchange is None:
+            return 'futures'
         return self.exchange.type
 
     @property

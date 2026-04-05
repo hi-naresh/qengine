@@ -202,7 +202,7 @@ def hedge_sessions() -> List[dict]:
         s['total_fee'] += t.fee
         s['levels'] = max(s['levels'], meta.get('level', 0))
         s['closed_at'] = t.closed_at
-        s['outcome'] = meta.get('exit_reason', s['outcome'])
+        s['outcome'] = meta.get('session_exit_reason', meta.get('exit_reason', s['outcome']))
 
     # Merge per-session stats tracked during simulation
     session_stats = store.app.session_stats

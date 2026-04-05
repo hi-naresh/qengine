@@ -1,0 +1,112 @@
+{
+  "baseline": {
+    "n_cycles": 4293,
+    "n_wins": 2661,
+    "n_busts": 3,
+    "win_rate": 61.98,
+    "bust_rate": 0.07,
+    "net_pnl": 3085.7,
+    "avg_win_pnl": 15.0,
+    "avg_bust_pnl": -881.43,
+    "profit_factor": 1.08,
+    "bust_erase_ratio": 58.8,
+    "avg_level": 0.99,
+    "max_level": 10,
+    "avg_bars": 108.6,
+    "level_dist": {
+      "0": 2162,
+      "1": 1073,
+      "2": 500,
+      "3": 284,
+      "4": 150,
+      "5": 55,
+      "6": 44,
+      "7": 11,
+      "8": 7,
+      "9": 5,
+      "10": 2
+    }
+  },
+  "q_policy": {
+    "n_cycles": 6097,
+    "n_wins": 3115,
+    "n_busts": 2655,
+    "win_rate": 51.09,
+    "bust_rate": 43.55,
+    "net_pnl": 537.5,
+    "avg_win_pnl": 15.0,
+    "avg_bust_pnl": -15.22,
+    "profit_factor": 1.01,
+    "bust_erase_ratio": 1.0,
+    "avg_level": 0.54,
+    "max_level": 9,
+    "avg_bars": 69.1,
+    "level_dist": {
+      "0": 3049,
+      "1": 2888,
+      "2": 113,
+      "3": 24,
+      "4": 11,
+      "5": 7,
+      "6": 3,
+      "7": 1,
+      "9": 1
+    }
+  },
+  "bust_reduction_pct": -62114.3,
+  "n_aborts": 2655,
+  "abort_rate_pct": 43.5,
+  "walk_forward": {
+    "test_baseline": {
+      "n_cycles": 1196,
+      "n_wins": 761,
+      "n_busts": 1,
+      "win_rate": 63.63,
+      "bust_rate": 0.08,
+      "net_pnl": 1780.7,
+      "avg_win_pnl": 15.0,
+      "avg_bust_pnl": -4.3,
+      "profit_factor": 1.18,
+      "bust_erase_ratio": 0.3,
+      "avg_level": 0.95,
+      "max_level": 9,
+      "avg_bars": 119.9,
+      "level_dist": {
+        "0": 616,
+        "1": 299,
+        "2": 146,
+        "3": 67,
+        "4": 34,
+        "5": 16,
+        "6": 10,
+        "7": 3,
+        "8": 2,
+        "9": 3
+      }
+    },
+    "test_q_policy": {
+      "n_cycles": 1648,
+      "n_wins": 839,
+      "n_busts": 769,
+      "win_rate": 50.91,
+      "bust_rate": 46.66,
+      "net_pnl": 409.1,
+      "avg_win_pnl": 15.0,
+      "avg_bust_pnl": -14.92,
+      "profit_factor": 1.03,
+      "bust_erase_ratio": 1.0,
+      "avg_level": 0.52,
+      "max_level": 6,
+      "avg_bars": 80.0,
+      "level_dist": {
+        "0": 831,
+        "1": 778,
+        "2": 35,
+        "3": 2,
+        "5": 1,
+        "6": 1
+      }
+    }
+  },
+  "n_abort_states": 15
+}

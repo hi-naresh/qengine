@@ -432,19 +432,17 @@ class SFPilot(Strategy):
         if not self.vars['cycle_active']:
             return
 
-        current_price = self.price
-
         # Bucket check — take profit when floating PnL hits threshold
         floating = self._session_floating_pnl()
         if floating >= self._bucket_threshold():
             self.vars['current_session_pnl'] = floating
-            # Mark cycle handled before closing (so on_close_position knows it's not an abort)
             self.vars['cycle_active'] = False
-            self.close_all_tickets(current_price, meta=self._session_meta('bucket_hit'))
+            self.close_all_tickets(self.price, meta=self._session_meta('bucket_hit'))
             self._reset_cycle('bucket_hit')
             return
 
-        # Hedge / SL check
+        # Hedge / SL check using high/low — matches real broker behavior.
+        # Real brokers fire STOP orders when price TOUCHES the level.
         hedge_price = self.vars['hedge_trigger_price']
         last_leg = self.vars['legs'][-1] if self.vars['legs'] else None
         if not last_leg:
@@ -454,8 +452,8 @@ class SFPilot(Strategy):
 
         # Max level → stop loss
         if self.vars['level'] + 1 >= self.max_levels:
-            sl_hit = ((last_dir == 'long' and current_price <= hedge_price) or
-                      (last_dir == 'short' and current_price >= hedge_price))
+            sl_hit = ((last_dir == 'long' and self.low <= hedge_price) or
+                      (last_dir == 'short' and self.high >= hedge_price))
             if sl_hit:
                 self.vars['current_session_pnl'] = self._session_floating_pnl()
                 self.vars['cycle_active'] = False
@@ -464,8 +462,8 @@ class SFPilot(Strategy):
             return
 
         # Hedge trigger — add opposing leg
-        hedge_hit = ((last_dir == 'long' and current_price <= hedge_price) or
-                     (last_dir == 'short' and current_price >= hedge_price))
+        hedge_hit = ((last_dir == 'long' and self.low <= hedge_price) or
+                     (last_dir == 'short' and self.high >= hedge_price))
         if hedge_hit:
             self._handle_hedge_trigger(hedge_price)
 
@@ -483,15 +481,20 @@ class SFPilot(Strategy):
         new_dir = 'short' if last_dir == 'long' else 'long'
         new_size = self._size_for_level(level)
 
-        entry_price = self.price
+        entry_price = hedge_price  # exact trigger price, not candle close
         hedge_dist = self.pips_to_price(self.hedge_distance)
 
+        from qengine.enums import sides
         if new_dir == 'long':
             new_hedge = entry_price - hedge_dist
-            self.broker.buy_at_market(new_size)
+            self.broker.api.market_order(
+                self.exchange, self.symbol, abs(new_size), entry_price, sides.BUY, reduce_only=False
+            )
         else:
             new_hedge = entry_price + hedge_dist
-            self.broker.sell_at_market(new_size)
+            self.broker.api.market_order(
+                self.exchange, self.symbol, abs(new_size), entry_price, sides.SELL, reduce_only=False
+            )
 
         self.vars['hedge_trigger_price'] = new_hedge
         self.vars['legs'].append({

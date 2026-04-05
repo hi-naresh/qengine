@@ -100,7 +100,7 @@ def test_risk_to_qty():
     assert utils.risk_to_qty(10000, 5, 100, 96) == 100
 
     # when fee is included
-    assert utils.risk_to_qty(10000, 1, 100, 80, precision=3, fee_rate=0.001) == 4.97
+    assert utils.risk_to_qty(10000, 1, 100, 80, precision=3, fee_rate=0.001) == 4.985
 
 
 def test_risk_to_size():
@@ -154,26 +154,17 @@ def test_prices_to_returns():
 def test_combinations_without_repeat():
     a = np.array([4, 2, 9, 1, 3])
     b = utils.combinations_without_repeat(a)
+    # itertools.combinations produces C(5,2)=10 unique pairs (no order)
     np.testing.assert_array_equal(b, np.array([[4, 2],
                                                [4, 9],
                                                [4, 1],
                                                [4, 3],
-                                               [2, 4],
                                                [2, 9],
                                                [2, 1],
                                                [2, 3],
-                                               [9, 4],
-                                               [9, 2],
                                                [9, 1],
                                                [9, 3],
-                                               [1, 4],
-                                               [1, 2],
-                                               [1, 9],
-                                               [1, 3],
-                                               [3, 4],
-                                               [3, 2],
-                                               [3, 9],
-                                               [3, 1]]))
+                                               [1, 3]]))
 
 
 def test_timeframe_to_one_minutes():

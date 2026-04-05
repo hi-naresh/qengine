@@ -747,7 +747,6 @@ class Surefire(Strategy):
         if jh.is_live() and self.vars.get('broker_orders_set'):
             return
 
-        current_price = self.price
         tp_price = self.vars['tp_price']
         hedge_price = self.vars['hedge_trigger_price']
         last_leg = self.vars['legs'][-1] if self.vars['legs'] else None
@@ -757,23 +756,27 @@ class Surefire(Strategy):
 
         last_dir = last_leg['dir']
 
-        # Check TP hit
+        # Use high/low for trigger detection — matches real broker behavior.
+        # Real brokers fire STOP/LIMIT orders when price TOUCHES the level,
+        # not just when the candle closes past it.
+
+        # Check TP hit (price reached TP level at any point in candle)
         tp_hit = False
-        if last_dir == 'long' and current_price >= tp_price:
+        if last_dir == 'long' and self.high >= tp_price:
             tp_hit = True
-        elif last_dir == 'short' and current_price <= tp_price:
+        elif last_dir == 'short' and self.low <= tp_price:
             tp_hit = True
 
         if tp_hit:
             self._handle_tp_hit(tp_price)
             return
 
-        # At max level: hedge_trigger_price acts as STOP-LOSS (no more hedges possible)
+        # At max level: hedge_trigger_price acts as STOP-LOSS
         if self.vars['level'] + 1 >= self.max_levels:
             sl_hit = False
-            if last_dir == 'long' and current_price <= hedge_price:
+            if last_dir == 'long' and self.low <= hedge_price:
                 sl_hit = True
-            elif last_dir == 'short' and current_price >= hedge_price:
+            elif last_dir == 'short' and self.high >= hedge_price:
                 sl_hit = True
 
             if sl_hit:
@@ -781,9 +784,9 @@ class Surefire(Strategy):
             return
 
         hedge_hit = False
-        if last_dir == 'long' and current_price <= hedge_price:
+        if last_dir == 'long' and self.low <= hedge_price:
             hedge_hit = True
-        elif last_dir == 'short' and current_price >= hedge_price:
+        elif last_dir == 'short' and self.high >= hedge_price:
             hedge_hit = True
 
         if hedge_hit:
@@ -853,11 +856,19 @@ class Surefire(Strategy):
         if new_dir == 'long':
             new_tp = hedge_price + tp_dist
             new_hedge = hedge_price - hedge_dist
-            self.broker.buy_at_market(new_size)
+            # Market order at exact trigger price — broker.buy_at_market() would
+            # fill at candle close instead of the trigger price
+            from qengine.enums import sides
+            self.broker.api.market_order(
+                self.exchange, self.symbol, abs(new_size), hedge_price, sides.BUY, reduce_only=False
+            )
         else:
             new_tp = hedge_price - tp_dist
             new_hedge = hedge_price + hedge_dist
-            self.broker.sell_at_market(new_size)
+            from qengine.enums import sides
+            self.broker.api.market_order(
+                self.exchange, self.symbol, abs(new_size), hedge_price, sides.SELL, reduce_only=False
+            )
 
         self.vars['tp_price'] = new_tp
         self.vars['hedge_trigger_price'] = new_hedge

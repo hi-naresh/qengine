@@ -108,6 +108,17 @@ def record_ticket_close(position: Position, ticket, exit_price: float, pnl: floa
         trade.sell_orders.append(np.array([entry_qty, ticket.entry_price]))
         trade.buy_orders.append(np.array([entry_qty, exit_price]))
 
+    # Estimate spread cost for this ticket so the fee column isn't zero.
+    # The spread was already embedded in the entry price by order_service,
+    # so this is for reporting only — PnL already reflects the cost.
+    try:
+        e = store.exchanges.get_exchange(position.exchange_name)
+        if hasattr(e, 'get_spread'):
+            spread = e.get_spread(position.symbol)
+            trade._estimated_spread_cost = spread * entry_qty
+    except Exception:
+        pass
+
     trade.meta = {'cfd_ticket': True, 'ticket_id': ticket.id}
     if meta:
         trade.meta.update(meta)

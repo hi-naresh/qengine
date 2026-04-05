@@ -61,10 +61,9 @@ _BROKER_GROUPS = {
 def get_brokers_grouped(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return brokers grouped (demo+live under one entry) with connection status."""
 
-    # Load saved broker credentials from DB
-    from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
-    uid = ADMIN_SETTINGS_ID if current_user.is_admin else current_user.effective_user_id
-    settings = _get_settings_from_db(uid)
+    # Load saved broker credentials (admins share + .env fallback, users have own)
+    from qengine.controllers.settings_controller import _get_settings_with_fallback
+    settings = _get_settings_with_fallback(current_user, section='brokers')
     saved_brokers = settings.get('brokers', {})
 
     result = []
@@ -111,9 +110,8 @@ def get_brokers_grouped(current_user: CurrentUser = Depends(get_current_user)) -
 def get_connected_brokers(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Return only broker environments that have API keys configured."""
 
-    from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
-    uid = ADMIN_SETTINGS_ID if current_user.is_admin else current_user.effective_user_id
-    settings = _get_settings_from_db(uid)
+    from qengine.controllers.settings_controller import _get_settings_with_fallback
+    settings = _get_settings_with_fallback(current_user, section='brokers')
     saved_brokers = settings.get('brokers', {})
 
     result = []

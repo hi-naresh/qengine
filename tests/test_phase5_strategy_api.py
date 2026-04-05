@@ -14,7 +14,7 @@ from qengine.core.market_hours import MarketHours
 def _setup_forex_env():
     reset_config()
     config['env']['exchanges'][exchanges.SANDBOX]['balance'] = 10_000
-    config['env']['exchanges'][exchanges.SANDBOX]['type'] = 'forex_cfd'
+    config['env']['exchanges'][exchanges.SANDBOX]['type'] = 'cfd'
     config['env']['exchanges'][exchanges.SANDBOX]['futures_leverage_mode'] = 'cross'
     config['env']['exchanges'][exchanges.SANDBOX]['futures_leverage'] = 30
 

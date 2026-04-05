@@ -352,7 +352,6 @@ def test_ai_generate_request_model():
     req = AIGenerateAndSaveRequestJson(description='EMA crossover')
     assert req.asset_class == 'forex'
     assert req.symbol == 'EUR-USD'
-    assert req.timeframe == '1h'
     assert req.save is True
 
 
@@ -400,12 +399,12 @@ def test_exchange_types_endpoint_unauthorized(test_client):
 def test_frontend_build_exists():
     """Built frontend files should exist in static/te."""
     assert os.path.exists(os.path.join(
-        os.path.dirname(__file__), '..', 'qengine', 'static', 'te', 'index.html'
+        os.path.dirname(__file__), '..', 'qengine', 'static', 'index.html'
     ))
 
 
 def test_frontend_assets_exist():
-    assets_dir = os.path.join(os.path.dirname(__file__), '..', 'qengine', 'static', 'te', 'assets')
+    assets_dir = os.path.join(os.path.dirname(__file__), '..', 'qengine', 'static', 'assets')
     assert os.path.isdir(assets_dir)
     files = os.listdir(assets_dir)
     assert any(f.endswith('.js') for f in files)
@@ -415,7 +414,7 @@ def test_frontend_assets_exist():
 def test_frontend_source_views_exist():
     """All view files should exist in frontend/src/views."""
     views_dir = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'src', 'views')
-    expected = ['Dashboard.vue', 'Brokers.vue', 'Instruments.vue', 'Strategies.vue',
+    expected = ['Dashboard.vue', 'Brokers.vue', 'Strategies.vue',
                 'Backtest.vue', 'LiveTrade.vue', 'ImportData.vue', 'LLMStudio.vue',
                 'Settings.vue', 'Login.vue']
     for view in expected:

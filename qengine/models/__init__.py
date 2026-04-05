@@ -1,7 +1,7 @@
 from .Candle import Candle
 from .ClosedTrade import ClosedTrade
 from .Exchange import Exchange
-from .ForexCFDExchange import ForexCFDExchange
+from .CFDExchange import CFDExchange
 from .FuturesExchange import FuturesExchange
 from .Order import Order
 from .Position import Position, CFDTicket

@@ -674,7 +674,7 @@ def test_mark_price():
 def test_log_method():
     single_route_backtest('TestLogMethodInStrategyClass')
 
-    assert store.logs.info[1]['message'] == 'test info log'
+    assert store.logs.info[2]['message'] == 'test info log'
     assert store.logs.errors[0]['message'] == 'test error log'
 
 

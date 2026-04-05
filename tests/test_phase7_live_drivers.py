@@ -144,7 +144,7 @@ def test_ibkr_live_driver_instantiation():
     driver = IBKRLiveDriver()
     assert driver.name == brokers.IBKR
     assert driver.is_demo is False
-    assert driver._port == 7497
+    assert driver._port == 7496
     assert driver.is_configured is False
 
 
