@@ -325,29 +325,50 @@ def main():
     log.info(f"Candles shape: {candles.shape}")
 
     # 3. Compute feature matrix for regime classification
-    log.info("Computing feature matrix...")
+    cache_path = RESULTS_DIR / 'feature_matrix_cache.npz'
     pool = FeaturePool()
-    feature_matrix, _ = compute_feature_matrix(candles, pool)
+    if cache_path.exists():
+        log.info("Loading cached feature matrix...")
+        cached = np.load(str(cache_path), allow_pickle=True)
+        feature_matrix = cached['matrix']
+        if feature_matrix.shape[0] != len(candles):
+            log.info("Cache shape mismatch, recomputing...")
+            feature_matrix, _ = compute_feature_matrix(candles, pool)
+    else:
+        log.info("Computing feature matrix...")
+        feature_matrix, _ = compute_feature_matrix(candles, pool)
 
     # 4. Generate EMA 8/21 crossover signals
     log.info("Generating EMA 8/21 crossover signals...")
     signals = generate_crossover_signals(candles)
     log.info(f"Total crossover signals: {len(signals)}")
 
-    # 5. Assign signals to leaf islands
+    # 5. Assign signals to leaf islands (vectorized)
     log.info("Assigning signals to regime islands...")
     island_signals = {str(lid): [] for lid in tree.leaf_ids}
-    unassigned = 0
 
-    for sig in signals:
-        fv = feature_matrix[sig['idx']]
-        if np.any(np.isnan(fv[selected_indices])):
+    sig_indices = np.array([s['idx'] for s in signals])
+    sig_features = feature_matrix[sig_indices]
+
+    # Filter out NaN rows
+    valid_sigs = ~np.any(np.isnan(sig_features[:, selected_indices]), axis=1)
+    valid_features = sig_features[valid_sigs]
+
+    # Batch classify
+    labels, confs = tree.classify_batch(valid_features)
+
+    # Assign back
+    valid_idx = 0
+    unassigned = 0
+    for i, sig in enumerate(signals):
+        if not valid_sigs[i]:
             unassigned += 1
             continue
-        lid, conf = tree.classify_best(fv)
+        lid = int(labels[valid_idx])
         sig['regime_id'] = lid
-        sig['confidence'] = conf
+        sig['confidence'] = float(confs[valid_idx])
         island_signals[str(lid)].append(sig)
+        valid_idx += 1
 
     log.info(f"Unassigned (NaN features): {unassigned}")
     for lid in tree.leaf_ids:

@@ -235,6 +235,54 @@ class RegimeTree:
         best_lid = max(probs, key=probs.get)
         return best_lid, probs[best_lid]
 
+    def classify_batch(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Vectorized classification of N samples at once.
+
+        Args:
+            X: (n_samples, n_features) feature matrix
+
+        Returns:
+            (labels, confidences) — both shape (n_samples,)
+            labels[i] = best leaf id, confidences[i] = probability of that leaf
+        """
+        n = len(X)
+        X_macro = X[:, self._macro_features]
+        X_sub = X[:, self._sub_features]
+
+        # Batch macro probabilities: (n, n_macro)
+        macro_proba = self._macro.predict_proba(X_macro)
+
+        # Batch sub probabilities per macro: cache (n, n_sub_k) for each macro k
+        sub_probas = {}
+        for m, sc in self._subs.items():
+            sub_probas[m] = sc.predict_proba(X_sub)  # (n, n_sub_components_m)
+
+        # Build leaf probability matrix: (n, n_leaves)
+        leaf_ids = sorted(self._leaf_map.keys())
+        lid_to_col = {lid: c for c, lid in enumerate(leaf_ids)}
+        n_leaves = len(leaf_ids)
+        leaf_proba = np.zeros((n, n_leaves), dtype=np.float64)
+
+        for lid, (m, s) in self._leaf_map.items():
+            col = lid_to_col[lid]
+            sp = sub_probas[m]
+            if s < sp.shape[1]:
+                leaf_proba[:, col] = macro_proba[:, m] * sp[:, s]
+            else:
+                leaf_proba[:, col] = macro_proba[:, m]
+
+        # Normalize rows
+        row_sums = leaf_proba.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1.0
+        leaf_proba /= row_sums
+
+        # Best leaf per sample
+        best_cols = np.argmax(leaf_proba, axis=1)
+        labels = np.array([leaf_ids[c] for c in best_cols], dtype=int)
+        confidences = leaf_proba[np.arange(n), best_cols]
+
+        return labels, confidences
+
     # -- properties ---------------------------------------------------------
 
     @property

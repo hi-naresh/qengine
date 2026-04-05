@@ -218,10 +218,23 @@ def main():
     candles = concat_candles(warmup, trading)
     log.info(f"Candles shape: {candles.shape}")
 
-    # 2. Compute full feature pool
-    log.info("Computing feature matrix...")
+    # 2. Compute full feature pool (cached to disk for speed on re-runs)
+    cache_path = RESULTS_DIR / 'feature_matrix_cache.npz'
     pool = FeaturePool()
-    feature_matrix, feature_names = compute_feature_matrix(candles, pool)
+    if cache_path.exists():
+        log.info("Loading cached feature matrix...")
+        cached = np.load(str(cache_path), allow_pickle=True)
+        feature_matrix = cached['matrix']
+        feature_names = list(cached['names'])
+        if feature_matrix.shape[0] != len(candles):
+            log.info("Cache shape mismatch, recomputing...")
+            cache_path.unlink()
+            feature_matrix, feature_names = compute_feature_matrix(candles, pool)
+            np.savez(str(cache_path), matrix=feature_matrix, names=np.array(feature_names))
+    else:
+        log.info("Computing feature matrix...")
+        feature_matrix, feature_names = compute_feature_matrix(candles, pool)
+        np.savez(str(cache_path), matrix=feature_matrix, names=np.array(feature_names))
     log.info(f"Feature matrix: {feature_matrix.shape}, features: {feature_names}")
 
     # 3. Create proxy target (top 20% NATR = positive class)
@@ -277,14 +290,12 @@ def main():
     tree.save(tree_path)
     log.info(f"Regime tree saved to {tree_path}")
 
-    # 7. Classify all samples — build regime profiles
+    # 7. Classify all samples — build regime profiles (vectorized)
     log.info("Classifying all samples and building regime profiles...")
     all_labels = np.full(len(feature_matrix), -1, dtype=int)
-    for i in range(len(feature_matrix)):
-        if not valid_mask[i]:
-            continue
-        lid, conf = tree.classify_best(feature_matrix[i])
-        all_labels[i] = lid
+    X_valid = feature_matrix[valid_mask]
+    labels_valid, _confs = tree.classify_batch(X_valid)
+    all_labels[valid_mask] = labels_valid
 
     # Build profiles: mean feature value per regime per selected feature
     profiles = {}
