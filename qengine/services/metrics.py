@@ -6,7 +6,7 @@ import pandas as pd
 
 import qengine.helpers as jh
 from qengine.models import ClosedTrade
-from qengine.models.ForexCFDExchange import ForexCFDExchange
+from qengine.models.CFDExchange import CFDExchange
 from qengine.core.instruments import instrument_registry
 from qengine.store import store
 from qengine.routes import router
@@ -15,7 +15,7 @@ from qengine.routes import router
 def _get_annualization_periods() -> int:
     """Return the correct annualization period based on the trading exchange type."""
     trading_exchange = store.exchanges.trading_exchange
-    if isinstance(trading_exchange, ForexCFDExchange):
+    if isinstance(trading_exchange, CFDExchange):
         return 252  # ~252 trading days for forex/commodity/stock
     return 365  # crypto: 24/7
 
@@ -47,7 +47,7 @@ def candles_info(candles_array: np.ndarray) -> dict:
     if trading_exchange.type == 'futures':
         info['leverage'] = trading_exchange.futures_leverage
         info['leverage_mode'] = trading_exchange.futures_leverage_mode
-    elif isinstance(trading_exchange, ForexCFDExchange):
+    elif isinstance(trading_exchange, CFDExchange):
         info['leverage'] = trading_exchange.default_leverage
         info['leverage_mode'] = 'fixed'
 
@@ -66,13 +66,16 @@ def routes(routes_arr: list) -> list:
 def _prepare_returns(returns, rf=0.0, periods=252):
     """
     Helper function to prepare returns data by converting to pandas Series and
-    adjusting for risk-free rate if provided
+    adjusting for risk-free rate if provided.
+    Drops NaN values (pct_change produces NaN in first row).
     """
-    if rf != 0:
-        returns = returns - (rf / periods)
-
     if isinstance(returns, pd.DataFrame):
         returns = returns[returns.columns[0]]
+
+    returns = returns.dropna()
+
+    if rf != 0:
+        returns = returns - (rf / periods)
 
     return returns
 
@@ -158,6 +161,8 @@ def calmar_ratio(returns):
 
     # Calculate Max Drawdown using cumulative returns
     cum_returns = (1 + returns).cumprod()
+    # Prepend 1.0 as starting point (same fix as max_drawdown)
+    cum_returns = pd.concat([pd.Series([1.0]), cum_returns]).reset_index(drop=True)
     rolling_max = cum_returns.expanding(min_periods=1).max()
     drawdown = cum_returns / rolling_max - 1
     max_dd = abs(drawdown.min())
@@ -173,7 +178,14 @@ def max_drawdown(returns):
     """
     Calculates the maximum drawdown
     """
+    returns = returns.dropna()
+    if len(returns) < 1:
+        return pd.Series([0.0])
     prices = (returns + 1).cumprod()
+    # Prepend 1.0 as the starting point so the first return is measured
+    # against the initial balance. Without this, a single-entry cumprod
+    # divides by itself → ratio=1.0 → 0% drawdown even when losing money.
+    prices = pd.concat([pd.Series([1.0]), prices]).reset_index(drop=True)
     result = (prices / prices.expanding(min_periods=0).max()).min() - 1
 
     # Always convert to pandas Series
@@ -325,7 +337,7 @@ def conditional_value_at_risk(returns, sigma=1, confidence=0.95):
 def _calculate_forex_metrics(trades_list: List[ClosedTrade]) -> dict:
     """Calculate forex-specific metrics: pips, swap costs, spread costs."""
     trading_exchange = store.exchanges.trading_exchange
-    if not isinstance(trading_exchange, ForexCFDExchange):
+    if not isinstance(trading_exchange, CFDExchange):
         return {}
 
     total_pips = 0.0
@@ -452,16 +464,18 @@ def trades(trades_list: List[ClosedTrade], daily_balance: list, final: bool = Tr
     if len(winning_trades) == 0:
         win_rate = 0
     else:
-        win_rate = len(winning_trades) / (len(losing_trades) + len(winning_trades))
+        # Use total trades as denominator (not just wins+losses) so breakeven trades
+        # don't inflate win rate
+        win_rate = len(winning_trades) / total_completed
 
-    # calculate the long and short win rate
+    # calculate the long and short win rate (denominator = all trades of that type)
     winning_longs = df.loc[(df['type'] == 'long') & (df['PNL'] > 0)]
-    losing_longs = df.loc[(df['type'] == 'long') & (df['PNL'] < 0)]
-    win_rate_longs = len(winning_longs) / (len(losing_longs) + len(winning_longs)) if (len(losing_longs) + len(winning_longs)) > 0 else 0
+    total_longs = len(df.loc[df['type'] == 'long'])
+    win_rate_longs = len(winning_longs) / total_longs if total_longs > 0 else 0
 
     winning_shorts = df.loc[(df['type'] == 'short') & (df['PNL'] > 0)]
-    losing_shorts = df.loc[(df['type'] == 'short') & (df['PNL'] < 0)]
-    win_rate_shorts = len(winning_shorts) / (len(losing_shorts) + len(winning_shorts)) if (len(losing_shorts) + len(winning_shorts)) > 0 else 0
+    total_shorts = len(df.loc[df['type'] == 'short'])
+    win_rate_shorts = len(winning_shorts) / total_shorts if total_shorts > 0 else 0
 
     longs_count = len(df.loc[df['type'] == 'long'])
     shorts_count = len(df.loc[df['type'] == 'short'])

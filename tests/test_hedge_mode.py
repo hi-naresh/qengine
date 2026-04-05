@@ -84,7 +84,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'algo-bot
 
 
 def _make_surefire():
-    from strategies.SurefireRecovery import SurefireRecovery
+    try:
+        from strategies.SurefireRecovery import SurefireRecovery
+    except ModuleNotFoundError:
+        pytest.skip('SurefireRecovery strategy not available')
     return SurefireRecovery()
 
 
@@ -168,7 +171,10 @@ def test_surefire_zone_top_crossing():
 
 def test_surefire_should_long_only_when_flat_and_no_legs():
     """should_long=True when direction=0 (buy), flat, no legs."""
-    from strategies.SurefireRecovery import SurefireRecovery
+    try:
+        from strategies.SurefireRecovery import SurefireRecovery
+    except ModuleNotFoundError:
+        pytest.skip('SurefireRecovery strategy not available')
 
     class _FlatPosition:
         is_close = True
@@ -191,7 +197,10 @@ def test_surefire_should_long_only_when_flat_and_no_legs():
 
 def test_surefire_should_short_always_false():
     """should_short=False when initial_direction=0 (buy), True when direction=1 (sell)."""
-    from strategies.SurefireRecovery import SurefireRecovery
+    try:
+        from strategies.SurefireRecovery import SurefireRecovery
+    except ModuleNotFoundError:
+        pytest.skip('SurefireRecovery strategy not available')
 
     class _FlatPosition:
         is_close = True
@@ -211,7 +220,10 @@ def test_surefire_should_short_always_false():
 
 def test_surefire_next_qty_multiplier():
     """Each successive leg uses lot_multiplier^n sizing."""
-    from strategies.SurefireRecovery import SurefireRecovery
+    try:
+        from strategies.SurefireRecovery import SurefireRecovery
+    except ModuleNotFoundError:
+        pytest.skip('SurefireRecovery strategy not available')
     s = SurefireRecovery()
     with patch.object(type(s), 'balance',  new_callable=PropertyMock, return_value=10000.0), \
          patch.object(type(s), 'leverage', new_callable=PropertyMock, return_value=1), \

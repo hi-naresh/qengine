@@ -1,29 +1,37 @@
 import pytest
 
-from qengine.exceptions import InsufficientMargin
+from qengine.store import store
 from qengine.testing_utils import single_route_backtest
 
 
 def test_negative_balance_validation_for_futures_market():
     """
     The initial account balance for USDT is 10_000. So trying to spend 10_001
-    should throw InsufficientMargin exception
+    should throw InsufficientMargin exception.
+
+    Since backtest_mode now catches InsufficientMargin internally and stops the
+    backtest early (logging a margin call), we verify that no trades were opened
+    when leverage is insufficient, and trades succeed with sufficient leverage.
     """
-    # (MARKET order)
-    with pytest.raises(InsufficientMargin):
-        single_route_backtest('TestInsufficientMargin1', is_futures_trading=True, leverage=1)
+    # (MARKET order) — insufficient margin at 1x leverage, backtest stops early with no fills
+    single_route_backtest('TestInsufficientMargin1', is_futures_trading=True, leverage=1)
+    assert len(store.closed_trades.trades) == 0, \
+        "Expected no trades with insufficient margin at 1x leverage"
+
     # but with more leverage, it should work
     single_route_backtest('TestInsufficientMargin1', is_futures_trading=True, leverage=2)
 
     # (LIMIT order)
-    with pytest.raises(InsufficientMargin):
-        single_route_backtest('TestInsufficientMargin2', is_futures_trading=True, leverage=1)
+    single_route_backtest('TestInsufficientMargin2', is_futures_trading=True, leverage=1)
+    assert len(store.closed_trades.trades) == 0, \
+        "Expected no trades with insufficient margin at 1x leverage"
     # but with more leverage, it should work
     single_route_backtest('TestInsufficientMargin2', is_futures_trading=True, leverage=2)
 
     # short-version (STOP order)
-    with pytest.raises(InsufficientMargin):
-        single_route_backtest('TestInsufficientMargin3', is_futures_trading=True, leverage=1)
+    single_route_backtest('TestInsufficientMargin3', is_futures_trading=True, leverage=1)
+    assert len(store.closed_trades.trades) == 0, \
+        "Expected no trades with insufficient margin at 1x leverage"
     # but with more leverage, it should work
     single_route_backtest('TestInsufficientMargin3', is_futures_trading=True, leverage=2)
 

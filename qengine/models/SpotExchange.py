@@ -84,10 +84,13 @@ class SpotExchange(Exchange):
 
         base_asset = jh.base_asset(order.symbol)
 
+        from qengine.config import config
+        fee = self.fee_rate if config.get('app', {}).get('cost_model', True) else 0
+
         # buy order
         if order.side == sides.BUY:
             # asset's balance is increased by the amount of the order's qty after fees are deducted
-            self.assets[base_asset] = sum_floats(self.assets[base_asset], abs(order.qty) * (1 - self.fee_rate))
+            self.assets[base_asset] = sum_floats(self.assets[base_asset], abs(order.qty) * (1 - fee))
         # sell order
         else:
             current_balance = self.assets[base_asset]
@@ -99,7 +102,7 @@ class SpotExchange(Exchange):
 
             # settlement currency's balance is increased by the amount of the order's qty after fees are deducted
             self.assets[self.settlement_currency] = sum_floats(
-                self.assets[self.settlement_currency], (order_qty * order.price) * (1 - self.fee_rate)
+                self.assets[self.settlement_currency], (order_qty * order.price) * (1 - fee)
             )
             # now reduce base asset's balance by the amount of the order's qty
             self.assets[base_asset] = subtract_floats(self.assets[base_asset], order_qty)

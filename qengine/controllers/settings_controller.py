@@ -22,6 +22,75 @@ def _settings_uid(current_user) -> str:
     return current_user.effective_user_id
 
 
+def _get_env_settings() -> dict:
+    """Build settings dict from .env file as fallback when DB has no stored settings."""
+    import os
+    from qengine.services.env import ENV_VALUES
+
+    def _env(key):
+        return os.environ.get(key, '') or ENV_VALUES.get(key, '')
+
+    settings = {}
+
+    # LLM: check for API keys in .env
+    gemini_key = _env('GEMINI_API_KEY')
+    anthropic_key = _env('ANTHROPIC_API_KEY')
+    openai_key = _env('OPENAI_API_KEY')
+    if gemini_key:
+        settings['llm'] = {'provider': 'gemini', 'api_key': gemini_key, 'model': _env('LLM_MODEL') or 'gemini-2.5-flash', 'temperature': 0.3}
+    elif anthropic_key:
+        settings['llm'] = {'provider': 'anthropic', 'api_key': anthropic_key, 'model': _env('LLM_MODEL') or 'claude-sonnet-4-6', 'temperature': 0.3}
+    elif openai_key:
+        settings['llm'] = {'provider': 'openai', 'api_key': openai_key, 'model': _env('LLM_MODEL') or 'gpt-4o', 'temperature': 0.3}
+
+    # Brokers: check for API keys in .env
+    brokers = {}
+    oanda_key = _env('OANDA_API_KEY')
+    if oanda_key:
+        is_demo = 'fxpractice' in _env('OANDA_API_URL').lower() or not _env('OANDA_API_URL')
+        broker_id = 'OANDA Demo' if is_demo else 'OANDA'
+        brokers[broker_id] = {'api_key': oanda_key, 'account_id': _env('OANDA_ACCOUNT_ID'), 'api_secret': ''}
+
+    ig_key = _env('IG_API_KEY')
+    if ig_key:
+        is_demo = _env('IG_DEMO') != 'false'  # default to demo
+        broker_id = 'IG Markets Demo' if is_demo else 'IG Markets'
+        brokers[broker_id] = {
+            'api_key': ig_key,
+            'api_secret': _env('IG_PASSWORD'),
+            'account_id': _env('IG_USERNAME'),
+            'additional_fields': {'ig_account_id': _env('IG_ACCOUNT_ID')},
+        }
+
+    if brokers:
+        settings['brokers'] = brokers
+
+    return settings
+
+
+def _get_settings_with_fallback(current_user, section: str = None) -> dict:
+    """Load settings for the user.
+
+    Admins: shared DB (ADMIN_SETTINGS_ID) → .env fallback.
+    Regular users: their own DB only (no admin/env fallback — they configure their own).
+    """
+    uid = _settings_uid(current_user)
+    settings = _get_settings_from_db(uid)
+
+    # Only admins get .env fallback (regular users must configure their own)
+    if current_user.is_admin:
+        env_settings = _get_env_settings()
+        if section:
+            if not settings.get(section) and env_settings.get(section):
+                settings[section] = env_settings[section]
+        else:
+            for key in ('brokers', 'llm'):
+                if not settings.get(key) and env_settings.get(key):
+                    settings[key] = env_settings[key]
+
+    return settings
+
+
 class BrokerSettingsRequestJson(BaseModel):
     broker: str
     api_key: str = ''
@@ -84,8 +153,7 @@ def _save_settings_to_db(data: dict, user_id: str) -> None:
 @router.get("/brokers")
 def get_broker_settings(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get all saved broker configurations (keys are masked)."""
-    uid = _settings_uid(current_user)
-    settings = _get_settings_from_db(uid)
+    settings = _get_settings_with_fallback(current_user, section='brokers')
     broker_settings = settings.get('brokers', {})
 
     # Mask sensitive fields
@@ -148,8 +216,7 @@ def delete_broker_settings(broker_id: str, current_user: CurrentUser = Depends(g
 @router.get("/llm")
 def get_llm_settings(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get LLM configuration (key masked)."""
-    uid = _settings_uid(current_user)
-    settings = _get_settings_from_db(uid)
+    settings = _get_settings_with_fallback(current_user, section='llm')
     llm_conf = settings.get('llm', {})
 
     return JSONResponse({
@@ -207,8 +274,7 @@ def delete_llm_settings(current_user: CurrentUser = Depends(get_current_user)) -
 @router.get("/all")
 def get_all_settings(current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get all application settings."""
-    uid = _settings_uid(current_user)
-    settings = _get_settings_from_db(uid)
+    settings = _get_settings_with_fallback(current_user)
 
     # Mask sensitive data
     result = {
@@ -245,8 +311,7 @@ class BacktestSettingsRequestJson(BaseModel):
 @router.get("/backtest/{broker_id}")
 def get_backtest_settings(broker_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get backtest cost/randomness settings for a specific broker."""
-    uid = _settings_uid(current_user)
-    settings = _get_settings_from_db(uid)
+    settings = _get_settings_with_fallback(current_user, section='backtest_brokers')
     bt_all = settings.get('backtest_brokers', {})
     bt = bt_all.get(broker_id, settings.get('backtest', _default_backtest_settings()))
     return JSONResponse({'data': bt}, status_code=200)
@@ -330,9 +395,9 @@ def test_broker_connection(
     api_secret = request_json.api_secret
     additional_fields = request_json.additional_fields or {}
 
-    # If no credentials provided, use stored ones for retest
+    # If no credentials provided, use stored ones for retest (with admin fallback)
     if not api_key:
-        settings = _get_settings_from_db(_settings_uid(current_user))
+        settings = _get_settings_with_fallback(current_user, section='brokers')
         stored = settings.get('brokers', {}).get(broker, {})
         api_key = stored.get('api_key', '')
         api_secret = api_secret or stored.get('api_secret', '')
@@ -355,12 +420,22 @@ def test_llm_connection(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> JSONResponse:
     """Test LLM provider connection with provided credentials."""
+    provider = request_json.provider
+    api_key = request_json.api_key
+    model = request_json.model
+
+    # If no API key provided, use stored one for retest (with admin fallback)
+    if not api_key:
+        settings = _get_settings_with_fallback(current_user, section='llm')
+        llm_conf = settings.get('llm', {})
+        api_key = llm_conf.get('api_key', '')
+        if not provider:
+            provider = llm_conf.get('provider', '')
+        if not model:
+            model = llm_conf.get('model', '')
+
     try:
-        result = _test_llm(
-            request_json.provider,
-            request_json.api_key,
-            request_json.model,
-        )
+        result = _test_llm(provider, api_key, model)
         return JSONResponse({'data': result}, status_code=200)
     except Exception as e:
         return JSONResponse({
@@ -531,54 +606,79 @@ def _test_broker(broker: str, api_key: str, api_secret: str, account_id: str, ad
 def _test_llm(provider: str, api_key: str, model: str = None) -> dict:
     """Test LLM provider connection. Returns {connected, error, details}."""
 
+    if not api_key:
+        return {'connected': False, 'error': 'API key is required', 'details': {}}
+
     if provider == 'gemini':
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        mdl = model or 'gemini-2.5-flash'
-        response = client.models.generate_content(
-            model=mdl,
-            contents='Reply with exactly: CONNECTION_OK',
-            config={'temperature': 0, 'max_output_tokens': 20},
-        )
-        text = (response.text or '').strip()
-        return {
-            'connected': True,
-            'error': None,
-            'details': {'provider': 'gemini', 'model': mdl, 'response': text or 'OK'},
-        }
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            mdl = model or 'gemini-2.5-flash'
+            response = client.models.generate_content(
+                model=mdl,
+                contents='Reply with exactly: CONNECTION_OK',
+                config={'temperature': 0, 'max_output_tokens': 20},
+            )
+            text = (response.text or '').strip()
+            return {
+                'connected': True,
+                'error': None,
+                'details': {'provider': 'gemini', 'model': mdl, 'response': text or 'OK'},
+            }
+        except Exception as e:
+            err = str(e)
+            if 'API_KEY_INVALID' in err or '400' in err or 'invalid' in err.lower():
+                return {'connected': False, 'error': 'Invalid API key', 'details': {'provider': 'gemini'}}
+            return {'connected': False, 'error': f'Gemini error: {err}', 'details': {'provider': 'gemini'}}
 
     elif provider == 'anthropic':
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        mdl = model or 'claude-sonnet-4-6'
-        response = client.messages.create(
-            model=mdl,
-            max_tokens=20,
-            temperature=0,
-            messages=[{'role': 'user', 'content': 'Reply with exactly: CONNECTION_OK'}],
-        )
-        text = (response.content[0].text if response.content else '') or ''
-        return {
-            'connected': True,
-            'error': None,
-            'details': {'provider': 'anthropic', 'model': mdl, 'response': text.strip() or 'OK'},
-        }
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            mdl = model or 'claude-sonnet-4-6'
+            response = client.messages.create(
+                model=mdl,
+                max_tokens=20,
+                temperature=0,
+                messages=[{'role': 'user', 'content': 'Reply with exactly: CONNECTION_OK'}],
+            )
+            text = (response.content[0].text if response.content else '') or ''
+            return {
+                'connected': True,
+                'error': None,
+                'details': {'provider': 'anthropic', 'model': mdl, 'response': text.strip() or 'OK'},
+            }
+        except Exception as e:
+            err = str(e)
+            if 'authentication' in err.lower() or '401' in err:
+                return {'connected': False, 'error': 'Invalid API key', 'details': {'provider': 'anthropic'}}
+            if 'rate' in err.lower() or '429' in err:
+                return {'connected': False, 'error': 'Rate limited - try again in a moment', 'details': {'provider': 'anthropic'}}
+            return {'connected': False, 'error': f'Anthropic error: {err}', 'details': {'provider': 'anthropic'}}
 
     elif provider == 'openai':
-        import openai
-        client = openai.OpenAI(api_key=api_key)
-        mdl = model or 'gpt-4o'
-        response = client.chat.completions.create(
-            model=mdl,
-            temperature=0,
-            max_tokens=20,
-            messages=[{'role': 'user', 'content': 'Reply with exactly: CONNECTION_OK'}],
-        )
-        text = (response.choices[0].message.content if response.choices else '') or ''
-        return {
-            'connected': True,
-            'error': None,
-            'details': {'provider': 'openai', 'model': mdl, 'response': text.strip() or 'OK'},
-        }
+        try:
+            import openai
+            client = openai.OpenAI(api_key=api_key)
+            mdl = model or 'gpt-4o'
+            response = client.chat.completions.create(
+                model=mdl,
+                temperature=0,
+                max_tokens=20,
+                messages=[{'role': 'user', 'content': 'Reply with exactly: CONNECTION_OK'}],
+            )
+            text = (response.choices[0].message.content if response.choices else '') or ''
+            return {
+                'connected': True,
+                'error': None,
+                'details': {'provider': 'openai', 'model': mdl, 'response': text.strip() or 'OK'},
+            }
+        except Exception as e:
+            err = str(e)
+            if 'authentication' in err.lower() or '401' in err or 'Incorrect API key' in err:
+                return {'connected': False, 'error': 'Invalid API key', 'details': {'provider': 'openai'}}
+            if 'rate' in err.lower() or '429' in err:
+                return {'connected': False, 'error': 'Rate limited - try again in a moment', 'details': {'provider': 'openai'}}
+            return {'connected': False, 'error': f'OpenAI error: {err}', 'details': {'provider': 'openai'}}
 
     return {'connected': False, 'error': f'Unknown provider: {provider}', 'details': {}}

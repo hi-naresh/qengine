@@ -6,9 +6,8 @@ class EntryGate:
     """
     Blocks strategy entries when danger score exceeds a percentile threshold.
 
-    Maintains a rolling window of recent danger scores and computes the
-    threshold as the Nth percentile. When the current danger exceeds this
-    threshold, entry is blocked.
+    Maintains a rolling window of recent danger scores with an incrementally
+    maintained sorted list for O(log n) threshold lookups.
 
     Usage:
         gate = EntryGate({'percentile': 75, 'window': 500})
@@ -22,37 +21,35 @@ class EntryGate:
         self.window_size = config.get('window', 500)
         self.enabled = config.get('enabled', True)
         self._scores = deque(maxlen=self.window_size)
-        self._sorted_cache = []
-        self._cache_dirty = True
+        self._sorted = []  # incrementally maintained sorted list
         self._threshold = float('inf')  # allow everything until enough data
 
     def observe(self, score: float):
-        """Feed a danger score (call every candle)."""
+        """Feed a danger score (call every candle). O(log n) via bisect."""
+        # If window is full, remove the oldest score from sorted list
+        if len(self._scores) == self.window_size:
+            old = self._scores[0]
+            idx = bisect.bisect_left(self._sorted, old)
+            if idx < len(self._sorted) and self._sorted[idx] == old:
+                self._sorted.pop(idx)
         self._scores.append(score)
-        self._cache_dirty = True
-
-    def _recompute_threshold(self):
-        if not self._scores or len(self._scores) < 10:
+        bisect.insort(self._sorted, score)
+        # Recompute threshold inline
+        n = len(self._sorted)
+        if n < 10:
             self._threshold = float('inf')
-            return
-        self._sorted_cache = sorted(self._scores)
-        idx = int(len(self._sorted_cache) * self.percentile / 100.0)
-        idx = min(idx, len(self._sorted_cache) - 1)
-        self._threshold = self._sorted_cache[idx]
-        self._cache_dirty = False
+        else:
+            idx = min(int(n * self.percentile / 100.0), n - 1)
+            self._threshold = self._sorted[idx]
 
     def should_allow(self, score: float) -> bool:
         """Returns True if entry is allowed (danger below threshold)."""
         if not self.enabled:
             return True
-        if self._cache_dirty:
-            self._recompute_threshold()
         return score < self._threshold
 
     @property
     def current_threshold(self) -> float:
-        if self._cache_dirty:
-            self._recompute_threshold()
         return self._threshold
 
     @property

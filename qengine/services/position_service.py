@@ -216,7 +216,10 @@ def on_executed_order(position: Position, order: Order) -> None:
 
         # For CFD, spread is already embedded in entry fill price
         # (applied in order_service), so no separate fee charge needed.
-        if position.exchange and position.exchange.type == 'futures':
+        # Only charge fees when cost model is enabled.
+        from qengine.config import config
+        cost_model_enabled = config.get('app', {}).get('cost_model', True)
+        if cost_model_enabled and position.exchange and position.exchange.type == 'futures':
             position.exchange.charge_fee(qty * price)
 
         # ── CFD mode: independent tickets ──

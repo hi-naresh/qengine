@@ -1302,7 +1302,7 @@
                             {{ formatMetric(t.pnl || t.PNL) }}
                           </td>
                           <td class="py-1.5 px-2" :class="sessionOutcomeClass(t.meta?.exit_reason)">
-                            {{ t.meta?.exit_reason === 'tp_hit' ? 'TP' : t.meta?.exit_reason === 'bucket_hit' ? 'Bucket' : t.meta?.exit_reason === 'max_levels' ? 'Bust' : t.meta?.exit_reason === 'sl_hit' ? 'SL (Hedge)' : '-' }}
+                            {{ sessionOutcomeLabel(t.meta?.exit_reason) }}
                           </td>
                           <td class="py-1.5 px-2 text-surface-500">{{ t.holding_period || '-' }}</td>
                         </tr>
@@ -2045,7 +2045,7 @@
                             {{ formatMetric(t.pnl || t.PNL) }}
                           </td>
                           <td class="py-1.5 px-2" :class="sessionOutcomeClass(t.meta?.exit_reason)">
-                            {{ t.meta?.exit_reason === 'tp_hit' ? 'TP' : t.meta?.exit_reason === 'bucket_hit' ? 'Bucket' : t.meta?.exit_reason === 'max_levels' ? 'Bust' : t.meta?.exit_reason === 'sl_hit' ? 'SL (Hedge)' : '-' }}
+                            {{ sessionOutcomeLabel(t.meta?.exit_reason) }}
                           </td>
                           <td class="py-1.5 px-2 text-surface-500">{{ t.holding_period || '-' }}</td>
                         </tr>
@@ -2885,7 +2885,8 @@ function toggleSession(sessionNum) {
 
 function sessionOutcomeClass(outcome) {
   if (outcome === 'tp_hit' || outcome === 'bucket_hit') return 'text-green-400'
-  if (outcome === 'max_levels') return 'text-red-400'
+  if (outcome === 'max_levels' || outcome === 'max_level_sl') return 'text-red-400'
+  if (outcome === 'abort' || outcome === 'pipeline_abort') return 'text-amber-400'
   return 'text-surface-400'
 }
 
@@ -2894,7 +2895,9 @@ function sessionOutcomeLabel(outcome) {
   if (outcome === 'bucket_hit') return 'Bucket Hit'
   if (outcome === 'max_levels') return 'Max Levels'
   if (outcome === 'max_level_sl') return 'Max Level SL'
-  if (outcome === 'terminated') return 'Terminated'
+  if (outcome === 'sl_hit') return 'SL Hit'
+  if (outcome === 'abort') return 'Abort'
+  if (outcome === 'terminated' || outcome === 'terminate') return 'Terminated'
   if (outcome === 'pipeline_abort') return 'Pipeline Abort'
   if (outcome === 'standalone') return 'Single'
   return outcome || '-'
@@ -3066,7 +3069,7 @@ useWebSocket((msg) => {
     } else if (event === 'backtest.exception') {
       comparisonRunning.value = false
       comparisonProgress.value = 0
-      comparisonError.value = data?.error || 'Baseline comparison failed'
+      comparisonError.value = cleanErrorMessage(data?.error || 'Baseline comparison failed')
     } else if (event === 'backtest.termination') {
       comparisonRunning.value = false
       comparisonProgress.value = 0
@@ -3208,7 +3211,7 @@ useWebSocket((msg) => {
   } else if (event === 'backtest.pipeline_stats') {
     pipelineStats.value = data
   } else if (event === 'backtest.exception') {
-    error.value = data?.error || 'Backtest failed'
+    error.value = cleanErrorMessage(data?.error || 'Backtest failed')
     errorTrace.value = data?.traceback || ''
     running.value = false
     progress.value = { current: 0, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
@@ -3273,7 +3276,7 @@ function _handleCachedWsEvent(wsId, event, data, taskId) {
   } else if (event === 'backtest.general_info') {
     snap.generalInfo = data
   } else if (event === 'backtest.exception') {
-    snap.error = data?.error || 'Backtest failed'
+    snap.error = cleanErrorMessage(data?.error || 'Backtest failed')
     snap.errorTrace = data?.traceback || ''
     snap.running = false
     snap.progress = { ...emptyProgress }
@@ -3438,7 +3441,7 @@ function buildSessionsFromTrades(tradesList) {
     s.total_fee += (t.fee || 0)
     s.levels = Math.max(s.levels, t.meta?.level || 0)
     s.closed_at = t.closed_at
-    s.outcome = t.meta?.exit_reason || s.outcome
+    s.outcome = t.meta?.session_exit_reason || t.meta?.exit_reason || s.outcome
   }
   const result = Object.keys(map).sort((a, b) => a - b).map(k => {
     const s = map[k]
@@ -3456,6 +3459,16 @@ function buildSessionsFromTrades(tradesList) {
     })
   })
   return result
+}
+
+function cleanErrorMessage(raw) {
+  if (!raw) return 'Backtest failed'
+  // Strip exception class prefix like "CandlesNotFound: " or "ParserMatchError: "
+  let msg = raw.replace(/^\w+Error:\s*|^Candles\w+:\s*/i, '')
+  // If message is a Python dict repr like "{'message': '...'}", extract the message value
+  const dictMatch = msg.match(/['"]message['"]\s*:\s*['"](.+?)['"]/)
+  if (dictMatch) msg = dictMatch[1]
+  return msg
 }
 
 function formatKey(key) {
@@ -4028,6 +4041,16 @@ function renderEquityChart(el, data) {
 
 // ── Actions ──
 async function runBacktest() {
+  // Validate dates before submitting
+  if (!form.value.startDate || !form.value.endDate) {
+    error.value = 'Both start date and end date are required.'
+    return
+  }
+  if (form.value.startDate >= form.value.endDate) {
+    error.value = 'End date must be after start date.'
+    return
+  }
+
   const strategy = form.value.routes[0]?.strategy || 'Backtest'
   const symbol = form.value.routes[0]?.symbol || ''
   _updateActiveWsTab({ label: `${strategy} ${symbol}`.trim(), running: true, hasResults: false })

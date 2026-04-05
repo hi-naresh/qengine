@@ -356,12 +356,150 @@ Regime detection: GMM with BIC (retrain monthly)
 Config switching: Per-regime optimized params
 ```
 
-### Next Steps for Pipeline
+### 30. Practical Sizing with Real Capital
 
-1. **Confidence score service** — real-time NATR + ADX + ER composite
-2. **Vol filter** — hard gate on NATR to avoid low-vol death zone
-3. **Regime detector** — GMM classification (retrain monthly on 5yr window)
-4. **Config switcher** — map regime to optimal sizing/hedge/TP
-5. **Position sizer** — geometric with practical exposure caps
-6. **Risk monitor** — track recent PF; pause if PF < 1.0 over 50+ cycles
-7. **Multi-instrument** — test on GBP-USD, USD-JPY to diversify regime risk
+**Question**: What can you actually trade with real money?
+
+**Max affordable levels** (bust DD < 20% of account, base = 1 micro lot):
+
+| Curve | Factor | $5K | $10K | $25K | $50K | $100K |
+|---|---|---|---|---|---|---|
+| geometric | x1.5 | 10L | 10L | 12L | 12L | 12L |
+| geometric | x2.0 | 6L | 6L | 8L | 10L | 10L |
+| sqrt | x2.0 | 10L | 12L | 12L | 12L | 12L |
+| fibonacci | x2.0 | 8L | 10L | 12L | 12L | 12L |
+
+**Simulated 5yr returns** (micro lot base, h=15p, tp=15p):
+
+| Account | Best Config | ROI | MaxDD | PF | Bust Recovery |
+|---|---|---|---|---|---|
+| **$10K** | fibo x2.0 10L | 3.1% | 15.4% | 1.08 | 59 wins |
+| **$50K** | geom x2.0 10L | 4.5% | 17.7% | 2.10 | 456 wins |
+| **$100K** | geom x2.0 10L | 2.2% | 9.5% | 2.10 | 456 wins |
+
+**Bust recovery** (wins needed to recover 1 bust):
+
+| Config | 6L | 8L | 10L |
+|---|---|---|---|
+| sqrt x2.0 | 12 | 23 | 35 |
+| geometric x2.0 | 41 | 159 | **456** |
+| fibonacci x2.0 | 12 | 31 | 59 |
+
+**Critical findings**:
+- Geometric x2.0 at 10L needs **456 wins to recover 1 bust** — extremely fragile
+- Geometric x2.0 at 6L on $10K gives **negative ROI** (too few levels to win)
+- Fibonacci x2.0 at 10L is the practical sweet spot: 59 wins recovery, 3.1% ROI, 15% DD
+- sqrt x2.0 is safest: 12L on $10K, only 23 wins recovery at 8L
+- Real ROI on micro lots is **modest** (1-4.5% over 5 years). Need larger base or leverage scaling.
+
+**Verdict**: Geometric sizing's theoretical edge vanishes under capital constraints. Fibonacci at 10 levels is the practical optimum for $10K+. Scale base lot up as equity grows.
+
+---
+
+### 33. Validate ALL Gates on 2024-2025
+
+**Question**: Do the gates actually work on recent data, or just on historical?
+
+**Walk-forward test**: Train thresholds on 2020-2023, test on 2024-2025.
+
+| Strategy | Test PF | Test Bust% | Kept% | vs Baseline |
+|---|---|---|---|---|
+| **baseline** | 1.15 | 0.08% | 100% | — |
+| dm_only | 1.18 | 0.08% | 63% | +3% PF |
+| natr_p20 | 1.15 | 0.08% | 100% | 0% |
+| conf_0.4 | 1.19 | 0.08% | 85% | +3% PF |
+| conf_0.5 | **1.21** | **0.00%** | 35% | +5% PF, zero busts |
+| **combined** (DM+NATR+conf) | **1.22** | 0.08% | 62% | **+6% PF** |
+
+**NATR vol filter by percentile cutoff**:
+
+| Cutoff | Train PF | Test PF | Verdict |
+|---|---|---|---|
+| p10 | 1.04 | 1.15 | WORKS |
+| p20 | 1.04 | 1.15 | WORKS |
+| p30 | 1.06 | 1.18 | WORKS |
+| p40 | 1.07 | 1.13 | FAILS |
+| p50 | 1.10 | 1.08 | FAILS |
+
+**DM gate generalization**: train PF=1.11 → test PF=1.18 (ratio=1.06, generalizes well)
+
+**Critical findings**:
+- Gates **DO work on 2024-2025** — 6% PF improvement for combined gate
+- Confidence >= 0.5 achieves **zero busts** on test data (but only 35% of trades)
+- NATR vol filter alone doesn't help (p20 cutoff barely changes anything)
+- The combined gate (DM + NATR + confidence) is the best: PF 1.22, keeps 62%
+- DM_14 generalizes well (test > train) — not overfit
+- Bust rate on 2024-2025 is already very low (0.08%) making bust reduction hard to measure
+
+**Verdict**: Gates provide real but modest improvement on recent data. The strategy is already decent on 2024-2025; gates help at the margin.
+
+---
+
+## Consolidated Verdict (Updated)
+
+### What Works (Ranked by Impact)
+
+1. **Volatility-aware entry**: 3.5x PF improvement. High vol = fast TP. This is THE edge.
+2. **DM_14 entry gate**: 44% bust reduction, PF 1.81, keeps 93% of signals. Generalizes to 2024-2025.
+3. **Per-regime config optimization**: +17% PF on full history (1.30 -> 1.52)
+4. **Combined gate** (DM + confidence): +6% PF on walk-forward test. Validated.
+5. **Fibonacci sizing at 10 levels**: Best practical config for $10K+ accounts
+6. **5-year training window**: Best generalization ratio (1.06)
+
+### What Doesn't Work
+
+1. **Mid-cycle chop handling**: Marginal at best, destructive at worst
+2. **Early abort / level caps**: Converts near-misses into losses
+3. **Geometric sizing in practice**: 456 wins to recover 1 bust at 10L — unusable
+4. **NATR filter alone**: Barely moves the needle on recent data
+5. **Trading in very low vol**: Strategy LOSES money (PF 0.52)
+
+### The Real Insight
+
+The framing was wrong. We were asking "how to avoid chop?" when we should have asked "when does the strategy thrive?"
+
+**Answer**: High-volatility trending markets. In these conditions, TP triggers at L0 or L1 within hours. The correct approach is **offensive** (seek good conditions) not **defensive** (avoid bad ones).
+
+### Practical Reality Check
+
+With $10K on micro lots:
+- **Best realistic config**: Fibonacci x2.0, 10 levels, h=15p, tp=15p
+- **Expected ROI**: ~3% over 5 years (modest)
+- **Max drawdown**: 15%
+- **One bust costs**: 59 winning cycles to recover
+- To make meaningful returns: either scale lot size as equity grows, or diversify across instruments
+
+### Recommended Pipeline Config
+
+```
+Entry signal:     EMA 8/21 crossover
+Entry gate:       DM_14 directional filter (validated on 2024-2025)
+Confidence gate:  NATR + ADX + ER composite >= 0.40
+Sizing:           Fibonacci x2.0 (practical) or sqrt x2.0 (safest)
+Max levels:       10 (for $10K+) or 8 (risk-managed)
+Base lot:         Scale to keep bust DD < 20% of account
+Hedge distance:   15 pips
+Take profit:      15 pips
+Abort:            DO NOT USE (or Q-learning policy from Phase 2)
+Training window:  Last 5 years, retrain monthly
+```
+
+### 31. Q-Learning Mid-Cycle Exit (FAILED)
+
+**Question**: Can a learned policy abort mid-cycle to avoid busts?
+
+**Result**: Catastrophic failure. Q-agent aborts 43.5% of cycles, bust rate goes from 0.07% to 43.55%, PF drops from 1.08 to 1.01. Walk-forward: test PF drops from 1.18 to 1.03.
+
+**Why it fails**: Baseline bust rate is 0.07% — there's almost nothing to predict. The agent can't distinguish "temporarily in drawdown" from "will bust" because 99.93% of drawdowns recover. Every abort is a realized loss.
+
+**One useful insight**: The 15 states where abort IS preferred all share `high_vol + weak_trend` — volatile but directionless. This confirms chop is the enemy, but aborting mid-cycle is still not the answer.
+
+**Verdict**: Mid-cycle abort is conclusively dead. Entry gating is the only viable approach.
+
+---
+
+### Remaining Gaps
+
+1. **Multi-instrument** — only EUR-USD tested. Need data for GBP-USD, USD-JPY, XAU-USD to diversify regime risk.
+2. **Lot scaling** — need adaptive position sizing as equity grows/shrinks.
+3. **Live regime detection** — GMM retrain pipeline for production use.

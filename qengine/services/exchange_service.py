@@ -2,7 +2,7 @@ import qengine.helpers as jh
 from qengine.config import config
 from qengine.exceptions import InvalidConfig
 from qengine.models import SpotExchange, FuturesExchange, Exchange
-from qengine.models.ForexCFDExchange import ForexCFDExchange
+from qengine.models.CFDExchange import CFDExchange
 from qengine.modes.utils import get_exchange_type
 from qengine.store import store
 
@@ -22,7 +22,7 @@ def initialize_exchanges_state() -> None:
                 futures_leverage=config['env']['exchanges'][name]['futures_leverage'],
             )
         elif exchange_type == 'cfd':
-            store.exchanges.storage[name] = ForexCFDExchange(
+            store.exchanges.storage[name] = CFDExchange(
                 name, starting_assets, fee,
                 default_leverage=config['env']['exchanges'][name].get('futures_leverage', 30),
             )
@@ -37,8 +37,8 @@ def initialize_exchanges_state() -> None:
             )
 
 
-def _apply_backtest_cost_settings(exchange: ForexCFDExchange) -> None:
-    """Apply saved backtest cost/randomness settings to a ForexCFD exchange."""
+def _apply_backtest_cost_settings(exchange: CFDExchange) -> None:
+    """Apply saved backtest cost/randomness settings to a CFD exchange."""
     try:
         from qengine.controllers.settings_controller import get_backtest_cost_settings
         bt = get_backtest_cost_settings(exchange.name)

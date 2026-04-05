@@ -200,7 +200,7 @@ def delete_account(json_request: DeleteAccountRequestJson, current_user: Current
         return JSONResponse({'message': 'Incorrect password'}, status_code=400)
 
     # Snapshot stats before deleting data
-    stats = _get_user_stats(current_user.id)
+    stats = _get_user_stats(current_user.id, is_admin=current_user.is_admin)
 
     if json_request.delete_data:
         _delete_user_data(current_user.id)
@@ -252,7 +252,7 @@ def _delete_user_data(user_id: str) -> dict:
     return deleted
 
 
-def _get_user_stats(user_id: str) -> dict:
+def _get_user_stats(user_id: str, is_admin: bool = False) -> dict:
     """Get resource counts for a user."""
     from qengine.services.db import database as _db
     if _db.is_closed():
@@ -295,28 +295,44 @@ def _get_user_stats(user_id: str) -> dict:
     except Exception:
         stats['strategies'] = 0
 
-    # LLM connection check
+    # LLM + Broker connection check from settings
     try:
-        from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
-        settings = _get_settings_from_db(ADMIN_SETTINGS_ID)
+        from qengine.controllers.settings_controller import _get_settings_from_db, _get_env_settings, ADMIN_SETTINGS_ID
+        # Admins share settings (ADMIN_SETTINGS_ID + .env fallback). Regular users have their own.
+        settings_uid = ADMIN_SETTINGS_ID if is_admin else user_id
+        settings = _get_settings_from_db(settings_uid)
+        if is_admin:
+            env_settings = _get_env_settings()
+            if not settings.get('llm') and env_settings.get('llm'):
+                settings['llm'] = env_settings['llm']
+            if not settings.get('brokers') and env_settings.get('brokers'):
+                settings['brokers'] = env_settings['brokers']
+
         llm_conf = settings.get('llm', {})
         stats['llm_configured'] = bool(llm_conf.get('api_key') and llm_conf.get('provider'))
         stats['llm_provider'] = llm_conf.get('provider') if stats['llm_configured'] else None
+
+        broker_settings = settings.get('brokers', {})
+        stats['broker_names'] = [bid for bid, conf in broker_settings.items() if conf.get('api_key')]
+        stats['broker_keys'] = len(stats['broker_names'])
     except Exception:
         stats['llm_configured'] = False
         stats['llm_provider'] = None
+        stats['broker_names'] = []
 
     # Re-open DB connection (_get_settings_from_db closes it in its finally block)
-    from qengine.services.db import database as _db
     if _db.is_closed():
         _db.open_connection()
 
-    # Broker names
+    # Also check legacy ExchangeApiKeys table
     try:
         keys = list(ExchangeApiKeys.select().where(ExchangeApiKeys.user_id == user_id))
-        stats['broker_names'] = list(set(k.exchange_name for k in keys))
+        extra_names = [k.exchange_name for k in keys if k.exchange_name not in stats.get('broker_names', [])]
+        if extra_names:
+            stats['broker_names'] = stats.get('broker_names', []) + list(set(extra_names))
+            stats['broker_keys'] = len(stats['broker_names'])
     except Exception:
-        stats['broker_names'] = []
+        pass
 
     return stats
 
@@ -380,6 +396,9 @@ def list_users(current_user: CurrentUser = Depends(require_admin)):
                 'issues': archived.get('issues', 0),
                 'broker_keys': archived.get('broker_keys', 0),
                 'notification_keys': archived.get('notification_keys', 0),
+                'llm_configured': archived.get('llm_configured', False),
+                'llm_provider': archived.get('llm_provider'),
+                'broker_names': archived.get('broker_names', []),
             }
             d['connections'] = {
                 'llm_configured': archived.get('llm_configured', False),
@@ -390,7 +409,7 @@ def list_users(current_user: CurrentUser = Depends(require_admin)):
             d['quotas'] = []
         else:
             d['quotas'] = [q.to_dict() for q in get_quotas_for_user(str(u.id))]
-            user_stats = _get_user_stats(str(u.id))
+            user_stats = _get_user_stats(str(u.id), is_admin=(u.role == 'admin'))
             d['stats'] = {
                 'backtest_sessions': user_stats['backtest_sessions'],
                 'live_sessions': user_stats['live_sessions'],
@@ -400,6 +419,9 @@ def list_users(current_user: CurrentUser = Depends(require_admin)):
                 'issues': user_stats['issues'],
                 'broker_keys': user_stats['broker_keys'],
                 'notification_keys': user_stats['notification_keys'],
+                'llm_configured': user_stats['llm_configured'],
+                'llm_provider': user_stats['llm_provider'],
+                'broker_names': user_stats['broker_names'],
             }
             d['connections'] = {
                 'llm_configured': user_stats['llm_configured'],

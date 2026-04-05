@@ -478,6 +478,20 @@ async function refreshData() {
       const updated = brokers.value.find(b => b.id === modalBroker.value.id)
       if (updated) modalBroker.value = updated
     }
+
+    // Auto-test configured broker connections
+    const configuredIds = Object.keys(settingsRes.data || {}).filter(id => settingsRes.data[id]?.configured)
+    const tests = configuredIds.map(async (envId) => {
+      if (connectionStatuses.value[envId]?.connected !== undefined) return
+      connectionStatuses.value[envId] = { testing: true }
+      try {
+        const res = await api.testBrokerConnection({ broker: envId, api_key: '', api_secret: '', account_id: '' })
+        connectionStatuses.value[envId] = res.data
+      } catch (e) {
+        connectionStatuses.value[envId] = { connected: false, error: e.message }
+      }
+    })
+    await Promise.all(tests)
   } catch (e) {
     console.error(e)
   }

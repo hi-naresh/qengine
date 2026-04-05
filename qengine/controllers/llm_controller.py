@@ -14,12 +14,18 @@ router = APIRouter(prefix="/llm", tags=["LLM Strategy Engine"])
 
 
 def _ensure_llm_configured(current_user=None):
-    """Configure LLM from the current user's settings (admin uses shared, users use their own)."""
+    """Configure LLM from user's own DB settings. Admins share + get .env fallback."""
     llm_engine.provider = None
     llm_engine.api_key = None
     try:
-        from qengine.controllers.settings_controller import _get_settings_from_db, ADMIN_SETTINGS_ID
-        uid = ADMIN_SETTINGS_ID if (current_user and current_user.is_admin) else (current_user.effective_user_id if current_user else ADMIN_SETTINGS_ID)
+        from qengine.controllers.settings_controller import _get_settings_from_db, _get_env_settings, ADMIN_SETTINGS_ID
+
+        # Determine which DB record to read
+        if current_user and not current_user.is_admin:
+            uid = current_user.effective_user_id
+        else:
+            uid = ADMIN_SETTINGS_ID
+
         settings = _get_settings_from_db(uid)
         llm_conf = settings.get('llm', {})
         if llm_conf.get('api_key') and llm_conf.get('provider'):
@@ -30,6 +36,18 @@ def _ensure_llm_configured(current_user=None):
                 temperature=llm_conf.get('temperature', 0.3),
             )
             return
+
+        # .env fallback only for admins
+        if not current_user or current_user.is_admin:
+            env_settings = _get_env_settings()
+            llm_conf = env_settings.get('llm', {})
+            if llm_conf.get('api_key') and llm_conf.get('provider'):
+                llm_engine.configure(
+                    provider=llm_conf['provider'],
+                    api_key=llm_conf['api_key'],
+                    model=llm_conf.get('model') or None,
+                    temperature=llm_conf.get('temperature', 0.3),
+                )
     except Exception:
         pass
 

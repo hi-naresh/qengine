@@ -84,7 +84,7 @@ def main():
     exchange_name = brokers.OANDA
     config['env']['exchanges'][exchange_name] = {
         'fee': 0,
-        'type': 'forex_cfd',
+        'type': 'cfd',
         'futures_leverage_mode': 'cross',
         'futures_leverage': 30,
         'balance': 10_000,
@@ -128,7 +128,7 @@ def main():
     reset_config()
     config['env']['exchanges'][exchange_name] = {
         'fee': 0,
-        'type': 'forex_cfd',
+        'type': 'cfd',
         'futures_leverage_mode': 'cross',
         'futures_leverage': 30,
         'balance': 10_000,

@@ -453,9 +453,9 @@ def test_notification(json_request: TestNotificationRequestJson,
             chat_id = fields.get('chat_id', '')
             if not token or not chat_id:
                 return JSONResponse({'status': 'error', 'message': 'bot_token and chat_id are required'}, status_code=400)
-            resp = http_requests.get(
+            resp = http_requests.post(
                 f'https://api.telegram.org/bot{token}/sendMessage',
-                params={'chat_id': chat_id, 'text': test_msg},
+                json={'chat_id': chat_id, 'parse_mode': 'Markdown', 'text': test_msg},
                 timeout=10
             )
             if resp.status_code // 100 != 2:
@@ -478,7 +478,11 @@ def test_notification(json_request: TestNotificationRequestJson,
             return JSONResponse({'status': 'error', 'message': f'Unknown driver: {driver}'}, status_code=400)
 
         return JSONResponse({'status': 'success', 'message': 'Test notification sent successfully!'}, status_code=200)
+    except http_requests.exceptions.Timeout:
+        return JSONResponse({'status': 'error', 'message': 'Request timed out - service may be down'}, status_code=400)
     except http_requests.exceptions.ConnectionError:
         return JSONResponse({'status': 'error', 'message': 'Connection error - check your credentials/webhook URL'}, status_code=400)
+    except http_requests.exceptions.RequestException as e:
+        return JSONResponse({'status': 'error', 'message': f'Request failed: {e}'}, status_code=400)
     except Exception as e:
         return JSONResponse({'status': 'error', 'message': str(e)}, status_code=500)

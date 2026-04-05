@@ -82,6 +82,11 @@ class PipelineStats:
         })
         if safe_threshold is not None:
             self.gate_threshold_series.append([timestamp, safe_threshold])
+            if len(self.gate_threshold_series) > 6000:
+                self.gate_threshold_series = self.gate_threshold_series[-5000:]
+        # Cap gate decisions to prevent memory bloat
+        if len(self.gate_decisions) > 1000:
+            self.gate_decisions = self.gate_decisions[-500:]
 
     def record_abort(self, timestamp: float, level: int, danger: float,
                      action: str, q_values: list = None,
@@ -110,6 +115,9 @@ class PipelineStats:
         if pnl_at_abort is not None:
             rec['pnl_at_abort'] = round(pnl_at_abort, 4)
         self.abort_decisions.append(rec)
+        # Cap abort decisions to prevent memory bloat
+        if len(self.abort_decisions) > 1000:
+            self.abort_decisions = self.abort_decisions[-500:]
 
         # Track per-cycle abort activity
         if self._current_cycle:
@@ -132,6 +140,9 @@ class PipelineStats:
 
     def record_danger(self, timestamp: float, score: float):
         self.danger_scores.append([timestamp, round(score, 4)])
+        # Cap to last 5000 entries to prevent unbounded memory growth
+        if len(self.danger_scores) > 6000:
+            self.danger_scores = self.danger_scores[-5000:]
         # Track per-cycle danger range
         if self._current_cycle:
             self._current_cycle['max_danger'] = max(

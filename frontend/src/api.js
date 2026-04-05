@@ -116,6 +116,7 @@ export const api = {
   makePipeline: (name) => request('POST', '/pipelines/make', { name }),
   savePipeline: (name, content) => request('POST', '/pipelines/save', { name, content }),
   deletePipeline: (name) => request('POST', '/pipelines/delete', { name }),
+  trainPipeline: (name, config = {}) => request('POST', '/pipelines/train', { name, config }),
 
   // Strategies
   getStrategies: () => request('GET', '/strategy/all'),

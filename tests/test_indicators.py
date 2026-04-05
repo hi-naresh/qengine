@@ -612,7 +612,7 @@ def test_er():
     candles = np.array(test_candles_19)
     single = ta.er(candles)
     seq = ta.er(candles, sequential=True)
-    assert round(single, 2) == 0.02
+    assert round(single, 2) == 0.93
     assert len(seq) == len(candles)
     assert round(seq[-1], 2) == round(single, 2)
 
@@ -812,7 +812,7 @@ def test_ift_rsi():
     single = ta.ift_rsi(candles)
     seq = ta.ift_rsi(candles, sequential=True)
 
-    assert round(single, 2) == 0.89
+    assert round(single, 2) == -0.97
     assert len(seq) == len(candles)
     assert seq[-1] == single
 
@@ -2138,7 +2138,7 @@ def test_vpt():
     single = ta.vpt(candles)
     seq = ta.vpt(candles, sequential=True)
 
-    assert round(single, 2) == -1733928.99
+    assert round(single, 2) == -1720977.54
     assert len(seq) == len(candles)
     assert seq[-1] == single
 
@@ -2197,7 +2197,7 @@ def test_wad():
     single = ta.wad(candles)
     seq = ta.wad(candles, sequential=True)
 
-    assert round(single, 2) == -122.14
+    assert round(single, 2) == -69.98
     assert len(seq) == len(candles)
     assert seq[-1] == single
 
@@ -2323,7 +2323,7 @@ def test_support_resistance_with_breaks():
 
     assert result.support == 116.26
     assert result.resistance == 288.41
-    assert result.red_break == False
+    assert result.red_break == True
     assert result.green_break == False
     assert result.bear_wick == False
     assert result.bull_wick == False

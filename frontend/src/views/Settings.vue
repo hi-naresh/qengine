@@ -1501,7 +1501,7 @@ const aboutItems = computed(() => {
 })
 
 const coreModifications = [
-  { file: 'models/ForexCFDExchange.py', level: 'new', desc: 'Entire new exchange model: spread-based fees, overnight swaps, margin calculation, leverage, cost settings, order lifecycle management.' },
+  { file: 'models/CFDExchange.py', level: 'new', desc: 'Entire new exchange model: spread-based fees, overnight swaps, margin calculation, leverage, cost settings, order lifecycle management.' },
   { file: 'models/Position.py', level: 'major', desc: 'CFDTicket class added. Ticket management (open/close/sync). PnL, margin, is_open, is_close, to_dict all modified for multi-ticket CFD mode. Gross exposure tracking.' },
   { file: 'strategies/Strategy.py', level: 'major', desc: '20+ new properties (forex/CFD), 7 new methods (pip helpers, ticket management, liquidate), hedge mode, modified callbacks (on_close_position signature), price caching, execution deadlock fix.' },
   { file: 'models/Order.py', level: 'mod', desc: 'New fields: ticket_id (CFD ticket link), vars (exchange metadata JSON), fee (per-order fee tracking).' },
@@ -1953,6 +1953,19 @@ async function refreshBrokerData() {
       const updated = brokerList.value.find(b => b.id === brokerModal.value.id)
       if (updated) brokerModal.value = updated
     }
+    // Auto-test configured broker connections
+    const configuredIds = Object.keys(settingsRes.data || {}).filter(id => settingsRes.data[id]?.configured)
+    const tests = configuredIds.map(async (envId) => {
+      if (brokerConnStatuses.value[envId]?.connected !== undefined) return
+      brokerConnStatuses.value[envId] = { testing: true }
+      try {
+        const res = await api.testBrokerConnection({ broker: envId, api_key: '', api_secret: '', account_id: '' })
+        brokerConnStatuses.value[envId] = res.data
+      } catch (e) {
+        brokerConnStatuses.value[envId] = { connected: false, error: e.message }
+      }
+    })
+    await Promise.all(tests)
   } catch (e) { console.error(e) }
 }
 
@@ -2028,6 +2041,20 @@ async function loadSettings() {
   try {
     const llmRes = await api.getLLMSettings()
     llmSettings.value = llmRes.data
+    // Auto-test LLM connection if configured
+    if (llmRes.data.configured && !llmConnectionStatus.value.connected) {
+      try {
+        const res = await api.testLLMConnection({
+          provider: llmRes.data.provider,
+          api_key: '',
+          model: llmRes.data.model || null,
+          temperature: llmRes.data.temperature,
+        })
+        llmConnectionStatus.value = res.data
+      } catch (e) {
+        llmConnectionStatus.value = { connected: false, error: e.message }
+      }
+    }
   } catch (e) {
     console.error(e)
   }

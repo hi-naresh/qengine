@@ -8,7 +8,7 @@ from qengine import exceptions
 from qengine.config import config
 from qengine.enums import timeframes, order_types
 from qengine.models import Order, Position
-from qengine.models.ForexCFDExchange import ForexCFDExchange
+from qengine.models.CFDExchange import CFDExchange
 from qengine.modes.utils import save_daily_portfolio_balance
 from qengine.candle_pipelines import BaseCandlesPipeline
 from qengine.routes import router
@@ -149,6 +149,12 @@ def _execute_backtest(
             })
         except Exception:
             pass
+
+    # Validate dates before loading candles
+    if not start_date or not finish_date:
+        raise exceptions.CandlesNotFound('Both start date and end date are required.')
+    if start_date >= finish_date:
+        raise exceptions.CandlesNotFound('End date must be after start date.')
 
     # load historical candles
     if candles is None:
@@ -318,34 +324,32 @@ def _execute_backtest(
     
 
 def _handle_sync_no_candles(e, start_date, exchange):
-    # Extract symbol and exchange from error message
-    match = re.search(r"for (.*?) on (.*?)$", str(e))
-    if match:
-        symbol = match.group(1)
-        message = f'Missing trading candles for {symbol} on {exchange} from {start_date}'
-        warmup_num = jh.get_config('env.data.warmup_candles_num', 210)
-        if warmup_num > 0:
-            start_date = jh.date_to_timestamp(start_date) - (
-                warmup_num * jh.timeframe_to_one_minutes(jh.max_timeframe(config['app']['considering_timeframes'])) * 2 * 60_000)
-            start_date = jh.timestamp_to_date(start_date)
-        sync_publish(
-            "missing_candles",
-            {
-                "message": message,
-                "symbol": symbol,
-                "exchange": exchange,
-                "start_date": start_date,
-            },
+    # Extract a clean human-readable message
+    error_str = str(e)
+    # If the exception wraps a dict, extract the 'message' field
+    if error_str.startswith('{') or error_str.startswith("{'"):
+        try:
+            import ast
+            d = ast.literal_eval(error_str)
+            if isinstance(d, dict) and 'message' in d:
+                error_str = d['message']
+        except Exception:
+            pass
+
+    match = re.search(r"for (.*?) on (.*?)[\.\s]", error_str)
+    symbol = match.group(1) if match else 'unknown'
+
+    warmup_num = jh.get_config('env.data.warmup_candles_num', 210)
+    if warmup_num > 0 and 'warmup' not in error_str.lower():
+        message = (
+            f'Not enough candle data for {symbol} on {exchange}. '
+            f'Your start date ({start_date}) needs {warmup_num} warmup candles before it. '
+            f'Try moving your start date forward.'
         )
-        
-        raise exceptions.CandlesNotFound({
-            'message': str(e),
-            'symbol': symbol,
-            'exchange': exchange,
-            'start_date': start_date,
-            'type': 'missing_candles'
-        })
-    raise e
+    else:
+        message = error_str
+
+    raise exceptions.CandlesNotFound(message)
 
 
 def _get_formatted_candles_for_frontend():
@@ -460,25 +464,9 @@ def _handle_missing_candles(exchange: str, symbol: str, start_date: int, message
     """Helper function to handle missing candles scenarios"""
     formatted_date = jh.timestamp_to_date(start_date)
     if message is None:
-        message = f'Missing trading candles for {symbol} on {exchange} from {formatted_date}'
-    
-    sync_publish(
-        "missing_candles",
-        {
-            "message": message,
-            "symbol": symbol,
-            "exchange": exchange,
-            "start_date": formatted_date,
-        },
-    )
-    
-    raise exceptions.CandlesNotFound({
-        'message': message,
-        'symbol': symbol,
-        'exchange': exchange,
-        'start_date': start_date,
-        'type': 'missing_candles'
-    })
+        message = f'No candle data found for {symbol} on {exchange} starting from {formatted_date}. Check that you have imported candles for this date range.'
+
+    raise exceptions.CandlesNotFound(message)
 
 
 def load_candles(start_date: int, finish_date: int) -> Tuple[dict, dict]:
@@ -490,6 +478,8 @@ def load_candles(start_date: int, finish_date: int) -> Tuple[dict, dict]:
     warmup_candles = {}
     for c in config['app']['considering_candles']:
         exchange, symbol = c[0], c[1]
+
+        # First try loading with warmup from before start_date
         warmup_candles_arr, trading_candle_arr = candle_service.get_candles_from_db(
             exchange, symbol, max_timeframe, start_date, finish_date, warmup_num, caching=True, is_for_engine=True
         )
@@ -497,19 +487,27 @@ def load_candles(start_date: int, finish_date: int) -> Tuple[dict, dict]:
         # Ensure that trading_candle_arr is not None or empty
         if trading_candle_arr is None or (isinstance(trading_candle_arr, np.ndarray) and trading_candle_arr.size == 0):
             _handle_missing_candles(
-                exchange, 
-                symbol, 
-                start_date, 
+                exchange,
+                symbol,
+                start_date,
                 f"Missing trading candles for {symbol} on {exchange}"
             )
-
-        # Check that the first trading candle covers the requested start date.
-        if trading_candle_arr[0][0] > start_date:
-            _handle_missing_candles(exchange, symbol, start_date)
 
         # Check that the last trading candle covers the requested finish date.
         if trading_candle_arr[-1][0] < (finish_date - 60_000):
             _handle_missing_candles(exchange, symbol, start_date)
+
+        # If warmup candles are insufficient (empty or too few), carve warmup from the
+        # beginning of trading candles so the backtester can still run.
+        warmup_is_empty = (
+            warmup_candles_arr is None
+            or (isinstance(warmup_candles_arr, np.ndarray) and warmup_candles_arr.ndim == 1)
+            or (isinstance(warmup_candles_arr, np.ndarray) and len(warmup_candles_arr) == 0)
+        )
+        if warmup_num > 0 and warmup_is_empty and len(trading_candle_arr) > warmup_num:
+            # Use first warmup_num trading candles as warmup, rest as actual trading
+            warmup_candles_arr = trading_candle_arr[:warmup_num]
+            trading_candle_arr = trading_candle_arr[warmup_num:]
 
         # add trading candles
         trading_candles[jh.key(exchange, symbol)] = {
@@ -623,8 +621,13 @@ def _step_simulator(
                 p = store.positions.get_position(r.exchange, r.symbol)
                 if p and p.is_open:
                     e = store.exchanges.get_exchange(r.exchange)
-                    if isinstance(e, ForexCFDExchange):
-                        e.charge_overnight_swap(r.symbol, p.qty, p.type)
+                    if isinstance(e, CFDExchange):
+                        # CFD mode: charge swap per ticket (gross exposure), not net qty
+                        if p.is_cfd_mode and p._tickets:
+                            for ticket in p._tickets:
+                                e.charge_overnight_swap(r.symbol, ticket.qty, ticket.type)
+                        else:
+                            e.charge_overnight_swap(r.symbol, p.qty, p.type)
 
         # add candles
         for j in candles:
@@ -679,7 +682,7 @@ def _step_simulator(
             # (skip_market_hours is set by playground mode to ensure synthetic data always trades)
             if not config['app'].get('skip_market_hours', False):
                 e = store.exchanges.get_exchange(r.exchange)
-                if isinstance(e, ForexCFDExchange):
+                if isinstance(e, CFDExchange):
                     is_open = _market_hours.is_market_open(r.symbol, current_timestamp)
                     sym_key = f"{r.exchange}-{r.symbol}"
                     was_open = _prev_market_open.get(sym_key)
@@ -1034,24 +1037,27 @@ def _apply_gap_execution_prices(orders: list, candle: np.ndarray) -> list:
     For forex/CFD: if a stop/limit order's price was gapped past by the candle open,
     adjust the execution price to the open (simulating slippage on weekend gaps).
     candle format: [timestamp, open, close, high, low, volume]
+
+    Saves original price as _pre_gap_price so exchange order tracking can
+    match against the originally submitted price.
     """
     open_price = candle[1]
     for order in orders:
         if not order.is_active:
             continue
         if order.type in (order_types.STOP, 'STOP'):
-            # Buy stop gapped above: execute at open (worse)
             if order.side == 'buy' and open_price > order.price:
+                order._pre_gap_price = order.price
                 order.price = open_price
-            # Sell stop gapped below: execute at open (worse)
             elif order.side == 'sell' and open_price < order.price:
+                order._pre_gap_price = order.price
                 order.price = open_price
         elif order.type in (order_types.LIMIT, 'LIMIT'):
-            # Buy limit gapped below: execute at open (better)
             if order.side == 'buy' and open_price < order.price:
+                order._pre_gap_price = order.price
                 order.price = open_price
-            # Sell limit gapped above: execute at open (better)
             elif order.side == 'sell' and open_price > order.price:
+                order._pre_gap_price = order.price
                 order.price = open_price
     return orders
 
@@ -1063,10 +1069,10 @@ def _simulate_price_change_effect(real_candle: np.ndarray, exchange: str, symbol
     # Weekend gap handling: check if there's a time gap > 2 days from prev candle
     # If so, stop/limit orders that gapped should execute at open price (slippage)
     e = store.exchanges.get_exchange(exchange)
-    _is_forex_exchange = isinstance(e, ForexCFDExchange)
+    _is_cfd_exchange = isinstance(e, CFDExchange)
 
     executing_orders = _get_executing_orders(exchange, symbol, real_candle)
-    if _is_forex_exchange and len(executing_orders) > 0:
+    if _is_cfd_exchange and len(executing_orders) > 0 and config['app'].get('cost_model', True):
         executing_orders = _apply_gap_execution_prices(executing_orders, real_candle)
     if len(executing_orders) > 1:
         # extend the candle shape from (6,) to (1,6)
@@ -1186,7 +1192,7 @@ def _check_for_margin_call(exchange: str, symbol: str) -> None:
     Stop-out triggers when Margin Level < stop_out_level (default 50%)
     """
     e = store.exchanges.get_exchange(exchange)
-    if not isinstance(e, ForexCFDExchange):
+    if not isinstance(e, CFDExchange):
         return
 
     p: Position = store.positions.get_position(exchange, symbol)
@@ -1199,7 +1205,9 @@ def _check_for_margin_call(exchange: str, symbol: str) -> None:
     for key, pos in store.positions.storage.items():
         if pos.is_open:
             equity += pos.pnl
-            total_used_margin += pos.total_cost
+            # Use margin_used which accounts for gross exposure in CFD mode,
+            # not total_cost which uses net qty (near-zero for hedged positions)
+            total_used_margin += pos.margin_used
 
     if total_used_margin <= 0:
         return
@@ -1500,7 +1508,7 @@ def _skip_simulator(
                         p = store.positions.get_position(r.exchange, r.symbol)
                         if p and p.is_open:
                             e = store.exchanges.get_exchange(r.exchange)
-                            if isinstance(e, ForexCFDExchange):
+                            if isinstance(e, CFDExchange):
                                 e.charge_overnight_swap(r.symbol, p.qty, p.type)
 
         last_update_time = _update_progress_bar(progressbar, run_silently, i, candles_step,
@@ -1514,7 +1522,7 @@ def _skip_simulator(
             # Skip strategy execution if market is closed for this symbol
             if not skip_market_hours:
                 e = store.exchanges.get_exchange(r.exchange)
-                if isinstance(e, ForexCFDExchange):
+                if isinstance(e, CFDExchange):
                     is_open = _market_hours.is_market_open(r.symbol, current_timestamp)
                     sym_key = f"{r.exchange}-{r.symbol}"
                     was_open = _prev_market_open.get(sym_key)
@@ -1867,7 +1875,7 @@ def _sort_execution_orders(orders: List[Order], short_candles: np.ndarray):
             for order in included_orders:
                 if order.price == open_price:
                     on_open.append(order)
-                if order.price > open_price:
+                elif order.price > open_price:
                     above_open.append(order)
                 else:
                     below_open.append(order)

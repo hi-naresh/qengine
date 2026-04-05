@@ -13,7 +13,7 @@ from qengine.store import store
 from qengine.core.instruments import instrument_registry
 
 
-class ForexCFDExchange(Exchange):
+class CFDExchange(Exchange):
     """
     Exchange model for forex and CFD trading.
     Key differences from crypto futures:
@@ -77,7 +77,8 @@ class ForexCFDExchange(Exchange):
 
             position = store.positions.get_position(self.name, f"{asset}-{self.settlement_currency}")
             if position and position.is_open:
-                total_margin_used += position.total_cost
+                # Use margin_used which accounts for gross exposure in CFD mode
+                total_margin_used += position.margin_used
                 total_margin_used -= position.pnl
 
             # pending orders margin
@@ -163,21 +164,32 @@ class ForexCFDExchange(Exchange):
         if rate == 0.0:
             return 0.0
 
-        # Swap rate is per-lot (e.g., -$5/lot/night). Convert qty from units to lots.
+        # Swap rate is per-lot annual (e.g., -$5/lot/night = cost, +$3/lot/night = credit).
+        # Negative rate → charge (deduct), Positive rate → credit (add).
+        # Forex swaps are charged per trading day (~252/year). Wednesday nights
+        # incur 3x to cover the weekend (Sat+Sun settlement).
         contract_size = instrument_registry.get_contract_size(symbol)
         lots = abs(qty) / contract_size if contract_size > 0 else abs(qty)
-        swap_charge = abs(rate * lots / 365)
-        self.assets[self.settlement_currency] -= swap_charge
-        self._overnight_charges += swap_charge
+        # Determine day-of-week for triple-Wednesday swap
+        try:
+            import arrow
+            dow = arrow.Arrow.fromtimestamp(jh.now_to_timestamp() / 1000).weekday()
+        except Exception:
+            dow = 2  # default to non-Wednesday
+        multiplier = 3 if dow == 2 else 1  # Wednesday = 3x (covers Sat+Sun)
+        swap_amount = rate * lots * multiplier / 252  # per trading day
+        self.assets[self.settlement_currency] += swap_amount  # add (negative subtracts)
+        self._overnight_charges += abs(swap_amount)  # track total magnitude
+        action = 'Charged' if swap_amount < 0 else 'Credited'
         swap_msg = (
-            f'Charged {round(swap_charge, 4)} overnight swap for {symbol} ({position_type}). '
+            f'{action} {round(abs(swap_amount), 4)} overnight swap for {symbol} ({position_type}). '
             f'Total overnight charges: {round(self._overnight_charges, 2)}'
         )
         if jh.is_backtesting():
             from qengine.store import store
             store.logs.add(swap_msg, 'market')
         logger.info(swap_msg)
-        return swap_charge
+        return swap_amount
 
     def charge_fee(self, amount: float) -> None:
         if jh.is_livetrading():
@@ -233,7 +245,9 @@ class ForexCFDExchange(Exchange):
         base_asset = jh.base_asset(order.symbol)
 
         if not order.reduce_only:
-            order_array = np.array([order.qty, order.price])
+            # Use original price for matching (before gap adjustment may have changed it)
+            match_price = getattr(order, '_pre_gap_price', order.price)
+            order_array = np.array([order.qty, match_price])
             if order.side == sides.BUY:
                 item_index = np.where(np.all(self.buy_orders[base_asset].array == order_array, axis=1))[0]
                 if len(item_index) > 0:

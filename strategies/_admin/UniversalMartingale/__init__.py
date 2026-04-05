@@ -8,7 +8,7 @@ Every aspect is modular and pluggable:
   - Take Profit: fixed pips, ATR, bucket %, risk-reward, trailing, per-level
   - Filters: session, volatility, trend, spread, day-of-week
   - Risk: daily/weekly loss caps, consecutive bust halt, cooldown, abort policies
-  - Position: partial close, breakeven move
+  - Position: partial close, breakeven move, stop-loss hit(full-close)
 
 Use `preset` hyperparameter to load named configurations (raw, surefire_v1,
 surefire_v2, conservative, aggressive, fibonacci, scalper) or set 'custom'
@@ -49,7 +49,8 @@ class UniversalMartingale(Strategy):
             # ── Preset ──
             {'name': 'preset', 'type': 'categorical',
              'options': ['custom', 'raw', 'surefire_v1', 'surefire_v2', 'conservative',
-                         'aggressive', 'fibonacci', 'scalper', 'momentum', 'mean_reversion', 'trend_rider'],
+                         'aggressive', 'fibonacci', 'scalper', 'momentum', 'mean_reversion',
+                         'trend_rider', 'phase3_optimized'],
              'default': 'custom'},
 
             # ── Direction / Entry ──
@@ -171,11 +172,15 @@ class UniversalMartingale(Strategy):
             {'name': 'sizing_factor', 'type': float, 'min': 1.1, 'max': 5.0, 'default': 2.0,
              'depends_on': {'sizing_curve': ['geometric', 'sqrt', 'anti_martingale']}},
             {'name': 'base_size_mode', 'type': 'categorical',
-             'options': ['fixed', 'pct_equity', 'risk_pips'], 'default': 'pct_equity'},
+             'options': ['fixed', 'pct_equity', 'risk_pips', 'capital_aware'], 'default': 'pct_equity'},
             {'name': 'base_size_value', 'type': float, 'min': 0.01, 'max': 100.0, 'default': 1.0},
+            {'name': 'max_bust_dd_pct', 'type': float, 'min': 5, 'max': 50, 'default': 20,
+             'depends_on': {'base_size_mode': ['capital_aware']},
+             'description': 'Max % of account a single bust can lose. Base lot auto-computed from this.'},
 
             # ── Grid / Hedge Structure ──
-            {'name': 'max_levels', 'type': int, 'min': 1, 'max': 20, 'default': 6},
+            {'name': 'max_levels', 'type': int, 'min': 0, 'max': 20, 'default': 6,
+             'description': '0 = no hedging (single entry only), N = allow up to N hedge levels'},
             {'name': 'hedge_mode', 'type': 'categorical',
              'options': ['fixed_pips', 'atr_based', 'percentage', 'fibonacci_levels'],
              'default': 'fixed_pips'},
@@ -205,23 +210,30 @@ class UniversalMartingale(Strategy):
              'options': ['any', 'weekdays_only', 'skip_monday', 'skip_friday', 'skip_mon_fri'],
              'default': 'any'},
             {'name': 'vol_filter', 'type': 'categorical',
-             'options': ['none', 'atr_range'], 'default': 'none'},
+             'options': ['none', 'atr_range', 'natr_min'], 'default': 'none'},
             {'name': 'vol_filter_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
-             'depends_on': {'vol_filter': ['atr_range']}},
+             'depends_on': {'vol_filter': ['atr_range', 'natr_min']}},
             {'name': 'vol_filter_min', 'type': float, 'min': 0.0, 'max': 100.0, 'default': 0.5,
-             'depends_on': {'vol_filter': ['atr_range']}},
+             'depends_on': {'vol_filter': ['atr_range', 'natr_min']}},
             {'name': 'vol_filter_max', 'type': float, 'min': 0.0, 'max': 500.0, 'default': 50.0,
              'depends_on': {'vol_filter': ['atr_range']}},
             {'name': 'trend_filter', 'type': 'categorical',
-             'options': ['none', 'ema_slope', 'adx_gate'], 'default': 'none'},
-            {'name': 'trend_filter_period', 'type': int, 'min': 5, 'max': 50, 'default': 20,
-             'depends_on': {'trend_filter': ['ema_slope', 'adx_gate']}},
-            {'name': 'trend_filter_threshold', 'type': float, 'min': 10, 'max': 50, 'default': 25,
-             'depends_on': {'trend_filter': ['adx_gate']}},
+             'options': ['none', 'ema_slope', 'adx_gate', 'dm_gate'], 'default': 'none'},
+            {'name': 'trend_filter_period', 'type': int, 'min': 5, 'max': 50, 'default': 14,
+             'depends_on': {'trend_filter': ['ema_slope', 'adx_gate', 'dm_gate']}},
+            {'name': 'trend_filter_threshold', 'type': float, 'min': 0, 'max': 50, 'default': 25,
+             'depends_on': {'trend_filter': ['adx_gate', 'dm_gate']}},
             {'name': 'spread_filter', 'type': 'categorical',
              'options': ['none', 'max_spread'], 'default': 'none'},
             {'name': 'spread_filter_max', 'type': float, 'min': 0.1, 'max': 20.0, 'default': 3.0,
              'depends_on': {'spread_filter': ['max_spread']}},
+
+            # ── Confidence Gate (Phase 3 validated) ──
+            {'name': 'confidence_gate', 'type': 'categorical',
+             'options': ['none', 'enabled'], 'default': 'none',
+             'description': 'Composite gate: NATR + ADX + ER. Validated on 2024-2025.'},
+            {'name': 'confidence_threshold', 'type': float, 'min': 0.1, 'max': 0.9, 'default': 0.4,
+             'depends_on': {'confidence_gate': ['enabled']}},
 
             # ── Risk Management ──
             {'name': 'max_daily_loss_pct', 'type': float, 'min': 0, 'max': 20, 'default': 0,
@@ -361,10 +373,13 @@ class UniversalMartingale(Strategy):
         return False
 
     def go_long(self):
+        # Capture balance BEFORE the order fills (spread/margin haven't been deducted yet)
+        self.vars['_pre_entry_balance'] = self.balance
         qty = self._calc_size(0)
         self.buy = qty, self.price
 
     def go_short(self):
+        self.vars['_pre_entry_balance'] = self.balance
         qty = self._calc_size(0)
         self.sell = qty, self.price
 
@@ -377,7 +392,8 @@ class UniversalMartingale(Strategy):
         self.vars['session_dir'] = direction
         self.vars['session_number'] += 1
         self.vars['session_start_bar'] = self.index
-        self.vars['session_start_balance'] = self.balance
+        # Use pre-entry balance (captured before order fill) for accurate session PnL
+        self.vars['session_start_balance'] = self.vars.pop('_pre_entry_balance', self.balance)
 
         leg = {
             'level': 0,
@@ -450,7 +466,10 @@ class UniversalMartingale(Strategy):
         return raw
 
     def _signal_random(self):
-        return np.random.choice(['long', 'short'])
+        # Use candle timestamp as seed component for reproducibility across runs
+        seed = int(self.current_candle[0]) % (2**31)
+        rng = np.random.RandomState(seed)
+        return rng.choice(['long', 'short'])
 
     def _signal_ema_cross(self):
         fast = ta.ema(self.candles, period=self.hp.get('ema_fast', 8))
@@ -675,7 +694,81 @@ class UniversalMartingale(Strategy):
             if hedge_dist <= 0:
                 return self.balance * 0.01
             return self.balance * (val / 100.0) / (hedge_dist * self.pip_size)
+        elif mode == 'capital_aware':
+            return self._capital_aware_base_size()
         return val
+
+    def _capital_aware_base_size(self):
+        """Compute base lot so a full bust loses at most max_bust_dd_pct of account.
+
+        Simulates actual hedged-grid bust loss by computing net PnL of all
+        alternating tickets at the worst-case price (price runs past final level).
+        """
+        max_dd_pct = self.hp.get('max_bust_dd_pct', 20) / 100.0
+        max_dd_dollars = self.balance * max_dd_pct
+        max_levels = self.hp.get('max_levels', 6)
+        curve = self.hp.get('sizing_curve', 'fibonacci')
+        factor = self.hp.get('sizing_factor', 2.0)
+
+        # Compute multiplier at each level (relative to base=1)
+        multipliers = []
+        for lvl in range(max_levels):
+            if curve == 'geometric':
+                multipliers.append(factor ** lvl)
+            elif curve == 'sqrt':
+                multipliers.append((factor ** 0.5) ** lvl)
+            elif curve == 'fibonacci':
+                multipliers.append(_FIB[min(lvl, len(_FIB) - 1)])
+            elif curve == 'linear':
+                multipliers.append(1 + lvl)
+            else:
+                multipliers.append(1.0)
+
+        # Simulate worst-case: price runs one more hedge distance past the last level.
+        # Build alternating legs with base=1 and compute net PnL at bust price.
+        hedge_dist_pips = [self._hedge_distance_pips(lvl) for lvl in range(max_levels)]
+        # Simulated entries relative to 0 (in pips)
+        entries_pips = [0.0]
+        directions = ['long']  # initial direction
+        for lvl in range(1, max_levels):
+            prev_entry = entries_pips[-1]
+            prev_dir = directions[-1]
+            if prev_dir == 'long':
+                entries_pips.append(prev_entry - hedge_dist_pips[lvl - 1])
+                directions.append('short')
+            else:
+                entries_pips.append(prev_entry + hedge_dist_pips[lvl - 1])
+                directions.append('long')
+
+        # Bust price: one more hedge distance past the last entry against last leg
+        last_dir = directions[-1]
+        last_entry = entries_pips[-1]
+        if last_dir == 'long':
+            bust_price_pips = last_entry - hedge_dist_pips[-1]
+        else:
+            bust_price_pips = last_entry + hedge_dist_pips[-1]
+
+        # Compute net loss per base unit at bust price
+        total_loss_per_base = 0
+        for lvl in range(max_levels):
+            size = multipliers[lvl]
+            if directions[lvl] == 'long':
+                pnl = size * (bust_price_pips - entries_pips[lvl])
+            else:
+                pnl = size * (entries_pips[lvl] - bust_price_pips)
+            total_loss_per_base += pnl
+
+        total_loss_per_base = abs(total_loss_per_base)
+        if total_loss_per_base <= 0:
+            return self.balance * 0.001
+
+        # pip_value = pip_size * contract_size (e.g., 0.0001 * 100000 = $10/pip/lot)
+        pip_val = self.pip_size * getattr(self, 'contract_size', 100000)
+        if pip_val <= 0:
+            pip_val = 10.0  # default for standard forex
+
+        base = max_dd_dollars / (total_loss_per_base * pip_val)
+        return max(base, 0.001)
 
     def _calc_size(self, level):
         """Calculate position size for a given hedge level."""
@@ -790,7 +883,10 @@ class UniversalMartingale(Strategy):
         if tp is None:
             return False
 
-        direction = self.vars['session_dir']
+        # TP is computed relative to the LAST leg's direction (via _recalculate_tp),
+        # so the check must use the last leg's direction, not session_dir.
+        last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
+        direction = last_leg['dir'] if last_leg else self.vars['session_dir']
         if direction == 'long':
             return self.high >= tp
         else:
@@ -830,6 +926,10 @@ class UniversalMartingale(Strategy):
         if level >= max_levels:
             return False  # At max level — no more hedges
 
+        # Block hedge if exposure limit would be exceeded
+        if not self._exposure_ok():
+            return False
+
         direction = self.vars['session_dir']
         last_leg = self.vars['legs'][-1]
 
@@ -840,7 +940,13 @@ class UniversalMartingale(Strategy):
             return self.high >= trigger
 
     def _execute_hedge(self):
-        """Add the next hedge level."""
+        """Add the next hedge level.
+
+        Uses market order at the exact trigger price (not candle close).
+        self.buy/self.sell would go through is_price_near() and fill at candle
+        close when trigger ≈ current price. Instead we call the API directly
+        to get immediate execution at the precise trigger.
+        """
         level = self.vars['level'] + 1
         self.vars['level'] = level
 
@@ -849,11 +955,16 @@ class UniversalMartingale(Strategy):
         qty = self._calc_size(level)
         entry = self.vars['hedge_trigger_price']
 
-        # Execute the hedge
+        # Market order at exact trigger price — executes immediately on this candle
+        from qengine.enums import sides
         if new_dir == 'long':
-            self.buy = qty, entry
+            self.broker.api.market_order(
+                self.exchange, self.symbol, abs(qty), entry, sides.BUY, reduce_only=False
+            )
         else:
-            self.sell = qty, entry
+            self.broker.api.market_order(
+                self.exchange, self.symbol, abs(qty), entry, sides.SELL, reduce_only=False
+            )
 
         leg = {
             'level': level,
@@ -888,7 +999,8 @@ class UniversalMartingale(Strategy):
                 self._day_filter_ok() and
                 self._vol_filter_ok() and
                 self._trend_filter_ok() and
-                self._spread_filter_ok())
+                self._spread_filter_ok() and
+                self._confidence_gate_ok())
 
     def _session_filter_ok(self):
         f = self.hp.get('session_filter', 'any')
@@ -937,6 +1049,10 @@ class UniversalMartingale(Strategy):
             atr = ta.atr(self.candles, period=period)
             atr_pips = self.price_to_pips(atr) if hasattr(self, 'price_to_pips') else atr / 0.0001
             return self.hp.get('vol_filter_min', 0.5) <= atr_pips <= self.hp.get('vol_filter_max', 50.0)
+        if f == 'natr_min':
+            period = self.hp.get('vol_filter_period', 14)
+            natr_val = ta.natr(self.candles, period=period)
+            return natr_val >= self.hp.get('vol_filter_min', 0.02)
         return True
 
     def _trend_filter_ok(self):
@@ -954,7 +1070,15 @@ class UniversalMartingale(Strategy):
             if len(ema) < 3:
                 return True
             slope = ema[-1] - ema[-3]
-            return abs(slope) > 0  # Non-flat trend
+            # Require meaningful slope: at least 1 pip movement over 2 bars
+            min_slope = self.pip_size if hasattr(self, 'pip_size') else 0.0001
+            return abs(slope) > min_slope
+        if f == 'dm_gate':
+            period = self.hp.get('trend_filter_period', 14)
+            dm_result = ta.dm(self.candles, period=period)
+            thresh = self.hp.get('trend_filter_threshold', 0)
+            # DM plus > threshold means there's directional movement
+            return dm_result.plus >= thresh or dm_result.minus >= thresh
         return True
 
     def _spread_filter_ok(self):
@@ -965,6 +1089,33 @@ class UniversalMartingale(Strategy):
             spread_pips = self.price_to_pips(self.spread) if hasattr(self, 'spread') and self.spread else 0
             return spread_pips <= self.hp.get('spread_filter_max', 3.0)
         return True
+
+    def _confidence_gate_ok(self):
+        """Composite confidence gate: NATR + ADX + ER. Validated on 2024-2025 walk-forward."""
+        if self.hp.get('confidence_gate', 'none') == 'none':
+            return True
+        thresh = self.hp.get('confidence_threshold', 0.4)
+
+        score = 0.0
+        count = 0
+        # NATR component: higher vol = more confident
+        natr_val = ta.natr(self.candles, period=14)
+        if not np.isnan(natr_val):
+            score += np.clip(natr_val / 0.1, 0, 1)
+            count += 1
+        # ADX component: stronger trend = more confident
+        adx_val = ta.adx(self.candles, period=14)
+        if not np.isnan(adx_val):
+            score += np.clip((adx_val - 15) / 30, 0, 1)
+            count += 1
+        # ER component: higher efficiency = more confident
+        er_val = ta.er(self.candles, period=100)
+        if not np.isnan(er_val):
+            score += np.clip(er_val / 0.4, 0, 1)
+            count += 1
+
+        confidence = score / count if count > 0 else 0.5
+        return confidence >= thresh
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                     RISK MANAGEMENT MODULE                          ║
@@ -987,13 +1138,9 @@ class UniversalMartingale(Strategy):
             if self.vars.get('consecutive_busts', 0) >= max_consec:
                 return False
 
-        # Max exposure limit
-        max_exp = self.hp.get('max_exposure_pct', 0)
-        if max_exp > 0 and self.balance > 0:
-            total_qty = sum(abs(leg['qty']) for leg in self.vars.get('legs', []))
-            exposure_pct = (total_qty * self.price) / self.balance * 100
-            if exposure_pct >= max_exp:
-                return False
+        # Max exposure limit (checked here for pre-entry and in _check_hedge_trigger for mid-cycle)
+        if not self._exposure_ok():
+            return False
 
         # Weekly loss limit
         max_weekly = self.hp.get('max_weekly_loss_pct', 0)
@@ -1014,6 +1161,21 @@ class UniversalMartingale(Strategy):
                     return False  # Equity below its EMA — pause trading
 
         return True
+
+    def _exposure_ok(self):
+        """Check max exposure limit using actual position tickets, not legs list."""
+        max_exp = self.hp.get('max_exposure_pct', 0)
+        if max_exp <= 0 or self.balance <= 0:
+            return True
+        # Use actual position gross exposure if available, else compute from legs
+        if hasattr(self, 'position') and self.position.is_open and self.position.is_cfd_mode:
+            total_qty = self.position.gross_exposure
+        else:
+            total_qty = sum(abs(leg['qty']) for leg in self.vars.get('legs', []))
+        if total_qty <= 0:
+            return True
+        exposure_pct = (total_qty * self.price) / self.balance * 100
+        return exposure_pct < max_exp
 
     def _cooldown_ok(self):
         mode = self.hp.get('cooldown_mode', 'none')
@@ -1044,19 +1206,35 @@ class UniversalMartingale(Strategy):
     # ║                   POSITION MANAGEMENT MODULE                        ║
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
+    def _compute_breakeven_price(self):
+        """Find the price where net PnL of all tickets is zero.
+
+        For alternating long/short legs, solve: sum(qty_i * dir_i * (P - entry_i)) = 0
+        where dir_i = +1 for long, -1 for short.
+        Solution: P = sum(qty_i * dir_i * entry_i) / sum(qty_i * dir_i)
+        """
+        legs = self.vars.get('legs', [])
+        if not legs:
+            return None
+        weighted_sum = 0.0
+        net_signed_qty = 0.0
+        for leg in legs:
+            sign = 1.0 if leg['dir'] == 'long' else -1.0
+            weighted_sum += leg['qty'] * sign * leg['entry']
+            net_signed_qty += leg['qty'] * sign
+        if abs(net_signed_qty) < 1e-10:
+            return None  # perfectly hedged — no breakeven price exists
+        return weighted_sum / net_signed_qty
+
     def _check_position_management(self):
         """Mid-session adjustments: partial close, breakeven move."""
-        # Breakeven: adjust TP to entry after N levels
         bm = self.hp.get('breakeven_mode', 'none')
         if bm == 'after_n_levels':
             be_levels = self.hp.get('breakeven_levels', 3)
             if self.vars['level'] >= be_levels and self.vars.get('tp_price') is not None:
-                # Move TP to average entry (breakeven)
-                legs = self.vars['legs']
-                total_qty = sum(l['qty'] for l in legs)
-                if total_qty > 0:
-                    avg_entry = sum(l['entry'] * l['qty'] for l in legs) / total_qty
-                    self.vars['tp_price'] = avg_entry
+                be_price = self._compute_breakeven_price()
+                if be_price is not None:
+                    self.vars['tp_price'] = be_price
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                     EXECUTION ENGINE                                ║
@@ -1067,10 +1245,16 @@ class UniversalMartingale(Strategy):
         is_bust = reason in ('abort', 'terminate', 'max_level_sl')
         level = self.vars.get('level', 0)
 
+        # Use exact TP price for TP exits, candle close for everything else
+        if reason == 'tp_hit' and self.vars.get('tp_price') is not None:
+            exit_price = self.vars['tp_price']
+        else:
+            exit_price = self.price
+
         # Close all positions
         if self.is_open:
             self.close_all_tickets(
-                exit_price=self.price,
+                exit_price=exit_price,
                 meta={
                     'session': self.vars.get('session_number', 0),
                     'exit_reason': reason,
@@ -1123,13 +1307,20 @@ class UniversalMartingale(Strategy):
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
     def _session_pnl(self):
-        """Floating PnL of the current session."""
-        if not self.is_open:
-            return 0
-        return self.position.pnl
+        """Net PnL of the current session including costs already paid.
+
+        Uses balance delta (which captures spread, swap, fees) rather than
+        just floating ticket PnL (which misses entry costs).
+        """
+        start_bal = self.vars.get('session_start_balance', self.balance)
+        # Balance delta = realized costs. position.pnl = unrealized ticket PnL.
+        # Total session PnL = (current_balance - start_balance) + floating_pnl
+        floating = self.position.pnl if self.is_open else 0
+        realized_delta = self.balance - start_bal
+        return realized_delta + floating
 
     def _session_pnl_pct(self):
-        """Floating PnL as % of session start balance."""
+        """Session PnL as % of session start balance."""
         start_bal = self.vars.get('session_start_balance', self.balance)
         if start_bal <= 0:
             return 0

@@ -78,8 +78,8 @@ def _telegram(msg: str, token: str, chat_id: str) -> None:
             if response.status_code // 100 == 4:
                 err_msg += f'\nParameters: {msg}'
             logger.error(err_msg, send_notification=False)
-    except requests.exceptions.ConnectionError:
-        logger.error('Telegram ERROR: ConnectionError', send_notification=False)
+    except requests.exceptions.RequestException as e:
+        logger.error(f'Telegram ERROR: {type(e).__name__}: {e}', send_notification=False)
 
 
 def _discord(msg: str, webhook_address=None) -> None:
@@ -89,14 +89,14 @@ def _discord(msg: str, webhook_address=None) -> None:
         return
 
     try:
-        response = requests.post(webhook_address, {'content': msg})
+        response = requests.post(webhook_address, json={'content': msg}, timeout=10)
         if response.status_code // 100 != 2:
             err_msg = f'Discord ERROR [{response.status_code}]: {response.text}'
             if response.status_code // 100 == 4:
                 err_msg += f'\nParameters: {msg}'
             logger.error(err_msg, send_notification=False)
-    except requests.exceptions.ConnectionError:
-        logger.error('Discord ERROR: ConnectionError', send_notification=False)
+    except requests.exceptions.RequestException as e:
+        logger.error(f'Discord ERROR: {type(e).__name__}: {e}', send_notification=False)
 
 
 def _slack(msg: str, webhook_address) -> None:
@@ -110,14 +110,14 @@ def _slack(msg: str, webhook_address) -> None:
     }
 
     try:
-        response = requests.post(webhook_address, json=payload)
+        response = requests.post(webhook_address, json=payload, timeout=10)
         if response.status_code // 100 != 2:
             err_msg = f'Slack ERROR [{response.status_code}]: {response.text}'
             if response.status_code // 100 == 4:
                 err_msg += f'\nParameters: {msg}'
             logger.error(err_msg, send_notification=False)
-    except requests.exceptions.ConnectionError:
-        logger.error('Slack ERROR: ConnectionError', send_notification=False)
+    except requests.exceptions.RequestException as e:
+        logger.error(f'Slack ERROR: {type(e).__name__}: {e}', send_notification=False)
 
 
 def _custom_channel_notification(msg: dict):

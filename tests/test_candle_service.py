@@ -44,20 +44,23 @@ def test_split_candle():
     bull = np.array([1111, 10, 20, 25, 5, 2222])
     bear = np.array([1111, 20, 10, 25, 5, 2222])
 
+    # split_candle splits volume in half (v/2) for each sub-candle
+    half_v = 1111  # 2222 / 2
+
     # bullish candle, low < price < open
     np.testing.assert_equal(
         candle_service.split_candle(bull, 7),
         (
-            np.array([1111, 10, 7, 10, 7, 2222]),
-            np.array([1111, 7, 20, 25, 5, 2222]),
+            np.array([1111, 10, 7, 10, 7, half_v]),
+            np.array([1111, 7, 20, 25, 5, half_v]),
         )
     )
     # bearish candle, open < price < high
     np.testing.assert_equal(
         candle_service.split_candle(bear, 23),
         (
-            np.array([1111, 20, 23, 23, 20, 2222]),
-            np.array([1111, 23, 10, 25, 5, 2222]),
+            np.array([1111, 20, 23, 23, 20, half_v]),
+            np.array([1111, 23, 10, 25, 5, half_v]),
         )
     )
 
@@ -76,16 +79,16 @@ def test_split_candle():
     np.testing.assert_equal(
         candle_service.split_candle(bear, 7),
         (
-            np.array([1111, 20, 7, 25, 7, 2222]),
-            np.array([1111, 7, 10, 10, 5, 2222]),
+            np.array([1111, 20, 7, 25, 7, half_v]),
+            np.array([1111, 7, 10, 10, 5, half_v]),
         )
     )
     # bullish candle,  close < price < high
     np.testing.assert_equal(
         candle_service.split_candle(bull, 23),
         (
-            np.array([1111, 10, 23, 23, 5, 2222]),
-            np.array([1111, 23, 20, 25, 20, 2222]),
+            np.array([1111, 10, 23, 23, 5, half_v]),
+            np.array([1111, 23, 20, 25, 20, half_v]),
         )
     )
 
@@ -93,16 +96,16 @@ def test_split_candle():
     np.testing.assert_equal(
         candle_service.split_candle(bear, 10),
         (
-            np.array([1111, 20, 10, 25, 10, 2222]),
-            np.array([1111, 10, 10, 10, 5, 2222]),
+            np.array([1111, 20, 10, 25, 10, half_v]),
+            np.array([1111, 10, 10, 10, 5, half_v]),
         )
     )
     # bullish candle,  close < price < high
     np.testing.assert_equal(
         candle_service.split_candle(bull, 20),
         (
-            np.array([1111, 10, 20, 20, 5, 2222]),
-            np.array([1111, 20, 20, 25, 20, 2222]),
+            np.array([1111, 10, 20, 20, 5, half_v]),
+            np.array([1111, 20, 20, 25, 20, half_v]),
         )
     )
 
@@ -110,16 +113,16 @@ def test_split_candle():
     np.testing.assert_equal(
         candle_service.split_candle(bear, 25),
         (
-            np.array([1111, 20, 25, 25, 20, 2222]),
-            np.array([1111, 25, 10, 25, 5, 2222]),
+            np.array([1111, 20, 25, 25, 20, half_v]),
+            np.array([1111, 25, 10, 25, 5, half_v]),
         )
     )
     # bullish candle,  price == low
     np.testing.assert_equal(
         candle_service.split_candle(bull, 5),
         (
-            np.array([1111, 10, 5, 10, 5, 2222]),
-            np.array([1111, 5, 20, 25, 5, 2222]),
+            np.array([1111, 10, 5, 10, 5, half_v]),
+            np.array([1111, 5, 20, 25, 5, half_v]),
         )
     )
 
@@ -127,16 +130,16 @@ def test_split_candle():
     np.testing.assert_equal(
         candle_service.split_candle(bear, 5),
         (
-            np.array([1111, 20, 5, 25, 5, 2222]),
-            np.array([1111, 5, 10, 10, 5, 2222]),
+            np.array([1111, 20, 5, 25, 5, half_v]),
+            np.array([1111, 5, 10, 10, 5, half_v]),
         )
     )
     # bullish candle,  price == high
     np.testing.assert_equal(
         candle_service.split_candle(bull, 25),
         (
-            np.array([1111, 10, 25, 25, 5, 2222]),
-            np.array([1111, 25, 20, 25, 20, 2222]),
+            np.array([1111, 10, 25, 25, 5, half_v]),
+            np.array([1111, 25, 20, 25, 20, half_v]),
         )
     )
 
@@ -144,16 +147,16 @@ def test_split_candle():
     np.testing.assert_equal(
         candle_service.split_candle(bear, 15),
         (
-            np.array([1111, 20, 15, 25, 15, 2222]),
-            np.array([1111, 15, 10, 15, 5, 2222]),
+            np.array([1111, 20, 15, 25, 15, half_v]),
+            np.array([1111, 15, 10, 15, 5, half_v]),
         )
     )
     # bullish candle, open < price < close
     np.testing.assert_equal(
         candle_service.split_candle(bull, 15),
         (
-            np.array([1111, 10, 15, 15, 5, 2222]),
-            np.array([1111, 15, 20, 25, 15, 2222]),
+            np.array([1111, 10, 15, 15, 5, half_v]),
+            np.array([1111, 15, 20, 25, 15, half_v]),
         )
     )
 

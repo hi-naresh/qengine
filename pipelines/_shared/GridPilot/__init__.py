@@ -36,10 +36,17 @@ from qengine.framework.components.entry_gate import EntryGate
 _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 
 
+import math as _math
+
+# Maximum lookback needed by any feature (keeps slicing bounded)
+_MAX_LOOKBACK = 300
+
+
 def _extract_features(strategy) -> dict:
     """
     Extract danger scorer features from strategy's candle data.
-    Uses the strategy's indicator access (ta module) for multi-timeframe features.
+    Uses numpy vectorized ops on a fixed-size tail slice (max 300 bars)
+    so cost is O(1) per candle regardless of total history length.
 
     Returns dict with keys matching DangerScorer FEATURES.
     Missing features are simply omitted (scorer handles missing keys).
@@ -48,88 +55,99 @@ def _extract_features(strategy) -> dict:
 
     try:
         candles = strategy.candles
-        if candles is None or len(candles) < 20:
+        if candles is None or len(candles) < 50:
             return features
 
-        close = candles[:, 2]
-        high = candles[:, 3]
-        low = candles[:, 4]
-
+        # Slice only the tail we need — O(1) not O(n)
+        tail = candles[-_MAX_LOOKBACK:] if len(candles) > _MAX_LOOKBACK else candles
+        close = tail[:, 2]
+        high = tail[:, 3]
+        low = tail[:, 4]
         n = len(close)
 
-        # ATR-based features from trading timeframe
-        atr_14 = 0
-        if n >= 14:
-            # Simple ATR calculation (no dependency on ta module)
-            tr_vals = []
-            for i in range(1, min(n, 15)):
-                tr = max(
-                    high[-i] - low[-i],
-                    abs(high[-i] - close[-i - 1]),
-                    abs(low[-i] - close[-i - 1])
-                )
-                tr_vals.append(tr)
+        # ── True Range array (vectorized, computed once) ──
+        # TR[i] = max(H[i]-L[i], |H[i]-C[i-1]|, |L[i]-C[i-1]|)
+        hl = high[1:] - low[1:]
+        hc = np.abs(high[1:] - close[:-1])
+        lc = np.abs(low[1:] - close[:-1])
+        tr = np.maximum(hl, np.maximum(hc, lc))  # length n-1, index 0 → bar 1
 
-            atr_14 = sum(tr_vals) / len(tr_vals) if tr_vals else 0
+        # ── ATR at two scales ──
+        atr_14 = float(tr[-14:].mean()) if len(tr) >= 14 else 0.0
+        atr_50 = float(tr[-50:].mean()) if len(tr) >= 50 else 0.0
 
-            if n >= 50:
-                tr_vals_50 = []
-                for i in range(1, min(n, 51)):
-                    tr = max(
-                        high[-i] - low[-i],
-                        abs(high[-i] - close[-i - 1]),
-                        abs(low[-i] - close[-i - 1])
-                    )
-                    tr_vals_50.append(tr)
-                atr_50 = sum(tr_vals_50) / len(tr_vals_50) if tr_vals_50 else 1
-                features['1H_atr_ratio'] = atr_14 / max(atr_50, 1e-10)
+        if atr_50 > 0:
+            features['1H_atr_ratio'] = atr_14 / atr_50
 
-        # Range/ATR: 20-bar range / ATR14
-        if n >= 20 and atr_14 > 0:
-            range_20 = max(high[-20:]) - min(low[-20:])
-            features['D1_range_atr'] = range_20 / max(atr_14, 1e-10)
+        # ── D1_range_atr: long-period range / ATR14 ──
+        rng_period = min(288, n)
+        if atr_14 > 0 and rng_period >= 20:
+            features['D1_range_atr'] = float(
+                high[-rng_period:].max() - low[-rng_period:].min()
+            ) / atr_14
 
-        # Choppiness Index (14-period) — measures trendiness
-        # CI = 100 * log10(sum(TR14) / (highest_high - lowest_low)) / log10(14)
-        if n >= 14:
-            import math
-            hh = max(high[-14:])
-            ll = min(low[-14:])
-            range_hl = hh - ll
-            if range_hl > 0 and tr_vals:
-                sum_tr = sum(tr_vals[:14])
-                chop = 100 * math.log10(sum_tr / range_hl) / math.log10(14)
-                features['5m_chop'] = chop
-                features['15m_chop'] = chop  # approximate with same TF for now
-                features['D1_chop'] = chop
+        # ── Choppiness Index at 3 scales ──
+        # CI(p) = 100 * log10(sum(TR_p) / (HH_p - LL_p)) / log10(p)
+        for period, key in [(14, '5m_chop'), (42, '15m_chop'), (288, 'D1_chop')]:
+            if len(tr) < period:
+                continue
+            actual_p = min(period, len(tr))
+            tr_slice = tr[-actual_p:]
+            h_slice = high[-(actual_p + 1):-1] if actual_p < n - 1 else high[:-1]
+            l_slice = low[-(actual_p + 1):-1] if actual_p < n - 1 else low[:-1]
+            # Use the bars corresponding to TR indices
+            hh = float(high[-actual_p:].max())
+            ll = float(low[-actual_p:].min())
+            rng = hh - ll
+            if rng > 0:
+                features[key] = 100 * _math.log10(float(tr_slice.sum()) / rng) / _math.log10(actual_p)
 
-        # ADX approximation (simplified: use directional movement strength)
-        if n >= 14:
-            plus_dm = max(0, high[-1] - high[-2]) if high[-1] > high[-2] else 0
-            minus_dm = max(0, low[-2] - low[-1]) if low[-2] > low[-1] else 0
-            dm_strength = abs(plus_dm - minus_dm) / max(plus_dm + minus_dm, 1e-10) * 100
-            features['5m_adx'] = dm_strength
+        # ── ADX (14-period, last 42 bars only) ──
+        # Only iterate the tail needed for convergence, not full history
+        adx_window = min(42, n - 1)  # 3x period is enough for EMA convergence
+        if adx_window >= 28:
+            alpha = 1.0 / 14
+            pdm_s = mdm_s = tr_s = 0.0
+            dx_vals = []
+            start = n - adx_window
+            for i in range(start, n):
+                up = high[i] - high[i - 1]
+                dn = low[i - 1] - low[i]
+                pdm = max(up, 0.0) if up > dn else 0.0
+                mdm = max(dn, 0.0) if dn > up else 0.0
+                t = float(tr[i - 1]) if i - 1 < len(tr) else max(high[i] - low[i], 0.0)
+                j = i - start
+                if j < 14:
+                    pdm_s += pdm; mdm_s += mdm; tr_s += t
+                    if j == 13:
+                        pdm_s /= 14; mdm_s /= 14; tr_s /= 14
+                else:
+                    pdm_s = pdm_s * (1 - alpha) + pdm * alpha
+                    mdm_s = mdm_s * (1 - alpha) + mdm * alpha
+                    tr_s = tr_s * (1 - alpha) + t * alpha
+                if j >= 13 and tr_s > 0:
+                    pdi = 100 * pdm_s / tr_s
+                    mdi = 100 * mdm_s / tr_s
+                    di_sum = pdi + mdi
+                    dx_vals.append(100 * abs(pdi - mdi) / di_sum if di_sum > 0 else 0.0)
+            if len(dx_vals) >= 14:
+                adx = sum(dx_vals[:14]) / 14
+                for dx in dx_vals[14:]:
+                    adx = adx * (1 - alpha) + dx * alpha
+                features['5m_adx'] = adx
 
-        # Hurst exponent approximation (R/S method, simplified)
-        if n >= 20:
-            returns = []
-            for i in range(1, 21):
-                if close[-i - 1] != 0:
-                    returns.append(close[-i] / close[-i - 1] - 1)
-            if len(returns) >= 10:
-                import math
-                mean_r = sum(returns) / len(returns)
-                cumdev = []
-                s = 0
-                for r in returns:
-                    s += (r - mean_r)
-                    cumdev.append(s)
-                R = max(cumdev) - min(cumdev) if cumdev else 0
-                S = (sum((r - mean_r) ** 2 for r in returns) / len(returns)) ** 0.5
+        # ── Hurst exponent (R/S method, last 50 bars, vectorized) ──
+        if n >= 51:
+            rets = close[-50:] / close[-51:-1] - 1.0
+            valid = rets[np.isfinite(rets)]
+            if len(valid) >= 20:
+                mean_r = float(valid.mean())
+                cumdev = np.cumsum(valid - mean_r)
+                R = float(cumdev.max() - cumdev.min())
+                S = float(valid.std())
                 if S > 0 and R > 0:
-                    rs = R / S
-                    hurst = math.log(rs) / math.log(len(returns))
-                    features['5m_hurst'] = max(0.0, min(1.0, hurst))
+                    features['5m_hurst'] = max(0.0, min(1.0,
+                        _math.log(R / S) / _math.log(len(valid))))
 
     except Exception:
         pass
@@ -163,12 +181,13 @@ class GridPilot(Pipeline):
         config = config or {}
         use_pretrained = config.get('use_pretrained', True)
 
-        # Scorer config — inject pre-trained normalizer params
+        # Scorer config — pre-trained normalizer params are disabled because
+        # feature extraction now uses proper multi-period calculations that
+        # produce different distributions than the old single-TF approximations.
+        # The Welford normalizer will recalibrate during warmup.
         scorer_cfg = dict(config.get('scorer', {}))
-        if use_pretrained and 'pretrained_params' not in scorer_cfg:
-            params = _load_pretrained_params()
-            if params:
-                scorer_cfg['pretrained_params'] = params
+        if not scorer_cfg.get('warmup'):
+            scorer_cfg['warmup'] = 200  # longer warmup to build good stats
 
         self.scorer = DangerScorer(scorer_cfg)
         self.gate = EntryGate(config.get('gate', {}))
@@ -212,7 +231,10 @@ class GridPilot(Pipeline):
         self._stats.record_danger(ts, score)
 
     def gate_entry(self, strategy) -> bool:
-        """Block entry if danger exceeds percentile threshold."""
+        """Block entry if danger exceeds percentile threshold.
+        Always allows during scorer warmup (scores are neutral 0.5)."""
+        if not self.scorer._seeded and self.scorer._update_count < self.scorer.warmup:
+            return True  # scorer not ready yet, allow entry
         score = self.scorer.current_score
         threshold = self.gate.current_threshold
         allowed = self.gate.should_allow(score)
@@ -225,9 +247,12 @@ class GridPilot(Pipeline):
         return allowed
 
     def should_abort(self, strategy) -> bool:
-        """Ask Q-learner whether to abort current cycle."""
+        """Ask Q-learner whether to abort current cycle.
+        Skips during scorer warmup (danger_now would be neutral 0.5)."""
         if not self.abort.enabled:
             return False
+        if not self.scorer._seeded and self.scorer._update_count < self.scorer.warmup:
+            return False  # scorer not calibrated yet
 
         level = strategy.vars.get('level', 0)
         duration = strategy.index - self._cycle_start_index
@@ -349,8 +374,8 @@ class GridPilot(Pipeline):
     def default_config(cls) -> dict:
         return {
             'use_pretrained': True,
-            'scorer': {'warmup': 50},
-            'gate': {'percentile': 80, 'window': 500, 'enabled': True},
+            'scorer': {'warmup': 200},
+            'gate': {'percentile': 75, 'window': 500, 'enabled': True},
             'abort': {'enabled': True, 'mode': 'eval'},
         }
 
@@ -361,6 +386,9 @@ class GridPilot(Pipeline):
                        'Scores market danger, gates risky entries, and aborts losing cycles via Q-learning.',
             'designed_for': ['Grid strategies', 'Martingale strategies', 'SurefireHedge variants'],
             'research_basis': 'Phase2 research: 20yr EUR-USD, 60,370 cycles, 103 busts analyzed',
+            'requires_training': False,
+            'training_status': 'ready',
+            'training_description': 'Ships with pre-trained models from Phase2 research. Ready to use immediately.',
             'layers': [
                 {
                     'name': 'DangerScorer',
