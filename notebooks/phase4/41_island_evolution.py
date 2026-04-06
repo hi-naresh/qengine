@@ -21,6 +21,7 @@ from utils import (
 import json
 import os
 import numpy as np
+import numba
 import matplotlib.pyplot as plt
 
 from qengine.framework.components.island_evolver import (
@@ -78,132 +79,153 @@ def generate_crossover_signals(candles: np.ndarray) -> list:
     return signals
 
 
-# ── cycle simulator ──────────────────────────────────────────────────────────
+# ── cycle simulator (Numba JIT compiled) ─────────────────────────────────────
+#
+# The inner loop is compiled to machine code via @numba.njit.
+# Same logic as the Python version — just ~50-100x faster.
+# Returns raw floats: (bust, level_reached, pnl, bars_held)
 
-def simulate_cycle(
-    candles: np.ndarray,
-    entry_idx: int,
-    direction: str,
-    cfg: SimConfig,
-) -> CycleResult:
-    """Simulate a single surefire hedging cycle from entry_idx.
+# Pre-compute sizing tables for each curve type (avoids string ops in JIT)
+# curve_id: 0=geometric, 1=sqrt, 2=linear, 3=fibonacci
+_FIB = np.array([1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233], dtype=np.float64)
 
-    Tracks positions at each level.  TP = all positions net positive.
-    Hedge trigger = price moves against current direction by hedge_dist.
-    Bust = max_levels exceeded or max_bars elapsed.
+
+@numba.njit(cache=True)
+def _calc_size_jit(level, curve_id, factor, base_size):
+    """Position size at hedge level (JIT)."""
+    if curve_id == 0:  # geometric
+        return base_size * (factor ** level)
+    elif curve_id == 1:  # sqrt
+        return base_size * (factor ** 0.5) ** level
+    elif curve_id == 2:  # linear
+        return base_size * (1.0 + level)
+    elif curve_id == 3:  # fibonacci
+        idx = min(level, 12)
+        return base_size * _FIB[idx]
+    return base_size
+
+
+@numba.njit(cache=True)
+def _simulate_cycle_jit(
+    close_arr, high_arr, low_arr,
+    entry_idx, direction_int,  # +1 = long, -1 = short
+    base_size, curve_id, sizing_factor,
+    tp_pips, hedge_dist_pips, max_levels, max_bars,
+):
+    """JIT-compiled surefire cycle simulator.
+
+    Returns: (bust_int, level_reached, pnl, bars_held)
+      bust_int: 1 = bust, 0 = win
     """
-    n = len(candles)
-    pip = 0.0001  # EUR-USD pip size
+    pip = 0.0001
+    n = len(close_arr)
 
-    entry_price = float(candles[entry_idx, 2])  # close
-    positions = []  # list of (direction, price, size)
-    size0 = cfg.base_size
-    positions.append((direction, entry_price, size0))
+    # Position arrays (pre-allocate for max_levels+1 positions)
+    max_pos = max_levels + 2
+    pos_dir = np.zeros(max_pos, dtype=np.float64)    # +1 or -1
+    pos_entry = np.zeros(max_pos, dtype=np.float64)
+    pos_size = np.zeros(max_pos, dtype=np.float64)
+
+    entry_price = close_arr[entry_idx]
+    pos_dir[0] = direction_int
+    pos_entry[0] = entry_price
+    pos_size[0] = base_size
+    n_pos = 1
 
     current_level = 0
-    current_dir = direction
+    current_dir = direction_int  # +1 long, -1 short
     last_entry_price = entry_price
 
-    for bar in range(1, cfg.max_bars + 1):
+    for bar in range(1, max_bars + 1):
         ci = entry_idx + bar
         if ci >= n:
-            # Ran out of candles — treat as bust
-            pnl = _calc_net_pnl(positions, candles[min(ci, n-1), 2], pip)
-            return CycleResult(
-                bust=True, level_reached=current_level,
-                pnl=pnl, bars_held=bar,
-                entry_idx=entry_idx, direction=direction,
-            )
+            # Out of data — bust
+            exit_price = close_arr[n - 1]
+            pnl = 0.0
+            for p in range(n_pos):
+                pnl += pos_dir[p] * (exit_price - pos_entry[p]) / pip * pos_size[p]
+            return 1, current_level, pnl, bar
 
-        high = float(candles[ci, 3])
-        low = float(candles[ci, 4])
-        close = float(candles[ci, 2])
+        high = high_arr[ci]
+        low = low_arr[ci]
+        close = close_arr[ci]
 
-        # Check TP: can we close all positions at net profit?
-        tp_price = _calc_tp_price(positions, cfg.tp_pips, pip)
-        if tp_price is not None:
-            if current_dir == 'long' and high >= tp_price:
-                pnl = _calc_net_pnl(positions, tp_price, pip)
-                return CycleResult(
-                    bust=False, level_reached=current_level,
-                    pnl=pnl, bars_held=bar,
-                    entry_idx=entry_idx, direction=direction,
-                )
-            elif current_dir == 'short' and low <= tp_price:
-                pnl = _calc_net_pnl(positions, tp_price, pip)
-                return CycleResult(
-                    bust=False, level_reached=current_level,
-                    pnl=pnl, bars_held=bar,
-                    entry_idx=entry_idx, direction=direction,
-                )
+        # TP price: tp_pips beyond last entry in current direction
+        if current_dir > 0:
+            tp_price = last_entry_price + tp_pips * pip
+        else:
+            tp_price = last_entry_price - tp_pips * pip
+
+        # Check TP hit
+        tp_hit = False
+        if current_dir > 0 and high >= tp_price:
+            tp_hit = True
+        elif current_dir < 0 and low <= tp_price:
+            tp_hit = True
+
+        if tp_hit:
+            pnl = 0.0
+            for p in range(n_pos):
+                pnl += pos_dir[p] * (tp_price - pos_entry[p]) / pip * pos_size[p]
+            return 0, current_level, pnl, bar
+
+        # Hedge price
+        if current_dir > 0:
+            hedge_price = last_entry_price - hedge_dist_pips * pip
+        else:
+            hedge_price = last_entry_price + hedge_dist_pips * pip
 
         # Check hedge trigger
-        hedge_price = _calc_hedge_price(last_entry_price, current_dir,
-                                         cfg.hedge_dist_pips, pip)
-        triggered = False
-        if current_dir == 'long' and low <= hedge_price:
-            triggered = True
-        elif current_dir == 'short' and high >= hedge_price:
-            triggered = True
+        hedge_hit = False
+        if current_dir > 0 and low <= hedge_price:
+            hedge_hit = True
+        elif current_dir < 0 and high >= hedge_price:
+            hedge_hit = True
 
-        if triggered:
+        if hedge_hit:
             current_level += 1
-            if current_level > cfg.max_levels:
-                # Bust — exceeded max levels
-                pnl = _calc_net_pnl(positions, close, pip)
-                return CycleResult(
-                    bust=True, level_reached=current_level - 1,
-                    pnl=pnl, bars_held=bar,
-                    entry_idx=entry_idx, direction=direction,
-                )
-            # Flip direction and add hedge position
-            current_dir = 'short' if current_dir == 'long' else 'long'
-            new_size = calc_size(current_level, cfg)
-            positions.append((current_dir, hedge_price, new_size))
+            if current_level > max_levels:
+                pnl = 0.0
+                for p in range(n_pos):
+                    pnl += pos_dir[p] * (close - pos_entry[p]) / pip * pos_size[p]
+                return 1, current_level - 1, pnl, bar
+            # Flip direction, add position
+            current_dir = -current_dir
+            new_size = _calc_size_jit(current_level, curve_id, sizing_factor, base_size)
+            pos_dir[n_pos] = current_dir
+            pos_entry[n_pos] = hedge_price
+            pos_size[n_pos] = new_size
+            n_pos += 1
             last_entry_price = hedge_price
 
-    # Max bars elapsed — bust
-    final_price = float(candles[min(entry_idx + cfg.max_bars, n-1), 2])
-    pnl = _calc_net_pnl(positions, final_price, pip)
+    # Max bars — bust
+    exit_price = close_arr[min(entry_idx + max_bars, n - 1)]
+    pnl = 0.0
+    for p in range(n_pos):
+        pnl += pos_dir[p] * (exit_price - pos_entry[p]) / pip * pos_size[p]
+    return 1, current_level, pnl, max_bars
+
+
+# Sizing curve name → int mapping for JIT
+_CURVE_MAP = {'geometric': 0, 'sqrt': 1, 'linear': 2, 'fibonacci': 3}
+
+
+def simulate_cycle(candles, entry_idx, direction, cfg):
+    """Wrapper: calls JIT simulator, returns CycleResult."""
+    direction_int = 1 if direction == 'long' else -1
+    curve_id = _CURVE_MAP.get(cfg.sizing_curve, 1)
+
+    bust_int, level, pnl, bars = _simulate_cycle_jit(
+        candles[:, 2], candles[:, 3], candles[:, 4],
+        entry_idx, direction_int,
+        cfg.base_size, curve_id, cfg.sizing_factor,
+        cfg.tp_pips, cfg.hedge_dist_pips, cfg.max_levels, cfg.max_bars,
+    )
     return CycleResult(
-        bust=True, level_reached=current_level,
-        pnl=pnl, bars_held=cfg.max_bars,
+        bust=bool(bust_int), level_reached=int(level),
+        pnl=float(pnl), bars_held=int(bars),
         entry_idx=entry_idx, direction=direction,
     )
-
-
-def _calc_net_pnl(positions, exit_price, pip):
-    """Compute total P&L of all open positions at exit_price."""
-    total = 0.0
-    for d, entry, size in positions:
-        if d == 'long':
-            total += (exit_price - entry) / pip * size
-        else:
-            total += (entry - exit_price) / pip * size
-    return total
-
-
-def _calc_tp_price(positions, tp_pips, pip):
-    """Compute TP price: price at which net P&L = tp_pips * base_size.
-
-    For the latest direction, TP is tp_pips beyond the last entry.
-    Returns None if no positions.
-    """
-    if not positions:
-        return None
-    last_dir, last_entry, _ = positions[-1]
-    if last_dir == 'long':
-        return last_entry + tp_pips * pip
-    else:
-        return last_entry - tp_pips * pip
-
-
-def _calc_hedge_price(entry_price, direction, hedge_pips, pip):
-    """Compute hedge trigger price."""
-    if direction == 'long':
-        return entry_price - hedge_pips * pip
-    else:
-        return entry_price + hedge_pips * pip
 
 
 # ── fitness function factory ─────────────────────────────────────────────────
