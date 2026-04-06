@@ -14,7 +14,7 @@ import numpy as np
 from qengine.framework.base import Pipeline, OrderIntent
 from qengine.framework.components.feature_selector import FeaturePool
 from qengine.framework.components.regime_tree import RegimeTree
-from qengine.framework.components.island_evolver import IslandEvolver, SIZING_CURVE_MAP
+from qengine.framework.components.island_evolver import IslandEvolver, Genome, SIZING_CURVE_MAP
 from qengine.framework.components.regime_inferencer import RegimeInferencer
 from qengine.framework.components.adaptive_sizer import AdaptiveSizer
 
@@ -34,9 +34,26 @@ def _load_pretrained() -> dict:
     if os.path.exists(tree_path):
         result['regime_tree'] = RegimeTree.load(tree_path)
 
-        evolver_path = os.path.join(_MODELS_DIR, 'island_genomes.json')
+        # Try full evolver state first, fall back to simple genomes
+        evolver_path = os.path.join(_MODELS_DIR, 'island_evolver.json')
+        if not os.path.exists(evolver_path):
+            evolver_path = os.path.join(_MODELS_DIR, 'island_genomes.json')
         if os.path.exists(evolver_path):
-            result['evolver'] = IslandEvolver.load(evolver_path)
+            try:
+                result['evolver'] = IslandEvolver.load(evolver_path)
+            except (KeyError, Exception):
+                # Simple genomes format — build a minimal evolver from it
+                import json
+                with open(evolver_path) as f:
+                    genomes_data = json.load(f)
+                leaf_ids = list(genomes_data.keys())
+                evolver = IslandEvolver(leaf_ids=leaf_ids, config={})
+                for lid, gdata in genomes_data.items():
+                    genome = Genome.from_dict(gdata if 'genes' not in gdata else gdata['genes'])
+                    genome.fitness = gdata.get('fitness', 0.0)
+                    if lid in evolver.populations:
+                        evolver.populations[lid].individuals[0] = genome
+                result['evolver'] = evolver
 
         inferencer_path = os.path.join(_MODELS_DIR, 'inferencer_state.json')
         if os.path.exists(inferencer_path):
