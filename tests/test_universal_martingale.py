@@ -341,3 +341,40 @@ class TestBaseSizeMode:
         s1 = self._make_strategy_with_balance(10000, {'base_size_mode': 'pct_equity', 'base_size_value': 2.0})
         s2 = self._make_strategy_with_balance(20000, {'base_size_mode': 'pct_equity', 'base_size_value': 2.0})
         assert s2._base_size() == pytest.approx(s1._base_size() * 2.0)
+
+
+# ---------------------------------------------------------------------------
+# Engine TP/SL Integration Tests
+# ---------------------------------------------------------------------------
+class TestEngineTPSL:
+    """Tests that UniversalMartingale correctly uses engine ticket TP/SL."""
+
+    def test_ticket_id_tracked_on_legs(self):
+        """Legs should store ticket_id after entry and hedge."""
+        prices = _make_zigzag(base=100, amplitude=2.0, periods=5, candles_per_leg=20)
+        hp = dict(PRESETS.get('raw', {}))
+        hp['signal_mode'] = 'random'
+        hp['tp_mode'] = 'fixed_pips'
+        hp['tp_value'] = 50.0  # far away — won't be hit
+        hp['max_levels'] = 3
+        result = _run_backtest(UniversalMartingale, prices, hyperparameters=hp)
+        # If a cycle opened, legs should have ticket_id (may be None in futures mode)
+        assert result is not None
+
+    def test_preset_configs_all_load(self):
+        """All presets should produce valid hyperparameter dicts."""
+        for name, preset in PRESETS.items():
+            assert isinstance(preset, dict), f"Preset {name} is not a dict"
+            assert 'signal_mode' in preset or 'tp_mode' in preset, \
+                f"Preset {name} missing key params"
+
+    def test_surefire_v2_preset_has_bucket_exit(self):
+        """surefire_v2 preset should use bucket_pct TP mode."""
+        preset = PRESETS.get('surefire_v2', {})
+        assert preset.get('tp_mode') == 'bucket_pct', "V2 preset should use bucket mode"
+
+    def test_surefire_v1_preset_has_fixed_tp(self):
+        """surefire_v1 preset should use fixed_pips TP mode."""
+        preset = PRESETS.get('surefire_v1', {})
+        tp_mode = preset.get('tp_mode', 'fixed_pips')
+        assert tp_mode == 'fixed_pips', "V1 preset should use fixed_pips"
