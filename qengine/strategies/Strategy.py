@@ -1350,6 +1350,55 @@ class Strategy(ABC):
         """Called in CFD mode when a ticket is closed but other tickets remain open."""
         pass
 
+    def on_ticket_tp_hit(self, ticket, fill_price: float) -> None:
+        """Called by engine when a ticket's TP was triggered and closed.
+        Override to react (e.g., close remaining tickets to end a cycle)."""
+        pass
+
+    def on_ticket_sl_hit(self, ticket, fill_price: float) -> None:
+        """Called by engine when a ticket's SL was triggered and closed.
+        Override to react (e.g., abort cycle, adjust risk)."""
+        pass
+
+    def set_ticket_tp_sl(self, ticket_id: str, tp: float = None, sl: float = None) -> None:
+        """Set or update TP/SL on a specific ticket. Works in backtest and live.
+
+        Args:
+            ticket_id: ID of the ticket to update.
+            tp: Take-profit price (None to clear TP).
+            sl: Stop-loss price (None to clear SL).
+        """
+        if not self.position.is_cfd_mode:
+            return
+        ticket = self.position.get_ticket(ticket_id)
+        if ticket is None:
+            return
+
+        ticket.tp_price = tp
+        ticket.sl_price = sl
+
+        # In live mode, submit to broker
+        if jh.is_live() and ticket.exchange_trade_id:
+            from qengine.services.api import api
+            driver = api.drivers.get(self.exchange)
+            if driver and hasattr(driver, 'set_trade_tp_sl'):
+                try:
+                    driver.set_trade_tp_sl(
+                        ticket.exchange_trade_id,
+                        take_profit=tp,
+                        stop_loss=sl,
+                    )
+                except Exception as e:
+                    logger.error(f'Failed to set TP/SL on broker for ticket {ticket_id[:8]}: {e}')
+
+    def set_all_tickets_tp_sl(self, tp: float = None, sl: float = None) -> None:
+        """Set same TP/SL on all open tickets. Convenience for strategies
+        that recalculate a shared TP after each hedge level."""
+        if not self.position.is_cfd_mode:
+            return
+        for ticket in self.position._tickets:
+            self.set_ticket_tp_sl(ticket.id, tp=tp, sl=sl)
+
     def close_all_tickets(self, exit_price: float = None, meta: dict = None) -> None:
         """Close all CFD tickets at the given price (or current price).
         Settles all tickets, records per-ticket trades, fires close callback.
