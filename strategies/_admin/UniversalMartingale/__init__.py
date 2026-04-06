@@ -1299,6 +1299,8 @@ class UniversalMartingale(Strategy):
                 be_price = self._compute_breakeven_price()
                 if be_price is not None:
                     self.vars['tp_price'] = be_price
+                    # Push updated TP to engine for all open tickets
+                    self.set_all_tickets_tp_sl(tp=be_price)
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                     EXECUTION ENGINE                                ║

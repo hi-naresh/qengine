@@ -1120,6 +1120,11 @@ def _check_ticket_tp_sl_triggers(real_candle: np.ndarray, exchange: str, symbol:
             else:
                 strategy.on_ticket_sl_hit(ticket, fill_price)
 
+            # Callback may have closed remaining tickets (e.g., martingale cycle end).
+            # No point checking already-closed tickets from the snapshot.
+            if not p._tickets:
+                break
+
 
 def _simulate_price_change_effect(real_candle: np.ndarray, exchange: str, symbol: str) -> None:
     current_temp_candle = real_candle.copy()

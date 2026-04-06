@@ -409,6 +409,8 @@ def _sync_trades_with_broker(driver, exchange_name: str, client_id: str) -> int:
                  f'[Trade sync] Trade {ticket.exchange_trade_id} closed on broker '
                  f'(ticket {ticket.id[:8]}, {ticket.type} {ticket.qty:.0f})')
 
+            # TODO: query broker transaction log for actual fill price instead of
+            # using cached current_price, which may be stale by the poll interval.
             fill_price = p.current_price
 
             # Determine if this was a TP or SL closure based on ticket's stored levels
