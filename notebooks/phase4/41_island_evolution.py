@@ -208,29 +208,65 @@ def _calc_hedge_price(entry_price, direction, hedge_pips, pip):
 
 # ── fitness function factory ─────────────────────────────────────────────────
 
+# Max bars per cycle for fitness eval (most cycles resolve within 200 bars;
+# 500 is generous while 10x faster than the default 5000)
+_FITNESS_MAX_BARS = 500
+# Max signals to evaluate per genome (stochastic fitness — rotated each call)
+_FITNESS_SAMPLE_SIZE = 60
+
+
 def make_fitness_fn(candles, signals_for_island):
-    """Create a fitness function that evaluates a genome on island signals."""
+    """Create a fitness function that evaluates a genome on island signals.
+
+    Uses stochastic sub-sampling: each call evaluates a random subset of signals
+    (rotated via a counter), keeping evaluation fast while covering all signals
+    over multiple generations.
+    """
+    n_signals = len(signals_for_island)
+    _call_count = [0]  # mutable counter for rotation
+
+    # Precompute signal indices and directions as arrays for fast access
+    sig_indices = np.array([s['idx'] for s in signals_for_island], dtype=np.int64)
+    sig_dirs = [s['direction'] for s in signals_for_island]
 
     def fitness_fn(genes: dict) -> float:
         cfg = SimConfig.from_genome({'genes': genes})
-        results = []
-        for sig in signals_for_island:
-            res = simulate_cycle(candles, sig['idx'], sig['direction'], cfg)
-            results.append(res)
+        cfg.max_bars = _FITNESS_MAX_BARS
 
-        if not results:
+        # Stochastic sub-sample: rotate through signals
+        _call_count[0] += 1
+        if n_signals <= _FITNESS_SAMPLE_SIZE:
+            sample_idx = range(n_signals)
+        else:
+            rng = np.random.RandomState(_call_count[0] % 10000)
+            sample_idx = rng.choice(n_signals, _FITNESS_SAMPLE_SIZE, replace=False)
+
+        wins = 0
+        busts = 0
+        total_pnl = 0.0
+        gross_profit = 0.0
+        gross_loss = 0.0
+
+        for si in sample_idx:
+            res = simulate_cycle(candles, int(sig_indices[si]), sig_dirs[si], cfg)
+            total_pnl += res.pnl
+            if res.bust:
+                busts += 1
+                gross_loss += abs(res.pnl)
+            else:
+                wins += 1
+                gross_profit += res.pnl
+
+        n_eval = len(sample_idx)
+        if n_eval == 0:
             return -1e6
 
-        stats = cycle_summary(results)
-        # Fitness = net P&L adjusted for bust rate penalty
-        # Reward high win rate and PF, penalise busts heavily
-        net_pnl = stats['net_pnl']
-        bust_rate = stats['bust_rate']
-        pf = stats['profit_factor'] if stats['profit_factor'] != float('inf') else 100.0
+        bust_rate = busts / n_eval
+        pf = gross_profit / (gross_loss + 1e-10)
         pf = min(pf, 100.0)
 
         # Composite fitness
-        fitness = net_pnl * (1.0 - bust_rate) * min(pf, 10.0) / 10.0
+        fitness = total_pnl * (1.0 - bust_rate) * min(pf, 10.0) / 10.0
         return fitness
 
     return fitness_fn
@@ -519,9 +555,10 @@ def main():
     plot_migration(evolver.get_migration_log(), final_gen)
 
     # 14. Save results summary
-    # Run final evaluation for each island's best genome
-    island_results = {}
-    for lid in active_ids:
+    # Run final evaluation for each island's best genome (parallel)
+    log.info("Running final evaluation on all signals...")
+
+    def _eval_island(lid):
         best = best_genomes[lid]
         cfg = SimConfig.from_genome(best)
         cycles = []
@@ -529,12 +566,16 @@ def main():
             res = simulate_cycle(candles, sig['idx'], sig['direction'], cfg)
             res.regime_id = int(lid)
             cycles.append(res)
-        stats = cycle_summary(cycles)
-        island_results[lid] = {
-            'n_signals': len(island_signals[lid]),
-            'best_genome': best,
-            'cycle_stats': stats,
-        }
+        return lid, cycle_summary(cycles), cycles
+
+    island_results = {}
+    with ThreadPoolExecutor(max_workers=n_workers) as pool:
+        for lid, stats, _cycles in pool.map(_eval_island, active_ids):
+            island_results[lid] = {
+                'n_signals': len(island_signals[lid]),
+                'best_genome': best_genomes[lid],
+                'cycle_stats': stats,
+            }
 
     results = {
         'n_candles': int(candles.shape[0]),
