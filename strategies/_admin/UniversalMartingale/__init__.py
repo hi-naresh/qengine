@@ -400,6 +400,7 @@ class UniversalMartingale(Strategy):
             'dir': direction,
             'qty': abs(order.qty),
             'entry': entry,
+            'ticket_id': getattr(order, 'ticket_id', None),
         }
         self.vars['legs'] = [leg]
 
@@ -407,6 +408,10 @@ class UniversalMartingale(Strategy):
         self.vars['tp_price'] = self._compute_tp(entry, direction)
         self.vars['hedge_trigger_price'] = self._compute_hedge_trigger(entry, direction, 0)
         self.vars['trailing_tp'] = None
+
+        # Set engine-managed TP for price-based modes
+        if self.vars['tp_price'] is not None and leg.get('ticket_id'):
+            self.set_ticket_tp_sl(leg['ticket_id'], tp=self.vars['tp_price'])
 
     def update_position(self):
         if not self.vars.get('cycle_active'):
@@ -417,13 +422,35 @@ class UniversalMartingale(Strategy):
             self._close_cycle('abort')
             return
 
-        # Check TP
-        if self._check_tp():
+        # Manual TP check: only for session-level modes (bucket_pct, trailing).
+        # Price-based modes (fixed_pips, atr_based, risk_reward) are handled by
+        # the engine via ticket TP/SL triggers and on_ticket_tp_hit callback.
+        tp_mode = self.hp.get('tp_mode', 'fixed_pips')
+        tp_hit = self._check_tp() if tp_mode in ('bucket_pct', 'trailing') else False
+        hedge_hit = self._check_hedge_trigger()
+
+        # When BOTH fire on the same candle, use candle direction to decide priority.
+        # Matches backtester's _sort_execution_orders() heuristic:
+        #   Green candle (close >= open): price moved toward low first, then high
+        #   Red candle   (close < open):  price moved toward high first, then low
+        if tp_hit and hedge_hit:
+            last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
+            last_dir = last_leg['dir'] if last_leg else self.vars.get('session_dir')
+            is_green = self.close >= self.open
+            hedge_fires_first = (
+                (last_dir == 'long' and is_green) or
+                (last_dir == 'short' and not is_green)
+            )
+            if hedge_fires_first:
+                tp_hit = False
+            else:
+                hedge_hit = False
+
+        if tp_hit:
             self._close_cycle('tp_hit')
             return
 
-        # Check hedge trigger
-        if self._check_hedge_trigger():
+        if hedge_hit:
             self._execute_hedge()
             return
 
@@ -432,6 +459,37 @@ class UniversalMartingale(Strategy):
 
     def on_close_position(self, order, closed_trade):
         pass  # Handled by _close_cycle
+
+    def on_ticket_tp_hit(self, ticket, fill_price):
+        """Engine closed a ticket at TP — close remaining tickets to end cycle."""
+        if not self.vars.get('cycle_active'):
+            return
+        # Close all remaining tickets at the TP price and end the cycle
+        if self.position._tickets:
+            self.close_all_tickets(
+                exit_price=fill_price,
+                meta={
+                    'session': self.vars.get('session_number', 0),
+                    'exit_reason': 'tp_hit',
+                    'level': self.vars.get('level', 0),
+                }
+            )
+        self._end_cycle('tp_hit')
+
+    def on_ticket_sl_hit(self, ticket, fill_price):
+        """Engine closed a ticket at SL — close remaining tickets to end cycle."""
+        if not self.vars.get('cycle_active'):
+            return
+        if self.position._tickets:
+            self.close_all_tickets(
+                exit_price=fill_price,
+                meta={
+                    'session': self.vars.get('session_number', 0),
+                    'exit_reason': 'sl_hit',
+                    'level': self.vars.get('level', 0),
+                }
+            )
+        self._end_cycle('sl_hit')
 
     def after(self):
         pass
@@ -867,7 +925,12 @@ class UniversalMartingale(Strategy):
             return entry_price - dist
 
     def _check_tp(self):
-        """Check if take-profit condition is met."""
+        """Check if take-profit condition is met.
+
+        For price-based modes (fixed_pips, atr_based, risk_reward), the engine
+        handles TP via ticket triggers — this method only checks session-level
+        modes (bucket_pct, trailing).
+        """
         mode = self.hp.get('tp_mode', 'fixed_pips')
 
         if mode == 'bucket_pct':
@@ -878,19 +941,9 @@ class UniversalMartingale(Strategy):
         if mode == 'trailing':
             return self._check_trailing_tp()
 
-        # Fixed/ATR/RR: price-based TP
-        tp = self.vars.get('tp_price')
-        if tp is None:
-            return False
-
-        # TP is computed relative to the LAST leg's direction (via _recalculate_tp),
-        # so the check must use the last leg's direction, not session_dir.
-        last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
-        direction = last_leg['dir'] if last_leg else self.vars['session_dir']
-        if direction == 'long':
-            return self.high >= tp
-        else:
-            return self.low <= tp
+        # Price-based modes (fixed_pips, atr_based, risk_reward) are handled
+        # by the engine via on_ticket_tp_hit callback. No manual check needed.
+        return False
 
     def _check_trailing_tp(self):
         """Trailing TP: activate after reaching profit, then trail back."""
@@ -966,11 +1019,17 @@ class UniversalMartingale(Strategy):
                 self.exchange, self.symbol, abs(qty), entry, sides.SELL, reduce_only=False
             )
 
+        # Get ticket_id from the newly opened ticket
+        ticket_id = None
+        if self.position.is_cfd_mode and self.position._tickets:
+            ticket_id = self.position._tickets[-1].id
+
         leg = {
             'level': level,
             'dir': new_dir,
             'qty': qty,
             'entry': entry,
+            'ticket_id': ticket_id,
         }
         self.vars['legs'].append(leg)
 
@@ -982,12 +1041,17 @@ class UniversalMartingale(Strategy):
 
     def _recalculate_tp(self):
         """Recalculate TP price after adding a new hedge level.
-        TP is set relative to the LAST leg's entry (the newest, largest position)."""
+        TP is set relative to the LAST leg's entry (the newest, largest position).
+        Pushes updated TP to all tickets via engine API."""
         if self.hp.get('tp_mode') in ('bucket_pct', 'trailing'):
             return  # These modes don't use fixed TP price
 
         last_leg = self.vars['legs'][-1]
         self.vars['tp_price'] = self._compute_tp(last_leg['entry'], last_leg['dir'])
+
+        # Push TP to engine for all open tickets
+        if self.vars['tp_price'] is not None:
+            self.set_all_tickets_tp_sl(tp=self.vars['tp_price'])
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                        FILTER MODULE                                ║
@@ -1241,8 +1305,9 @@ class UniversalMartingale(Strategy):
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
     def _close_cycle(self, reason):
-        """Close all tickets and reset for next cycle."""
-        is_bust = reason in ('abort', 'terminate', 'max_level_sl')
+        """Close all tickets and reset for next cycle.
+        Called from update_position() for manual exits (abort, bucket_pct, trailing, terminate).
+        """
         level = self.vars.get('level', 0)
 
         # Use exact TP price for TP exits, candle close for everything else
@@ -1261,6 +1326,15 @@ class UniversalMartingale(Strategy):
                     'level': level,
                 }
             )
+
+        self._end_cycle(reason)
+
+    def _end_cycle(self, reason):
+        """Record session, update bust tracking, set cooldown, reset state.
+        Called by _close_cycle (manual exit) and on_ticket_tp_hit/on_ticket_sl_hit (engine exit).
+        """
+        is_bust = reason in ('abort', 'terminate', 'max_level_sl', 'sl_hit')
+        level = self.vars.get('level', 0)
 
         # Record session
         pnl = self.balance - self.vars.get('session_start_balance', self.balance)
@@ -1290,7 +1364,7 @@ class UniversalMartingale(Strategy):
             atr = ta.atr(self.candles, period=14)
             avg_atr = ta.atr(self.candles, period=50)
             if atr > avg_atr * self.hp.get('cooldown_value', 2.0):
-                self.vars['cooldown_until'] = self.index + 50  # Extended cooldown in high vol
+                self.vars['cooldown_until'] = self.index + 50
             else:
                 self.vars['cooldown_until'] = self.index + 5
 
