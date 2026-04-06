@@ -72,12 +72,19 @@ def main():
         log.error("Too few valid rows for inference validation")
         return
 
+    # 4. Batch-classify all valid samples (vectorized, fast)
+    log.info("Batch-classifying all valid samples ...")
+    X_valid = features[valid_indices]
+    batch_labels, batch_confidences = tree.classify_batch(X_valid)
+    log.info(f"Batch classification done: {len(batch_labels)} samples")
+
     adapter = _TreeAdapter(tree)
 
-    # 4. Test different hysteresis values
+    # 5. Test different hysteresis values (requires per-sample stateful inference)
     hysteresis_values = [0.0, 0.10, 0.15, 0.20]
     hysteresis_results = []
 
+    log.info("Hysteresis sweep requires per-sample inference (stateful) — this is slower ...")
     for hyst in hysteresis_values:
         log.info(f"Testing hysteresis={hyst:.2f} ...")
         inferencer = RegimeInferencer(adapter, config={
@@ -109,26 +116,14 @@ def main():
         log.info(f"  transitions={len(transitions)}, unique={unique_regimes}, "
                  f"avg_conf={avg_conf:.4f}")
 
-    # 5. Confidence calibration: bin predictions by confidence
-    log.info("Running confidence calibration with default hysteresis=0.15 ...")
-    inferencer = RegimeInferencer(adapter, config={
-        'min_confidence': 0.0,
-        'default_hysteresis': 0.15,
-        'transition_grace_candles': 5,
-    })
+    # 6. Confidence calibration using batch results (no per-sample loop needed)
+    log.info("Running confidence calibration from batch classification ...")
 
-    all_regimes = []
-    all_confidences = []
-    all_timestamps = []
+    all_regimes = [str(int(lid)) for lid in batch_labels]
+    all_confidences = batch_confidences.copy()
+    all_timestamps = candles[valid_indices, 0]
 
-    for idx in valid_indices:
-        fv = features[idx]
-        regime_id, conf, _probs = inferencer.classify(fv)
-        all_regimes.append(regime_id)
-        all_confidences.append(conf)
-        all_timestamps.append(candles[idx, 0])
-
-    all_confidences = np.array(all_confidences)
+    all_confidences = np.asarray(all_confidences)
 
     # Bin by confidence
     bins = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
@@ -163,8 +158,8 @@ def main():
             'regime_stability': round(stability, 4),
         })
 
-    # 6. Plots
-    # 6a. Confidence calibration bar chart
+    # 7. Plots
+    # 7a. Confidence calibration bar chart
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
     # Left: calibration bars
@@ -209,7 +204,7 @@ def main():
     savefig('42_inference_validation')
     log.info("Plot saved")
 
-    # 7. Save results
+    # 8. Save results
     results = {
         'hysteresis_sweep': hysteresis_results,
         'calibration': calibration,
