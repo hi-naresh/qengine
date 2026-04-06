@@ -153,9 +153,17 @@ class IslandPilot(Pipeline):
                     continue
 
             if genome_dict is not None:
-                # Extract genes dict if nested
                 self._active_genome = genome_dict.get('genes', genome_dict)
-                self._apply_genome(strategy, self._active_genome)
+                # ONLY apply genome when no position is open (between cycles).
+                # Changing hp mid-cycle breaks hedge sizing/direction logic.
+                position_open = False
+                if hasattr(strategy, 'position') and hasattr(strategy.position, 'is_open'):
+                    position_open = strategy.position.is_open
+                elif hasattr(strategy, 'vars') and strategy.vars.get('cycle_active'):
+                    position_open = True
+
+                if not position_open:
+                    self._apply_genome(strategy, self._active_genome)
             else:
                 self._active_genome = None
         else:
@@ -511,19 +519,22 @@ class IslandPilot(Pipeline):
         - Surefire v1: sizing_operator, sizing_factor, max_levels, hedge_distance, tp_distance
         - SurefireV2: sizing_operator, sizing_factor, max_levels, hedge_atr_mult
         - UniversalMartingale: sizing_curve, sizing_factor, max_levels, hedge_atr_mult
+
+        Applies sanity bounds to prevent GA's extreme evolved values from
+        blowing up real backtests with margin constraints.
         """
         if not hasattr(strategy, 'hp'):
             return
 
         hp = strategy.hp
 
-        # max_levels — universal across all strategies
+        # max_levels — universal, capped at 8 for safety
         if 'max_levels' in genome:
-            hp['max_levels'] = int(genome['max_levels'])
+            hp['max_levels'] = min(int(genome['max_levels']), 8)
 
-        # sizing_factor — universal
+        # sizing_factor — universal, capped at 2.5 for real margin
         if 'sizing_factor' in genome:
-            hp['sizing_factor'] = genome['sizing_factor']
+            hp['sizing_factor'] = min(genome['sizing_factor'], 2.5)
 
         # sizing_curve → detect which key the strategy uses
         sizing_curve = genome.get('sizing_curve')
@@ -538,20 +549,24 @@ class IslandPilot(Pipeline):
         # hedge_distance_atr_mult → strategy-specific key
         hedge_mult = genome.get('hedge_distance_atr_mult')
         if hedge_mult is not None:
+            # Clamp to reasonable range
+            hedge_mult = max(0.5, min(hedge_mult, 3.0))
             if 'hedge_atr_mult' in hp:
                 # SurefireV2, UniversalMartingale: ATR multiplier
                 hp['hedge_atr_mult'] = hedge_mult
             elif 'hedge_distance' in hp:
                 # Surefire v1: fixed pips — convert ATR mult to approx pips
                 # Typical EUR-USD 5m ATR ~5-10 pips, so mult * 10 ≈ pips
-                hp['hedge_distance'] = round(hedge_mult * 10, 1)
+                # Floor at 8 pips to prevent near-instant hedging
+                hp['hedge_distance'] = max(8.0, round(hedge_mult * 10, 1))
 
         # tp_distance_atr_mult → strategy-specific key
         tp_mult = genome.get('tp_distance_atr_mult')
         if tp_mult is not None:
+            tp_mult = max(1.0, min(tp_mult, 5.0))
             if 'tp_distance' in hp:
-                # Surefire v1: fixed pips
-                hp['tp_distance'] = round(tp_mult * 10, 1)
+                # Surefire v1: fixed pips, floor at 10 pips
+                hp['tp_distance'] = max(10.0, round(tp_mult * 10, 1))
             # SurefireV2 uses bucket_pct (not TP distance), so don't override
             # UniversalMartingale may use tp_atr_mult
             if 'tp_atr_mult' in hp:

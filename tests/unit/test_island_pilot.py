@@ -250,13 +250,13 @@ class TestInternalHelpers:
         strategy.hp['hedge_distance'] = 10
         strategy.hp['tp_distance'] = 20
         genome = {
-            'max_levels': 10,
+            'max_levels': 10,  # will be capped to 8
             'tp_distance_atr_mult': 3.5,
             'hedge_distance_atr_mult': 1.5,
             'sizing_curve': 0,  # int -> 'geometric'
         }
         pilot._apply_genome(strategy, genome)
-        assert strategy.hp['max_levels'] == 10
+        assert strategy.hp['max_levels'] == 8  # capped for safety
         # Surefire v1: tp_distance in pips (mult * 10)
         assert strategy.hp['tp_distance'] == 35.0
         assert strategy.hp['hedge_distance'] == 15.0
