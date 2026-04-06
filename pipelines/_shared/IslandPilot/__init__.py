@@ -505,31 +505,57 @@ class IslandPilot(Pipeline):
     # ------------------------------------------------------------------
 
     def _apply_genome(self, strategy, genome: dict) -> None:
-        """Override strategy.hp dict with genome parameters."""
+        """Override strategy.hp dict with genome parameters.
+
+        Maps genome keys to the correct hp keys for each strategy variant:
+        - Surefire v1: sizing_operator, sizing_factor, max_levels, hedge_distance, tp_distance
+        - SurefireV2: sizing_operator, sizing_factor, max_levels, hedge_atr_mult
+        - UniversalMartingale: sizing_curve, sizing_factor, max_levels, hedge_atr_mult
+        """
         if not hasattr(strategy, 'hp'):
             return
 
         hp = strategy.hp
 
-        # Map genome keys to strategy hyperparameters
-        mapping = {
-            'max_levels': 'max_levels',
-            'tp_distance_atr_mult': 'tp_distance_atr_mult',
-            'hedge_distance_atr_mult': 'hedge_distance_atr_mult',
-            'base_size_pct': 'base_size_pct',
-        }
+        # max_levels — universal across all strategies
+        if 'max_levels' in genome:
+            hp['max_levels'] = int(genome['max_levels'])
 
-        for genome_key, hp_key in mapping.items():
-            if genome_key in genome:
-                hp[hp_key] = genome[genome_key]
+        # sizing_factor — universal
+        if 'sizing_factor' in genome:
+            hp['sizing_factor'] = genome['sizing_factor']
 
-        # Convert sizing_curve from int/string to the strategy's expected format
+        # sizing_curve → detect which key the strategy uses
         sizing_curve = genome.get('sizing_curve')
         if sizing_curve is not None:
-            if isinstance(sizing_curve, int):
-                hp['sizing_curve'] = SIZING_CURVE_MAP.get(sizing_curve, 'geometric')
+            curve_str = SIZING_CURVE_MAP.get(sizing_curve, sizing_curve) if isinstance(sizing_curve, int) else sizing_curve
+            # Surefire v1/v2 use 'sizing_operator', UniversalMartingale uses 'sizing_curve'
+            if 'sizing_operator' in hp:
+                hp['sizing_operator'] = curve_str
             else:
-                hp['sizing_curve'] = sizing_curve
+                hp['sizing_curve'] = curve_str
+
+        # hedge_distance_atr_mult → strategy-specific key
+        hedge_mult = genome.get('hedge_distance_atr_mult')
+        if hedge_mult is not None:
+            if 'hedge_atr_mult' in hp:
+                # SurefireV2, UniversalMartingale: ATR multiplier
+                hp['hedge_atr_mult'] = hedge_mult
+            elif 'hedge_distance' in hp:
+                # Surefire v1: fixed pips — convert ATR mult to approx pips
+                # Typical EUR-USD 5m ATR ~5-10 pips, so mult * 10 ≈ pips
+                hp['hedge_distance'] = round(hedge_mult * 10, 1)
+
+        # tp_distance_atr_mult → strategy-specific key
+        tp_mult = genome.get('tp_distance_atr_mult')
+        if tp_mult is not None:
+            if 'tp_distance' in hp:
+                # Surefire v1: fixed pips
+                hp['tp_distance'] = round(tp_mult * 10, 1)
+            # SurefireV2 uses bucket_pct (not TP distance), so don't override
+            # UniversalMartingale may use tp_atr_mult
+            if 'tp_atr_mult' in hp:
+                hp['tp_atr_mult'] = tp_mult
 
     def _compute_danger(self, strategy) -> float:
         """Simple volatility-based danger proxy in [0, 1]."""

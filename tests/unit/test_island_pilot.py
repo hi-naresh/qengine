@@ -245,24 +245,31 @@ class TestInternalHelpers:
     def test_apply_genome(self):
         pilot = IslandPilot()
         strategy = _make_mock_strategy()
+        # Seed hp with keys the strategy would have (so _apply_genome detects them)
+        strategy.hp['sizing_operator'] = 'sqrt'
+        strategy.hp['hedge_distance'] = 10
+        strategy.hp['tp_distance'] = 20
         genome = {
             'max_levels': 10,
             'tp_distance_atr_mult': 3.5,
             'hedge_distance_atr_mult': 1.5,
-            'base_size_pct': 2.0,
             'sizing_curve': 0,  # int -> 'geometric'
         }
         pilot._apply_genome(strategy, genome)
         assert strategy.hp['max_levels'] == 10
-        assert strategy.hp['tp_distance_atr_mult'] == 3.5
-        assert strategy.hp['sizing_curve'] == 'geometric'
+        # Surefire v1: tp_distance in pips (mult * 10)
+        assert strategy.hp['tp_distance'] == 35.0
+        assert strategy.hp['hedge_distance'] == 15.0
+        # sizing_operator (not sizing_curve) for Surefire
+        assert strategy.hp['sizing_operator'] == 'geometric'
 
     def test_apply_genome_string_sizing_curve(self):
         pilot = IslandPilot()
         strategy = _make_mock_strategy()
+        strategy.hp['sizing_operator'] = 'sqrt'
         genome = {'sizing_curve': 'fibonacci'}
         pilot._apply_genome(strategy, genome)
-        assert strategy.hp['sizing_curve'] == 'fibonacci'
+        assert strategy.hp['sizing_operator'] == 'fibonacci'
 
     def test_build_sibling_groups_no_tree(self):
         pilot = IslandPilot()
