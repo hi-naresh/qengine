@@ -102,15 +102,19 @@ class IslandPilot(Pipeline):
         if candles is None or len(candles) < self.cfg['warmup']:
             return
 
-        # Compute features for the latest candle
-        try:
-            features = self.feature_pool.compute(candles)
-            self._feature_vector = features[-1]
-        except Exception:
-            self._feature_vector = None
-            return
+        # Only compute features on a FIXED tail window (not the whole array).
+        # This keeps cost O(1) per candle regardless of backtest length.
+        _WINDOW = 300
+        tail = candles[-_WINDOW:] if len(candles) > _WINDOW else candles
 
-        if self._feature_vector is None:
+        try:
+            features = self.feature_pool.compute(tail)
+            fv = features[-1]
+            # Skip if any NaN in the feature vector
+            if np.any(np.isnan(fv)):
+                return
+            self._feature_vector = fv
+        except Exception:
             return
 
         # Classify regime
@@ -137,12 +141,22 @@ class IslandPilot(Pipeline):
 
         # Apply best genome for active regime
         if self._active_regime is not None and self.evolver is not None:
-            regime_key = str(self._active_regime)
-            try:
-                genome_dict = self.evolver.get_best_genome(regime_key)
+            # Try both string and int keys (evolver may use either)
+            regime_key = self._active_regime
+            genome_dict = None
+            for key in [str(regime_key), regime_key, int(regime_key)]:
+                try:
+                    genome_dict = self.evolver.get_best_genome(key)
+                    if genome_dict:
+                        break
+                except (KeyError, TypeError, Exception):
+                    continue
+
+            if genome_dict is not None:
+                # Extract genes dict if nested
                 self._active_genome = genome_dict.get('genes', genome_dict)
                 self._apply_genome(strategy, self._active_genome)
-            except (KeyError, Exception):
+            else:
                 self._active_genome = None
         else:
             self._active_genome = None

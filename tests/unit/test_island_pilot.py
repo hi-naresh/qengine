@@ -94,6 +94,10 @@ class TestGateEntry:
 
     def test_gate_blocks_when_no_genome(self):
         pilot = IslandPilot({'warmup': 10})
+        # Clear pretrained models to test "no genome" path
+        pilot.regime_tree = None
+        pilot.evolver = None
+        pilot.inferencer = None
         strategy = _make_mock_strategy(n_candles=200)
 
         # Run enough candles to pass warmup, but no regime tree = no genome
@@ -262,6 +266,7 @@ class TestInternalHelpers:
 
     def test_build_sibling_groups_no_tree(self):
         pilot = IslandPilot()
+        pilot.regime_tree = None  # clear pretrained
         groups = pilot._build_sibling_groups()
         assert groups == {}
 

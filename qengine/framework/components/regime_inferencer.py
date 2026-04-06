@@ -51,11 +51,25 @@ class RegimeInferencer:
         current regime probability by the hysteresis margin.
         """
         result = self._tree.classify(feature_vector)
-        # Expect result to be (regime_id, confidence, all_probs) or similar
-        if isinstance(result, tuple) and len(result) == 3:
+        # Handle both dict (RegimeTree.classify) and tuple formats
+        if isinstance(result, dict):
+            # RegimeTree.classify() returns {leaf_id: probability}
+            all_probs = result
+            if all_probs:
+                new_regime = max(all_probs, key=all_probs.get)
+                new_confidence = all_probs[new_regime]
+            else:
+                new_regime = self._current_regime
+                new_confidence = 0.0
+        elif isinstance(result, tuple) and len(result) == 3:
             new_regime, new_confidence, all_probs = result
+        elif isinstance(result, tuple) and len(result) == 2:
+            new_regime, new_confidence = result
+            all_probs = {new_regime: new_confidence}
         else:
-            raise ValueError(f"Unexpected classify result format: {result}")
+            new_regime = self._current_regime
+            new_confidence = 0.0
+            all_probs = {}
 
         margin = hysteresis_override if hysteresis_override is not None else self.default_hysteresis
         self._classify_count += 1
