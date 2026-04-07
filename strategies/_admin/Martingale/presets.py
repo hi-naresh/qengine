@@ -4,43 +4,21 @@ Each preset is a dict of hyperparameter overrides applied on top of defaults.
 """
 
 PRESETS = {
-    'raw': {
-        'signal_mode': 'random',
-        'direction_bias': 'both',
+    'original': {
+        'base_size_value':1.0,
+        'signal_mode': 'none',
+        'direction_bias': 'long_only',
         'sizing_curve': 'geometric',
         'sizing_factor': 2.0,
-        'base_size_mode': 'fixed',
-        'base_size_value': 1.0,
-        'max_levels': 6,
+        'max_levels': 9,
         'hedge_mode': 'fixed_pips',
         'hedge_value': 10.0,
         'tp_mode': 'fixed_pips',
         'tp_value': 20.0,
-        'session_filter': 'any',
-        'vol_filter': 'none',
-        'trend_filter': 'none',
-        'spread_filter': 'none',
-        'cooldown_mode': 'none',
-        'abort_mode': 'none',
-        'max_daily_loss_pct': 0.0,
-        'max_consec_busts': 0,
-        'partial_close': 'none',
-        'breakeven_mode': 'none',
+        'partial_close':'at_breakeven'
     },
 
-    'surefire_v1': {
-        'signal_mode': 'random',
-        'sizing_curve': 'sqrt',
-        'sizing_factor': 2.0,
-        'max_levels': 12,
-        'hedge_mode': 'fixed_pips',
-        'hedge_value': 10.0,
-        'tp_mode': 'fixed_pips',
-        'tp_value': 20.0,
-        'session_filter': 'any',
-    },
-
-    'surefire_v2': {
+    'v2': {
         'signal_mode': 'ema_cross',
         'ema_fast': 8,
         'ema_slow': 21,
@@ -86,51 +64,6 @@ PRESETS = {
         'abort_level': 6,
     },
 
-    'aggressive': {
-        'signal_mode': 'random',
-        'sizing_curve': 'geometric',
-        'sizing_factor': 2.5,
-        'max_levels': 4,
-        'hedge_mode': 'fixed_pips',
-        'hedge_value': 15.0,
-        'tp_mode': 'fixed_pips',
-        'tp_value': 30.0,
-        'session_filter': 'any',
-        'max_daily_loss_pct': 5.0,
-    },
-
-    'fibonacci': {
-        'signal_mode': 'ema_cross',
-        'ema_fast': 8,
-        'ema_slow': 21,
-        'sizing_curve': 'fibonacci',
-        'max_levels': 10,
-        'hedge_mode': 'fibonacci_levels',
-        'tp_mode': 'atr_based',
-        'tp_value': 2.0,
-        'tp_atr_period': 14,
-        'session_filter': 'london_ny',
-    },
-
-    'scalper': {
-        'signal_mode': 'bollinger',
-        'bb_period': 20,
-        'bb_std': 2.0,
-        'sizing_curve': 'linear',
-        'sizing_factor': 1.0,
-        'max_levels': 5,
-        'hedge_mode': 'atr_based',
-        'hedge_value': 0.5,
-        'hedge_atr_period': 10,
-        'tp_mode': 'fixed_pips',
-        'tp_value': 5.0,
-        'session_filter': 'overlap',
-        'spread_filter': 'max_spread',
-        'spread_filter_max': 2.0,
-        'cooldown_mode': 'bars',
-        'cooldown_value': 5,
-    },
-
     'momentum': {
         'signal_mode': 'indicator',
         'ind_name': 'mom',
@@ -173,26 +106,6 @@ PRESETS = {
         'cooldown_mode': 'bars',
         'cooldown_value': 10,
         'max_daily_loss_pct': 2.0,
-    },
-
-    'trend_rider': {
-        'signal_mode': 'indicator',
-        'ind_name': 'trendflex',
-        'ind_period': 20,
-        'ind_rule': 'cross_zero',
-        'sizing_curve': 'geometric',
-        'sizing_factor': 2.0,
-        'max_levels': 10,
-        'hedge_mode': 'percentage',
-        'hedge_value': 0.3,
-        'tp_mode': 'trailing',
-        'tp_value': 15.0,
-        'session_filter': 'london_ny',
-        'trend_filter': 'ema_slope',
-        'trend_filter_period': 50,
-        'equity_curve_filter': 'above_ema',
-        'equity_ema_period': 30,
-        'max_weekly_loss_pct': 5.0,
     },
 
     'phase3_optimized': {
