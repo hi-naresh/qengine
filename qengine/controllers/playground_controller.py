@@ -76,46 +76,58 @@ def get_strategy_hyperparams(request_json: dict = Body(...), current_user: Curre
         with open(path, 'r') as f:
             code = f.read()
 
-        # Parse the AST to find the hyperparameters() method's return value
-        tree = ast.parse(code)
+        # Try executing hyperparameters() directly first (supports dynamic logic).
+        # Fall back to AST parsing if execution fails.
         hp_list = []
+        try:
+            strategy_class = jh.get_strategy_class(name)
+            hp_list = strategy_class.hyperparameters(None)
+        except Exception:
+            pass
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == 'hyperparameters':
-                for stmt in node.body:
-                    if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.List):
-                        for elt in stmt.value.elts:
-                            if isinstance(elt, ast.Dict):
-                                hp = {}
-                                for k, v in zip(elt.keys, elt.values):
-                                    key = k.s if isinstance(k, ast.Constant) else str(k)
-                                    if isinstance(v, ast.Constant):
-                                        hp[key] = v.value
-                                    elif isinstance(v, ast.Name):
-                                        hp[key] = v.id
-                                    elif isinstance(v, ast.List):
-                                        hp[key] = [
-                                            e.value if isinstance(e, ast.Constant) else str(e)
-                                            for e in v.elts
-                                        ]
-                                    elif isinstance(v, ast.Dict):
-                                        # Nested dict (e.g. depends_on: {'signal_mode': ['ema', ...]})
-                                        nested = {}
-                                        for nk, nv in zip(v.keys, v.values):
-                                            nkey = nk.value if isinstance(nk, ast.Constant) else str(nk)
-                                            if isinstance(nv, ast.List):
-                                                nested[nkey] = [
-                                                    e.value if isinstance(e, ast.Constant) else str(e)
-                                                    for e in nv.elts
-                                                ]
-                                            elif isinstance(nv, ast.Constant):
-                                                nested[nkey] = nv.value
-                                        hp[key] = nested
-                                    elif isinstance(v, ast.UnaryOp) and isinstance(v.op, ast.USub):
-                                        if isinstance(v.operand, ast.Constant):
-                                            hp[key] = -v.operand.value
-                                hp_list.append(hp)
-                break
+        if not hp_list:
+            # Fallback: parse AST for static return lists
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name == 'hyperparameters':
+                    for stmt in node.body:
+                        if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.List):
+                            for elt in stmt.value.elts:
+                                if isinstance(elt, ast.Dict):
+                                    hp = {}
+                                    for k, v in zip(elt.keys, elt.values):
+                                        key = k.s if isinstance(k, ast.Constant) else str(k)
+                                        if isinstance(v, ast.Constant):
+                                            hp[key] = v.value
+                                        elif isinstance(v, ast.Name):
+                                            hp[key] = v.id
+                                        elif isinstance(v, ast.List):
+                                            hp[key] = [
+                                                e.value if isinstance(e, ast.Constant) else str(e)
+                                                for e in v.elts
+                                            ]
+                                        elif isinstance(v, ast.Dict):
+                                            nested = {}
+                                            for nk, nv in zip(v.keys, v.values):
+                                                nkey = nk.value if isinstance(nk, ast.Constant) else str(nk)
+                                                if isinstance(nv, ast.List):
+                                                    nested[nkey] = [
+                                                        e.value if isinstance(e, ast.Constant) else str(e)
+                                                        for e in nv.elts
+                                                    ]
+                                                elif isinstance(nv, ast.Constant):
+                                                    nested[nkey] = nv.value
+                                            hp[key] = nested
+                                        elif isinstance(v, ast.UnaryOp) and isinstance(v.op, ast.USub):
+                                            if isinstance(v.operand, ast.Constant):
+                                                hp[key] = -v.operand.value
+                                    hp_list.append(hp)
+                    break
+
+        # Normalize: ensure 'type' is a string for JSON serialization
+        for hp in hp_list:
+            if 'type' in hp and isinstance(hp['type'], type):
+                hp['type'] = hp['type'].__name__
 
         return JSONResponse({'hyperparameters': hp_list})
     except Exception as e:
