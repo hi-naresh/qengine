@@ -40,18 +40,21 @@ class UniversalMartingale(Strategy):
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
     def hyperparameters(self):
+        from .presets import PRESETS
+
         # Signal modes that use each indicator group
         _ema_modes = ['ema_cross', 'ema_rsi', 'ema_macd', 'triple']
         _rsi_modes = ['rsi', 'ema_rsi', 'triple']
         _macd_modes = ['macd', 'ema_macd', 'triple']
 
-        return [
+        all_hps = [
             # ── Preset ──
+            # Preset is a configured way to run the strategy. Selecting a preset
+            # shows only the HPs it uses (via depends_on filtering).
             {'name': 'preset', 'type': 'categorical',
-             'options': ['custom', 'raw', 'surefire_v1', 'surefire_v2', 'conservative',
-                         'aggressive', 'fibonacci', 'scalper', 'momentum', 'mean_reversion',
-                         'trend_rider', 'phase3_optimized'],
-             'default': 'custom'},
+             'options': ['custom'] + sorted(PRESETS.keys()),
+             'default': 'custom',
+             'presets': PRESETS},
 
             # ── Direction / Entry ──
             {'name': 'signal_mode', 'type': 'categorical',
@@ -282,6 +285,39 @@ class UniversalMartingale(Strategy):
              'default': 'none',
              'description': 'Predefined sizing sequences (multipliers). Overrides sizing_curve when not none.'},
         ]
+
+        # ── Preset-aware HP filtering ──
+        # For each HP, compute which presets it's relevant for.
+        # The frontend uses depends_on: {'preset': [...]} to show/hide HPs
+        # based on the selected preset. 'custom' shows all HPs.
+        for hp_def in all_hps:
+            if hp_def['name'] == 'preset':
+                continue
+
+            relevant_presets = set()
+            for pname, pvals in PRESETS.items():
+                # HP is directly set by this preset
+                if hp_def['name'] in pvals:
+                    relevant_presets.add(pname)
+                    continue
+                # HP is a dependent whose parent condition is met by preset values
+                deps = hp_def.get('depends_on', {})
+                if deps:
+                    all_met = True
+                    for dep_key, dep_vals in deps.items():
+                        parent_val = pvals.get(dep_key)
+                        if parent_val is None or parent_val not in dep_vals:
+                            all_met = False
+                            break
+                    if all_met:
+                        relevant_presets.add(pname)
+
+            preset_dep = ['custom'] + sorted(relevant_presets)
+            existing_deps = hp_def.get('depends_on', {})
+            existing_deps['preset'] = preset_dep
+            hp_def['depends_on'] = existing_deps
+
+        return all_hps
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                          LIFECYCLE                                  ║
