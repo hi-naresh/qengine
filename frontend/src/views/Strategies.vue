@@ -275,13 +275,21 @@
               </div>
               <div><label class="label">Warm-up Candles</label><input v-model.number="pgForm.warm_up_candles" type="number" class="input" min="0" /></div>
 
-              <!-- Hyperparameters (auto-loaded from strategy) -->
-              <div v-if="pgHyperParams.length">
+              <!-- Preset selector (separate from HPs) -->
+              <div v-if="pgPreset">
+                <label class="label">Preset</label>
+                <select v-model="pgPreset.value" @change="onPgPresetChange" class="select text-xs py-1.5 w-full mb-2">
+                  <option v-for="opt in pgPreset.options" :key="opt" :value="opt">{{ opt }}</option>
+                </select>
+              </div>
+
+              <!-- Hyperparameters (filtered by preset) -->
+              <div v-if="visiblePgHPs.length">
                 <div class="flex items-center justify-between mb-2">
-                  <label class="label mb-0">Hyperparameters</label>
+                  <label class="label mb-0">Hyperparameters <span class="text-surface-600 text-[10px]">({{ visiblePgHPs.length }})</span></label>
                   <button @click="resetHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
                 </div>
-                <div v-for="(hp, idx) in pgHyperParams" :key="idx" class="mb-2">
+                <div v-for="(hp, idx) in pgHyperParams" :key="idx" v-show="hp.name !== 'preset' && isPgHpVisible(hp)" class="mb-2">
                   <div class="flex gap-2 items-center">
                     <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
                     <select v-if="hp.type === 'str' && hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
@@ -651,6 +659,34 @@ const pgLogFilter = ref('all')
 const pgHyperParams = ref([])        // Auto-loaded from strategy code
 const pgHyperParamsDefaults = ref([]) // Store defaults for reset
 const pgCustomHPs = ref([])           // Manual hyperparams if strategy has none
+const pgPreset = ref(null)
+const pgPresetData = ref({})
+
+const visiblePgHPs = computed(() =>
+  pgHyperParams.value.filter(hp => hp.name !== 'preset' && isPgHpVisible(hp))
+)
+
+function isPgHpVisible(hp) {
+  if (!hp.depends_on) return true
+  for (const [key, allowedValues] of Object.entries(hp.depends_on)) {
+    const parent = pgHyperParams.value.find(p => p.name === key)
+    if (parent && !allowedValues.includes(parent.value)) return false
+  }
+  return true
+}
+
+function onPgPresetChange() {
+  const presetName = pgPreset.value?.value
+  if (!presetName || presetName === 'custom') return
+  const presetValues = pgPresetData.value[presetName]
+  if (!presetValues) return
+  for (const hp of pgHyperParams.value) {
+    if (hp.name === 'preset') continue
+    if (presetValues[hp.name] !== undefined) {
+      hp.value = presetValues[hp.name]
+    }
+  }
+}
 
 const tradeChartRef = ref(null)
 const pgChartCandles = ref([])
@@ -914,17 +950,32 @@ async function loadStrategyHyperparams(name) {
       max: hp.max,
       description: hp.description || '',
       options: hp.options || undefined,
+      depends_on: hp.depends_on || undefined,
+      presets: hp.presets || undefined,
     }))
     pgHyperParams.value = hps
     pgHyperParamsDefaults.value = JSON.parse(JSON.stringify(hps))
+
+    // Extract preset selector
+    const presetHp = hps.find(h => h.name === 'preset')
+    if (presetHp) {
+      pgPreset.value = presetHp
+      pgPresetData.value = presetHp.presets || {}
+    } else {
+      pgPreset.value = null
+      pgPresetData.value = {}
+    }
   } catch {
     pgHyperParams.value = []
     pgHyperParamsDefaults.value = []
+    pgPreset.value = null
   }
 }
 
 function resetHyperParams() {
   pgHyperParams.value = JSON.parse(JSON.stringify(pgHyperParamsDefaults.value))
+  const presetHp = pgHyperParams.value.find(h => h.name === 'preset')
+  if (presetHp) pgPreset.value = presetHp
 }
 
 function closeStrategyWorkspace() {
