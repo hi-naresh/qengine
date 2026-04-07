@@ -47,81 +47,122 @@ class UniversalMartingale(Strategy):
         _rsi_modes = ['rsi', 'ema_rsi', 'triple']
         _macd_modes = ['macd', 'ema_macd', 'triple']
 
+        # HPs marked 'general': True are shown for ALL presets (not just custom).
+        # Group names are used as section headers in the UI.
+        _G = 'General'
+        _E = 'Entry Signal'
+        _H = 'Grid / Hedge'
+        _T = 'Take Profit'
+        _F = 'Filters'
+        _R = 'Risk Management'
+        _P = 'Position Management'
+
         all_hps = [
             # ── Preset ──
-            # Preset is a configured way to run the strategy. Selecting a preset
-            # shows only the HPs it uses (via depends_on filtering).
             {'name': 'preset', 'type': 'categorical',
              'options': ['custom'] + sorted(PRESETS.keys()),
              'default': 'custom',
              'presets': PRESETS},
 
-            # ── Direction / Entry ──
-            {'name': 'signal_mode', 'type': 'categorical',
+            # ── General (always visible) ──
+            {'name': 'sizing_curve', 'type': 'categorical', 'group': _G, 'general': True,
+             'options': ['geometric', 'sqrt', 'linear', 'fibonacci', 'fixed', 'anti_martingale'],
+             'default': 'geometric'},
+            {'name': 'sizing_factor', 'type': float, 'group': _G, 'general': True,
+             'min': 1.1, 'max': 5.0, 'default': 2.0,
+             'depends_on': {'sizing_curve': ['geometric', 'sqrt', 'anti_martingale']}},
+            {'name': 'sizing_custom_sequence', 'type': 'categorical', 'group': _G, 'general': True,
+             'options': ['none', '1_1_2_3_5_8', '1_2_4_8_16', '1_1_2_4_7_11',
+                         '1_2_3_5_8_13_21', '1_3_6_12_24'],
+             'default': 'none',
+             'description': 'Predefined sizing sequences. Overrides sizing_curve when not none.'},
+            {'name': 'base_size_mode', 'type': 'categorical', 'group': _G, 'general': True,
+             'options': ['fixed', 'pct_equity', 'risk_pips', 'capital_aware'], 'default': 'pct_equity'},
+            {'name': 'base_size_value', 'type': float, 'group': _G, 'general': True,
+             'min': 0.01, 'max': 100.0, 'default': 1.0},
+            {'name': 'max_bust_dd_pct', 'type': float, 'group': _G, 'general': True,
+             'min': 5, 'max': 50, 'default': 20,
+             'depends_on': {'base_size_mode': ['capital_aware']},
+             'description': 'Max % of account a single bust can lose.'},
+            {'name': 'max_levels', 'type': int, 'group': _G, 'general': True,
+             'min': 0, 'max': 20, 'default': 6,
+             'description': '0 = no hedging, N = allow up to N hedge levels'},
+
+            # ── Entry Signal ──
+            {'name': 'signal_mode', 'type': 'categorical', 'group': _E,
              'options': ['random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch',
                          'cci', 'adx', 'bollinger', 'ema_rsi', 'ema_macd', 'triple',
                          'indicator', 'dual_indicator', 'model'],
              'default': 'random'},
-            {'name': 'direction_bias', 'type': 'categorical',
+            {'name': 'direction_bias', 'type': 'categorical', 'group': _E,
              'options': ['both', 'long_only', 'short_only'], 'default': 'both'},
-            {'name': 'entry_on_crossover', 'type': 'categorical',
+            {'name': 'entry_on_crossover', 'type': 'categorical', 'group': _E,
              'options': ['yes', 'no'], 'default': 'no',
              'description': 'Only enter on crossover moment (not while condition holds)'},
-
-            # EMA params
-            {'name': 'ema_fast', 'type': int, 'min': 3, 'max': 50, 'default': 8,
+            {'name': 'ema_fast', 'type': int, 'group': _E,
+             'min': 3, 'max': 50, 'default': 8,
              'depends_on': {'signal_mode': _ema_modes}},
-            {'name': 'ema_slow', 'type': int, 'min': 10, 'max': 200, 'default': 21,
+            {'name': 'ema_slow', 'type': int, 'group': _E,
+             'min': 10, 'max': 200, 'default': 21,
              'depends_on': {'signal_mode': _ema_modes}},
-            # RSI params
-            {'name': 'rsi_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
+            {'name': 'rsi_period', 'type': int, 'group': _E,
+             'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'signal_mode': _rsi_modes}},
-            {'name': 'rsi_ob', 'type': float, 'min': 60, 'max': 85, 'default': 70,
+            {'name': 'rsi_ob', 'type': float, 'group': _E,
+             'min': 60, 'max': 85, 'default': 70,
              'depends_on': {'signal_mode': _rsi_modes}},
-            {'name': 'rsi_os', 'type': float, 'min': 15, 'max': 40, 'default': 30,
+            {'name': 'rsi_os', 'type': float, 'group': _E,
+             'min': 15, 'max': 40, 'default': 30,
              'depends_on': {'signal_mode': _rsi_modes}},
-            # MACD params
-            {'name': 'macd_fast', 'type': int, 'min': 5, 'max': 20, 'default': 12,
+            {'name': 'macd_fast', 'type': int, 'group': _E,
+             'min': 5, 'max': 20, 'default': 12,
              'depends_on': {'signal_mode': _macd_modes}},
-            {'name': 'macd_slow', 'type': int, 'min': 15, 'max': 40, 'default': 26,
+            {'name': 'macd_slow', 'type': int, 'group': _E,
+             'min': 15, 'max': 40, 'default': 26,
              'depends_on': {'signal_mode': _macd_modes}},
-            {'name': 'macd_signal', 'type': int, 'min': 5, 'max': 15, 'default': 9,
+            {'name': 'macd_signal', 'type': int, 'group': _E,
+             'min': 5, 'max': 15, 'default': 9,
              'depends_on': {'signal_mode': _macd_modes}},
-            # SuperTrend params
-            {'name': 'st_period', 'type': int, 'min': 5, 'max': 20, 'default': 10,
+            {'name': 'st_period', 'type': int, 'group': _E,
+             'min': 5, 'max': 20, 'default': 10,
              'depends_on': {'signal_mode': ['supertrend']}},
-            {'name': 'st_factor', 'type': float, 'min': 1.0, 'max': 6.0, 'default': 3.0,
+            {'name': 'st_factor', 'type': float, 'group': _E,
+             'min': 1.0, 'max': 6.0, 'default': 3.0,
              'depends_on': {'signal_mode': ['supertrend']}},
-            # Stochastic params
-            {'name': 'stoch_k', 'type': int, 'min': 5, 'max': 21, 'default': 14,
+            {'name': 'stoch_k', 'type': int, 'group': _E,
+             'min': 5, 'max': 21, 'default': 14,
              'depends_on': {'signal_mode': ['stoch']}},
-            {'name': 'stoch_d', 'type': int, 'min': 3, 'max': 9, 'default': 3,
+            {'name': 'stoch_d', 'type': int, 'group': _E,
+             'min': 3, 'max': 9, 'default': 3,
              'depends_on': {'signal_mode': ['stoch']}},
-            {'name': 'stoch_ob', 'type': float, 'min': 70, 'max': 90, 'default': 80,
+            {'name': 'stoch_ob', 'type': float, 'group': _E,
+             'min': 70, 'max': 90, 'default': 80,
              'depends_on': {'signal_mode': ['stoch']}},
-            {'name': 'stoch_os', 'type': float, 'min': 10, 'max': 30, 'default': 20,
+            {'name': 'stoch_os', 'type': float, 'group': _E,
+             'min': 10, 'max': 30, 'default': 20,
              'depends_on': {'signal_mode': ['stoch']}},
-            # CCI params
-            {'name': 'cci_period', 'type': int, 'min': 10, 'max': 30, 'default': 20,
+            {'name': 'cci_period', 'type': int, 'group': _E,
+             'min': 10, 'max': 30, 'default': 20,
              'depends_on': {'signal_mode': ['cci']}},
-            {'name': 'cci_ob', 'type': float, 'min': 100, 'max': 250, 'default': 100,
+            {'name': 'cci_ob', 'type': float, 'group': _E,
+             'min': 100, 'max': 250, 'default': 100,
              'depends_on': {'signal_mode': ['cci']}},
-            {'name': 'cci_os', 'type': float, 'min': -250, 'max': -100, 'default': -100,
+            {'name': 'cci_os', 'type': float, 'group': _E,
+             'min': -250, 'max': -100, 'default': -100,
              'depends_on': {'signal_mode': ['cci']}},
-            # ADX params
-            {'name': 'adx_period', 'type': int, 'min': 10, 'max': 30, 'default': 14,
+            {'name': 'adx_period', 'type': int, 'group': _E,
+             'min': 10, 'max': 30, 'default': 14,
              'depends_on': {'signal_mode': ['adx']}},
-            {'name': 'adx_threshold', 'type': float, 'min': 15, 'max': 40, 'default': 25,
+            {'name': 'adx_threshold', 'type': float, 'group': _E,
+             'min': 15, 'max': 40, 'default': 25,
              'depends_on': {'signal_mode': ['adx']}},
-            # Bollinger params
-            {'name': 'bb_period', 'type': int, 'min': 10, 'max': 30, 'default': 20,
+            {'name': 'bb_period', 'type': int, 'group': _E,
+             'min': 10, 'max': 30, 'default': 20,
              'depends_on': {'signal_mode': ['bollinger']}},
-            {'name': 'bb_std', 'type': float, 'min': 1.0, 'max': 3.5, 'default': 2.0,
+            {'name': 'bb_std', 'type': float, 'group': _E,
+             'min': 1.0, 'max': 3.5, 'default': 2.0,
              'depends_on': {'signal_mode': ['bollinger']}},
-
-            # ── Generic Indicator Mode ──
-            # Use ANY of 175+ indicators by name (ta.rsi, ta.cci, ta.fisher, etc.)
-            {'name': 'ind_name', 'type': 'categorical',
+            {'name': 'ind_name', 'type': 'categorical', 'group': _E,
              'options': ['rsi', 'cci', 'mfi', 'willr', 'stc', 'fisher', 'dpo', 'cmo',
                          'tsi', 'rsx', 'lrsi', 'srsi', 'ift_rsi', 'mom', 'roc', 'ao',
                          'bop', 'eri', 'kst', 'trix', 'ppo', 'apo', 'dx', 'adxr',
@@ -131,188 +172,182 @@ class UniversalMartingale(Strategy):
                          'linearreg_slope', 'linearreg_angle'],
              'default': 'rsi',
              'depends_on': {'signal_mode': ['indicator', 'dual_indicator']}},
-            {'name': 'ind_period', 'type': int, 'min': 3, 'max': 100, 'default': 14,
+            {'name': 'ind_period', 'type': int, 'group': _E,
+             'min': 3, 'max': 100, 'default': 14,
              'depends_on': {'signal_mode': ['indicator', 'dual_indicator']}},
-            {'name': 'ind_rule', 'type': 'categorical',
+            {'name': 'ind_rule', 'type': 'categorical', 'group': _E,
              'options': ['ob_os', 'cross_zero', 'threshold', 'rising_falling'],
              'default': 'ob_os',
              'depends_on': {'signal_mode': ['indicator', 'dual_indicator']},
-             'description': 'ob_os=overbought/oversold, cross_zero=above/below 0, threshold=custom, rising_falling=direction'},
-            {'name': 'ind_long_threshold', 'type': float, 'min': -500, 'max': 500, 'default': 30,
-             'depends_on': {'signal_mode': ['indicator', 'dual_indicator']},
-             'description': 'Long when value <= this (ob_os/threshold) or > 0 (cross_zero)'},
-            {'name': 'ind_short_threshold', 'type': float, 'min': -500, 'max': 500, 'default': 70,
-             'depends_on': {'signal_mode': ['indicator', 'dual_indicator']},
-             'description': 'Short when value >= this (ob_os/threshold)'},
-
-            # ── Dual Indicator (confirmation) ──
-            {'name': 'ind2_name', 'type': 'categorical',
+             'description': 'ob_os=overbought/oversold, cross_zero=above/below 0'},
+            {'name': 'ind_long_threshold', 'type': float, 'group': _E,
+             'min': -500, 'max': 500, 'default': 30,
+             'depends_on': {'signal_mode': ['indicator', 'dual_indicator']}},
+            {'name': 'ind_short_threshold', 'type': float, 'group': _E,
+             'min': -500, 'max': 500, 'default': 70,
+             'depends_on': {'signal_mode': ['indicator', 'dual_indicator']}},
+            {'name': 'ind2_name', 'type': 'categorical', 'group': _E,
              'options': ['ema_cross', 'rsi', 'cci', 'mfi', 'willr', 'stc', 'fisher',
                          'adx', 'tsi', 'mom', 'roc', 'macd', 'supertrend', 'bollinger',
                          'stoch', 'aroonosc', 'dx', 'ppo', 'apo', 'zscore', 'trendflex'],
              'default': 'ema_cross',
              'depends_on': {'signal_mode': ['dual_indicator']},
              'description': 'Second indicator for confirmation'},
-            {'name': 'ind2_period', 'type': int, 'min': 3, 'max': 100, 'default': 21,
+            {'name': 'ind2_period', 'type': int, 'group': _E,
+             'min': 3, 'max': 100, 'default': 21,
              'depends_on': {'signal_mode': ['dual_indicator']}},
-            {'name': 'ind2_rule', 'type': 'categorical',
-             'options': ['agree', 'filter'],
-             'default': 'agree',
+            {'name': 'ind2_rule', 'type': 'categorical', 'group': _E,
+             'options': ['agree', 'filter'], 'default': 'agree',
              'depends_on': {'signal_mode': ['dual_indicator']},
-             'description': 'agree=both must give same signal, filter=ind2 must not contradict'},
-
-            # ── ML Model Mode ──
-            # Calls self.signal_fn(candles, hp) -> 'long'|'short'|None
-            # Set signal_fn on instance before running, or override _signal_model()
-            {'name': 'model_lookback', 'type': int, 'min': 10, 'max': 500, 'default': 50,
+             'description': 'agree=both must agree, filter=ind2 must not contradict'},
+            {'name': 'model_lookback', 'type': int, 'group': _E,
+             'min': 10, 'max': 500, 'default': 50,
              'depends_on': {'signal_mode': ['model']},
              'description': 'Number of candles to feed to the model'},
 
-            # ── Sizing ──
-            {'name': 'sizing_curve', 'type': 'categorical',
-             'options': ['geometric', 'sqrt', 'linear', 'fibonacci', 'fixed', 'anti_martingale'],
-             'default': 'geometric'},
-            {'name': 'sizing_factor', 'type': float, 'min': 1.1, 'max': 5.0, 'default': 2.0,
-             'depends_on': {'sizing_curve': ['geometric', 'sqrt', 'anti_martingale']}},
-            {'name': 'base_size_mode', 'type': 'categorical',
-             'options': ['fixed', 'pct_equity', 'risk_pips', 'capital_aware'], 'default': 'pct_equity'},
-            {'name': 'base_size_value', 'type': float, 'min': 0.01, 'max': 100.0, 'default': 1.0},
-            {'name': 'max_bust_dd_pct', 'type': float, 'min': 5, 'max': 50, 'default': 20,
-             'depends_on': {'base_size_mode': ['capital_aware']},
-             'description': 'Max % of account a single bust can lose. Base lot auto-computed from this.'},
-
-            # ── Grid / Hedge Structure ──
-            {'name': 'max_levels', 'type': int, 'min': 0, 'max': 20, 'default': 6,
-             'description': '0 = no hedging (single entry only), N = allow up to N hedge levels'},
-            {'name': 'hedge_mode', 'type': 'categorical',
+            # ── Grid / Hedge ──
+            {'name': 'hedge_mode', 'type': 'categorical', 'group': _H,
              'options': ['fixed_pips', 'atr_based', 'percentage', 'fibonacci_levels'],
              'default': 'fixed_pips'},
-            {'name': 'hedge_value', 'type': float, 'min': 0.1, 'max': 500.0, 'default': 10.0,
+            {'name': 'hedge_value', 'type': float, 'group': _H,
+             'min': 0.1, 'max': 500.0, 'default': 10.0,
              'description': 'Pips (fixed), ATR mult (atr), % (pct)'},
-            {'name': 'hedge_atr_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
+            {'name': 'hedge_atr_period', 'type': int, 'group': _H,
+             'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'hedge_mode': ['atr_based']}},
-            {'name': 'hedge_expand', 'type': 'categorical', 'options': ['no', 'yes'], 'default': 'no',
+            {'name': 'hedge_expand', 'type': 'categorical', 'group': _H,
+             'options': ['no', 'yes'], 'default': 'no',
              'description': 'Expand hedge distance at deeper levels'},
-            {'name': 'hedge_expand_factor', 'type': float, 'min': 1.0, 'max': 2.0, 'default': 1.2,
+            {'name': 'hedge_expand_factor', 'type': float, 'group': _H,
+             'min': 1.0, 'max': 2.0, 'default': 1.2,
              'depends_on': {'hedge_expand': ['yes']}},
 
             # ── Take Profit ──
-            {'name': 'tp_mode', 'type': 'categorical',
+            {'name': 'tp_mode', 'type': 'categorical', 'group': _T,
              'options': ['fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward', 'trailing'],
              'default': 'fixed_pips'},
-            {'name': 'tp_value', 'type': float, 'min': 0.01, 'max': 500.0, 'default': 20.0,
+            {'name': 'tp_value', 'type': float, 'group': _T,
+             'min': 0.01, 'max': 500.0, 'default': 20.0,
              'description': 'Pips (fixed), ATR mult (atr), equity % (bucket), ratio (rr), pips (trail)'},
-            {'name': 'tp_atr_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
+            {'name': 'tp_atr_period', 'type': int, 'group': _T,
+             'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'tp_mode': ['atr_based']}},
 
             # ── Filters ──
-            {'name': 'session_filter', 'type': 'categorical',
+            {'name': 'session_filter', 'type': 'categorical', 'group': _F,
              'options': ['any', 'london', 'new_york', 'overlap', 'london_ny', 'asian'],
              'default': 'any'},
-            {'name': 'day_filter', 'type': 'categorical',
+            {'name': 'day_filter', 'type': 'categorical', 'group': _F,
              'options': ['any', 'weekdays_only', 'skip_monday', 'skip_friday', 'skip_mon_fri'],
              'default': 'any'},
-            {'name': 'vol_filter', 'type': 'categorical',
+            {'name': 'vol_filter', 'type': 'categorical', 'group': _F,
              'options': ['none', 'atr_range', 'natr_min'], 'default': 'none'},
-            {'name': 'vol_filter_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
+            {'name': 'vol_filter_period', 'type': int, 'group': _F,
+             'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'vol_filter': ['atr_range', 'natr_min']}},
-            {'name': 'vol_filter_min', 'type': float, 'min': 0.0, 'max': 100.0, 'default': 0.5,
+            {'name': 'vol_filter_min', 'type': float, 'group': _F,
+             'min': 0.0, 'max': 100.0, 'default': 0.5,
              'depends_on': {'vol_filter': ['atr_range', 'natr_min']}},
-            {'name': 'vol_filter_max', 'type': float, 'min': 0.0, 'max': 500.0, 'default': 50.0,
+            {'name': 'vol_filter_max', 'type': float, 'group': _F,
+             'min': 0.0, 'max': 500.0, 'default': 50.0,
              'depends_on': {'vol_filter': ['atr_range']}},
-            {'name': 'trend_filter', 'type': 'categorical',
+            {'name': 'trend_filter', 'type': 'categorical', 'group': _F,
              'options': ['none', 'ema_slope', 'adx_gate', 'dm_gate'], 'default': 'none'},
-            {'name': 'trend_filter_period', 'type': int, 'min': 5, 'max': 50, 'default': 14,
+            {'name': 'trend_filter_period', 'type': int, 'group': _F,
+             'min': 5, 'max': 50, 'default': 14,
              'depends_on': {'trend_filter': ['ema_slope', 'adx_gate', 'dm_gate']}},
-            {'name': 'trend_filter_threshold', 'type': float, 'min': 0, 'max': 50, 'default': 25,
+            {'name': 'trend_filter_threshold', 'type': float, 'group': _F,
+             'min': 0, 'max': 50, 'default': 25,
              'depends_on': {'trend_filter': ['adx_gate', 'dm_gate']}},
-            {'name': 'spread_filter', 'type': 'categorical',
+            {'name': 'spread_filter', 'type': 'categorical', 'group': _F,
              'options': ['none', 'max_spread'], 'default': 'none'},
-            {'name': 'spread_filter_max', 'type': float, 'min': 0.1, 'max': 20.0, 'default': 3.0,
+            {'name': 'spread_filter_max', 'type': float, 'group': _F,
+             'min': 0.1, 'max': 20.0, 'default': 3.0,
              'depends_on': {'spread_filter': ['max_spread']}},
-
-            # ── Confidence Gate (Phase 3 validated) ──
-            {'name': 'confidence_gate', 'type': 'categorical',
+            {'name': 'confidence_gate', 'type': 'categorical', 'group': _F,
              'options': ['none', 'enabled'], 'default': 'none',
              'description': 'Composite gate: NATR + ADX + ER. Validated on 2024-2025.'},
-            {'name': 'confidence_threshold', 'type': float, 'min': 0.1, 'max': 0.9, 'default': 0.4,
+            {'name': 'confidence_threshold', 'type': float, 'group': _F,
+             'min': 0.1, 'max': 0.9, 'default': 0.4,
              'depends_on': {'confidence_gate': ['enabled']}},
 
             # ── Risk Management ──
-            {'name': 'max_daily_loss_pct', 'type': float, 'min': 0, 'max': 20, 'default': 0,
-             'description': '0 = disabled'},
-            {'name': 'max_consec_busts', 'type': int, 'min': 0, 'max': 20, 'default': 0,
-             'description': '0 = disabled'},
-            {'name': 'cooldown_mode', 'type': 'categorical',
+            {'name': 'max_daily_loss_pct', 'type': float, 'group': _R,
+             'min': 0, 'max': 20, 'default': 0, 'description': '0 = disabled'},
+            {'name': 'max_weekly_loss_pct', 'type': float, 'group': _R,
+             'min': 0, 'max': 50, 'default': 0, 'description': '0 = disabled'},
+            {'name': 'max_consec_busts', 'type': int, 'group': _R,
+             'min': 0, 'max': 20, 'default': 0, 'description': '0 = disabled'},
+            {'name': 'max_exposure_pct', 'type': float, 'group': _R,
+             'min': 0, 'max': 100, 'default': 0,
+             'description': 'Max margin as % of equity. 0 = disabled'},
+            {'name': 'cooldown_mode', 'type': 'categorical', 'group': _R,
              'options': ['none', 'bars', 'atr_expansion'], 'default': 'none'},
-            {'name': 'cooldown_value', 'type': float, 'min': 1, 'max': 100, 'default': 10,
+            {'name': 'cooldown_value', 'type': float, 'group': _R,
+             'min': 1, 'max': 100, 'default': 10,
              'depends_on': {'cooldown_mode': ['bars', 'atr_expansion']}},
-            {'name': 'abort_mode', 'type': 'categorical',
+            {'name': 'abort_mode', 'type': 'categorical', 'group': _R,
              'options': ['none', 'level_threshold', 'time_bars', 'pnl_pct'], 'default': 'none'},
-            {'name': 'abort_level', 'type': int, 'min': 2, 'max': 20, 'default': 6,
+            {'name': 'abort_level', 'type': int, 'group': _R,
+             'min': 2, 'max': 20, 'default': 6,
              'depends_on': {'abort_mode': ['level_threshold']}},
-            {'name': 'abort_time_bars', 'type': int, 'min': 10, 'max': 1000, 'default': 100,
+            {'name': 'abort_time_bars', 'type': int, 'group': _R,
+             'min': 10, 'max': 1000, 'default': 100,
              'depends_on': {'abort_mode': ['time_bars']}},
-            {'name': 'abort_pnl_pct', 'type': float, 'min': -50, 'max': -1, 'default': -10,
+            {'name': 'abort_pnl_pct', 'type': float, 'group': _R,
+             'min': -50, 'max': -1, 'default': -10,
              'depends_on': {'abort_mode': ['pnl_pct']}},
-            {'name': 'max_exposure_pct', 'type': float, 'min': 0, 'max': 100, 'default': 0,
-             'description': 'Max total margin as % of equity. 0 = disabled'},
-
-            # ── Position Management ──
-            {'name': 'partial_close', 'type': 'categorical',
-             'options': ['none', 'at_breakeven', 'oldest_at_profit'], 'default': 'none'},
-            {'name': 'partial_close_pct', 'type': float, 'min': 10, 'max': 90, 'default': 50,
-             'depends_on': {'partial_close': ['at_breakeven', 'oldest_at_profit']}},
-            {'name': 'breakeven_mode', 'type': 'categorical',
-             'options': ['none', 'after_n_levels'], 'default': 'none'},
-            {'name': 'breakeven_levels', 'type': int, 'min': 1, 'max': 10, 'default': 3,
-             'depends_on': {'breakeven_mode': ['after_n_levels']}},
-
-            # ── Advanced Risk ──
-            {'name': 'max_weekly_loss_pct', 'type': float, 'min': 0, 'max': 50, 'default': 0,
-             'description': 'Max weekly drawdown %. 0 = disabled'},
-            {'name': 'equity_curve_filter', 'type': 'categorical',
-             'options': ['none', 'above_ema'],
-             'default': 'none',
+            {'name': 'equity_curve_filter', 'type': 'categorical', 'group': _R,
+             'options': ['none', 'above_ema'], 'default': 'none',
              'description': 'Only trade when equity curve is above its own EMA'},
-            {'name': 'equity_ema_period', 'type': int, 'min': 5, 'max': 100, 'default': 20,
+            {'name': 'equity_ema_period', 'type': int, 'group': _R,
+             'min': 5, 'max': 100, 'default': 20,
              'depends_on': {'equity_curve_filter': ['above_ema']}},
 
-            # ── Sizing Curve: Custom ──
-            {'name': 'sizing_custom_sequence', 'type': 'categorical',
-             'options': ['none', '1_1_2_3_5_8', '1_2_4_8_16', '1_1_2_4_7_11',
-                         '1_2_3_5_8_13_21', '1_3_6_12_24'],
-             'default': 'none',
-             'description': 'Predefined sizing sequences (multipliers). Overrides sizing_curve when not none.'},
+            # ── Position Management ──
+            {'name': 'partial_close', 'type': 'categorical', 'group': _P,
+             'options': ['none', 'at_breakeven', 'oldest_at_profit'], 'default': 'none'},
+            {'name': 'partial_close_pct', 'type': float, 'group': _P,
+             'min': 10, 'max': 90, 'default': 50,
+             'depends_on': {'partial_close': ['at_breakeven', 'oldest_at_profit']}},
+            {'name': 'breakeven_mode', 'type': 'categorical', 'group': _P,
+             'options': ['none', 'after_n_levels'], 'default': 'none'},
+            {'name': 'breakeven_levels', 'type': int, 'group': _P,
+             'min': 1, 'max': 10, 'default': 3,
+             'depends_on': {'breakeven_mode': ['after_n_levels']}},
         ]
 
         # ── Preset-aware HP filtering ──
-        # For each HP, compute which presets it's relevant for.
-        # The frontend uses depends_on: {'preset': [...]} to show/hide HPs
-        # based on the selected preset. 'custom' shows all HPs.
+        # HPs with general=True are visible in ALL presets.
+        # Other HPs are visible only in presets that use them.
+        all_preset_names = sorted(PRESETS.keys())
         for hp_def in all_hps:
             if hp_def['name'] == 'preset':
                 continue
 
-            relevant_presets = set()
-            for pname, pvals in PRESETS.items():
-                # HP is directly set by this preset
-                if hp_def['name'] in pvals:
-                    relevant_presets.add(pname)
-                    continue
-                # HP is a dependent whose parent condition is met by preset values
-                deps = hp_def.get('depends_on', {})
-                if deps:
-                    all_met = True
-                    for dep_key, dep_vals in deps.items():
-                        parent_val = pvals.get(dep_key)
-                        if parent_val is None or parent_val not in dep_vals:
-                            all_met = False
-                            break
-                    if all_met:
+            # General HPs: visible in every preset
+            if hp_def.get('general'):
+                preset_dep = ['custom'] + all_preset_names
+            else:
+                relevant_presets = set()
+                for pname, pvals in PRESETS.items():
+                    # HP is directly set by this preset
+                    if hp_def['name'] in pvals:
                         relevant_presets.add(pname)
+                        continue
+                    # HP is a dependent whose parent condition is met by preset values
+                    deps = hp_def.get('depends_on', {})
+                    if deps:
+                        all_met = True
+                        for dep_key, dep_vals in deps.items():
+                            parent_val = pvals.get(dep_key)
+                            if parent_val is None or parent_val not in dep_vals:
+                                all_met = False
+                                break
+                        if all_met:
+                            relevant_presets.add(pname)
+                preset_dep = ['custom'] + sorted(relevant_presets)
 
-            preset_dep = ['custom'] + sorted(relevant_presets)
             existing_deps = hp_def.get('depends_on', {})
             existing_deps['preset'] = preset_dep
             hp_def['depends_on'] = existing_deps

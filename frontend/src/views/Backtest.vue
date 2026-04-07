@@ -259,19 +259,24 @@
                 <div class="flex justify-end mb-1">
                   <button @click="resetBtHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
                 </div>
-              <div v-for="(hp, idx) in btHyperParams" :key="idx" v-show="hp.name !== 'preset' && isHpVisible(hp)" class="mb-2">
-                <div class="flex gap-2 items-center">
-                  <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
-                  <select v-if="hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
-                    <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
-                  </select>
-                  <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
-                  <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
-                    :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
-                  <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+              <template v-for="group in btHpGroups" :key="group.name">
+                <div v-if="group.hps.length" class="mb-3">
+                  <div class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1.5 mt-2 border-b border-surface-800 pb-1">{{ group.name }}</div>
+                  <div v-for="hp in group.hps" :key="hp.name" class="mb-2">
+                    <div class="flex gap-2 items-center">
+                      <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
+                      <select v-if="hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
+                        <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
+                      </select>
+                      <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
+                      <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
+                        :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
+                      <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+                    </div>
+                    <div v-if="hp.description" class="text-[10px] text-surface-600 ml-[7.5rem] mt-0.5">{{ hp.description }}</div>
+                  </div>
                 </div>
-                <div v-if="hp.description" class="text-[10px] text-surface-600 ml-[7.5rem] mt-0.5">{{ hp.description }}</div>
-              </div>
+              </template>
               </div>
             </div>
 
@@ -2340,6 +2345,17 @@ const visibleBtHPs = computed(() =>
   btHyperParams.value.filter(hp => hp.name !== 'preset' && isHpVisible(hp))
 )
 
+const btHpGroups = computed(() => {
+  const groups = []
+  const seen = new Set()
+  for (const hp of visibleBtHPs.value) {
+    const g = hp.group || 'Other'
+    if (!seen.has(g)) { seen.add(g); groups.push({ name: g, hps: [] }) }
+    groups.find(x => x.name === g).hps.push(hp)
+  }
+  return groups
+})
+
 // Strategy code
 const sessionStrategyCodes = ref(null)
 const selectedStrategyCodeKey = ref('')
@@ -2536,6 +2552,7 @@ async function loadBacktestHyperparams(name) {
       min: hp.min,
       max: hp.max,
       description: hp.description || '',
+      group: hp.group || undefined,
       options: hp.options || undefined,
       depends_on: hp.depends_on || undefined,
       presets: hp.presets || undefined,
@@ -2983,7 +3000,7 @@ const _wsRefs = {
   trades, hedgeSessions, exposureTable, exposureHasTpSl, exposureMeta, exposureSizeDisplay,
   activeTab, selectedRouteIdx, tradesPage, sessionsPage, expandedSessions, costTradesPage,
   logs, backtestLogs, logFilter,
-  btHyperParams, btHyperParamsDefaults, btCustomHPs, btPreset, btPresetData, visibleBtHPs, onPresetChange,
+  btHyperParams, btHyperParamsDefaults, btCustomHPs, btPreset, btPresetData, visibleBtHPs, btHpGroups, onPresetChange,
   sessionStrategyCodes, selectedStrategyCodeKey,
   btChartCandles, btChartRawCandles, btChartOrders, btChartVisible,
   selectedSession, openTabs, tabCache,

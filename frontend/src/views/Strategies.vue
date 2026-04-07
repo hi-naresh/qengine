@@ -283,25 +283,30 @@
                 </select>
               </div>
 
-              <!-- Hyperparameters (filtered by preset) -->
+              <!-- Hyperparameters (filtered by preset, grouped) -->
               <div v-if="visiblePgHPs.length">
                 <div class="flex items-center justify-between mb-2">
                   <label class="label mb-0">Hyperparameters <span class="text-surface-600 text-[10px]">({{ visiblePgHPs.length }})</span></label>
                   <button @click="resetHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
                 </div>
-                <div v-for="(hp, idx) in pgHyperParams" :key="idx" v-show="hp.name !== 'preset' && isPgHpVisible(hp)" class="mb-2">
-                  <div class="flex gap-2 items-center">
-                    <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
-                    <select v-if="hp.type === 'str' && hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
-                      <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
-                    </select>
-                    <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
-                    <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
-                      :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
-                    <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+                <template v-for="group in pgHpGroups" :key="group.name">
+                  <div v-if="group.hps.length" class="mb-3">
+                    <div class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1.5 mt-2 border-b border-surface-800 pb-1">{{ group.name }}</div>
+                    <div v-for="hp in group.hps" :key="hp.name" class="mb-2">
+                      <div class="flex gap-2 items-center">
+                        <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
+                        <select v-if="hp.type === 'str' && hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
+                          <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
+                        </select>
+                        <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
+                        <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
+                          :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
+                        <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+                      </div>
+                      <div v-if="hp.description" class="text-[10px] text-surface-600 ml-[7.5rem] mt-0.5">{{ hp.description }}</div>
+                    </div>
                   </div>
-                  <div v-if="hp.description" class="text-[10px] text-surface-600 ml-[7.5rem] mt-0.5">{{ hp.description }}</div>
-                </div>
+                </template>
               </div>
               <div v-else>
                 <div class="flex items-center justify-between mb-1">
@@ -666,6 +671,17 @@ const visiblePgHPs = computed(() =>
   pgHyperParams.value.filter(hp => hp.name !== 'preset' && isPgHpVisible(hp))
 )
 
+const pgHpGroups = computed(() => {
+  const groups = []
+  const seen = new Set()
+  for (const hp of visiblePgHPs.value) {
+    const g = hp.group || 'Other'
+    if (!seen.has(g)) { seen.add(g); groups.push({ name: g, hps: [] }) }
+    groups.find(x => x.name === g).hps.push(hp)
+  }
+  return groups
+})
+
 function isPgHpVisible(hp) {
   if (!hp.depends_on) return true
   for (const [key, allowedValues] of Object.entries(hp.depends_on)) {
@@ -949,6 +965,7 @@ async function loadStrategyHyperparams(name) {
       min: hp.min,
       max: hp.max,
       description: hp.description || '',
+      group: hp.group || undefined,
       options: hp.options || undefined,
       depends_on: hp.depends_on || undefined,
       presets: hp.presets || undefined,
