@@ -679,28 +679,6 @@ const pgTimeframes = [
 
 // ── Strategy metadata for descriptions & labels ──
 const strategyMeta = {
-  Surefire: {
-    description: 'Recovery/martingale hedging strategy for CFD trading using broker-side orders (OANDA).',
-    longDescription: 'Opens an initial ticket in a configurable direction with TP and hedge trigger. When price moves against, opens opposite-direction ticket with larger size. Continues adding hedged tickets until TP hit or max_levels reached. Uses broker orders for sub-second execution.',
-    labels: [
-      { text: 'CFD', class: 'bg-blue-500/20 text-blue-400' },
-      { text: 'Hedging', class: 'bg-amber-500/20 text-amber-400' },
-      { text: 'Live Ready', class: 'bg-green-500/20 text-green-400' },
-    ],
-    iconClass: 'bg-amber-900/50 text-amber-400',
-    params: ['direction', 'initial_size', 'sizing_operator', 'sizing_factor', 'tp_distance', 'hedge_distance', 'max_levels'],
-  },
-  SurefireV2: {
-    description: 'Enhanced hedging with indicator-based entries, bucket PnL exits, and circuit breakers.',
-    longDescription: 'Indicator-driven entry signals (EMA, RSI, MACD, Supertrend, or combinations) with ATR-based hedge distances. Session closes when floating PnL reaches bucket_threshold. Circuit breakers for daily loss limits and consecutive bust protection. Supports London/NY/overlap session filtering.',
-    labels: [
-      { text: 'CFD', class: 'bg-blue-500/20 text-blue-400' },
-      { text: 'Hedging', class: 'bg-amber-500/20 text-amber-400' },
-      { text: 'Multi-Indicator', class: 'bg-purple-500/20 text-purple-400' },
-    ],
-    iconClass: 'bg-purple-900/50 text-purple-400',
-    params: ['initial_size', 'sizing_operator', 'sizing_factor', 'max_levels', 'bucket_pct', 'signal_mode', 'atr_period', 'hedge_atr_mult', 'session_filter', 'cooldown_bars', 'max_daily_loss_pct', 'max_consec_busts', 'ema_fast', 'ema_slow', 'rsi_period', 'rsi_ob', 'rsi_os'],
-  },
   ForexMA: {
     description: 'Simple SMA crossover strategy with session filtering and pip-based risk management.',
     longDescription: 'Educational example demonstrating forex-specific features. Enters long when fast SMA > slow SMA during London/NY/overlap sessions. Uses lot_size_for_risk() for pip-based position sizing and pips_to_price() for stop/TP calculation. Cancels entries before weekend close.',
