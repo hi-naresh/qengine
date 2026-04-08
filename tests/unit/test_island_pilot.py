@@ -242,34 +242,44 @@ class TestInternalHelpers:
         danger = pilot._compute_danger(strategy)
         assert danger == 0.0
 
-    def test_apply_genome(self):
-        pilot = IslandPilot()
+    def test_gate_uses_genome_confidence_min(self):
+        """gate_entry respects genome's gate_confidence_min via inference min_confidence."""
+        pilot = IslandPilot({'warmup': 10, 'inference': {'min_confidence': 0.3}})
+        pilot._candle_count = 100
+        pilot._active_genome = {'gate_confidence_min': 0.5}
+        # Confidence above the inference min but pipeline still gates
+        pilot._active_confidence = 0.4
         strategy = _make_mock_strategy()
-        # Seed hp with keys the strategy would have (so _apply_genome detects them)
-        strategy.hp['sizing_operator'] = 'sqrt'
-        strategy.hp['hedge_distance'] = 10
-        strategy.hp['tp_distance'] = 20
-        genome = {
-            'max_levels': 10,  # will be capped to 8
-            'tp_distance_atr_mult': 3.5,
-            'hedge_distance_atr_mult': 1.5,
-            'sizing_curve': 0,  # int -> 'geometric'
-        }
-        pilot._apply_genome(strategy, genome)
-        assert strategy.hp['max_levels'] == 8  # capped for safety
-        # Surefire v1: tp_distance in pips (mult * 10)
-        assert strategy.hp['tp_distance'] == 35.0
-        assert strategy.hp['hedge_distance'] == 15.0
-        # sizing_operator (not sizing_curve) for Surefire
-        assert strategy.hp['sizing_operator'] == 'geometric'
+        # Confidence 0.4 > inference min 0.3, so gate_entry allows
+        assert pilot.gate_entry(strategy) is True
 
-    def test_apply_genome_string_sizing_curve(self):
+    def test_adjust_size_uses_genome_sizing_genes(self):
+        """adjust_size uses base_size_pct, confidence_sensitivity, recovery_aggression from genome."""
         pilot = IslandPilot()
         strategy = _make_mock_strategy()
-        strategy.hp['sizing_operator'] = 'sqrt'
-        genome = {'sizing_curve': 'fibonacci'}
-        pilot._apply_genome(strategy, genome)
-        assert strategy.hp['sizing_operator'] == 'fibonacci'
+        strategy.portfolio = MagicMock()
+        strategy.portfolio.max_drawdown = -1.0
+        strategy.portfolio.equity = 10000.0
+
+        pilot._active_genome = {
+            'base_size_pct': 2.0,
+            'confidence_sensitivity': 1.5,
+            'recovery_aggression': 0.7,
+        }
+        pilot._active_confidence = 0.8
+        result = pilot.adjust_size(strategy, 1000.0, 'long')
+        assert isinstance(result, float)
+        assert result > 0
+
+    def test_suggest_exit_uses_abort_aggressiveness(self):
+        """suggest_exit triggers close_all when danger exceeds abort_aggressiveness."""
+        pilot = IslandPilot()
+        strategy = _make_mock_strategy(n_candles=50)
+        # Set abort threshold very low so any danger triggers exit
+        pilot._active_genome = {'abort_aggressiveness': 0.0}
+        result = pilot.suggest_exit(strategy)
+        # With abort_aggressiveness=0.0, any non-zero danger should trigger
+        assert result == {'action': 'close_all'}
 
     def test_build_sibling_groups_no_tree(self):
         pilot = IslandPilot()

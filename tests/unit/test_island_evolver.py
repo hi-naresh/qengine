@@ -8,7 +8,6 @@ import pytest
 
 from qengine.framework.components.island_evolver import (
     GENE_BOUNDS,
-    SIZING_CURVE_MAP,
     Genome,
     IslandEvolver,
     Population,
@@ -47,14 +46,13 @@ class TestGenome:
         g = Genome.random(seed=7)
         g.fitness = 42.5
         d = g.to_dict()
-        # sizing_curve should be string in dict
-        assert isinstance(d["genes"]["sizing_curve"], str)
-        assert d["genes"]["sizing_curve"] in SIZING_CURVE_MAP.values()
+        # All 6 pipeline genes should be present
+        for name in GENE_BOUNDS:
+            assert name in d["genes"], f"Missing gene: {name}"
 
         g2 = Genome.from_dict(d)
         assert g2.id == g.id
         assert g2.fitness == g.fitness
-        assert isinstance(g2.genes["sizing_curve"], int)
         for name in GENE_BOUNDS:
             assert g2.genes[name] == g.genes[name]
 
@@ -77,14 +75,14 @@ class TestPopulation:
 
     def test_evaluate_sets_fitness(self):
         pop = Population("test", size=10, seed=1)
-        pop.evaluate(lambda genes: genes["sizing_factor"])
+        pop.evaluate(lambda genes: genes["base_size_pct"])
         for ind in pop.individuals:
             assert ind.fitness is not None
-            assert ind.fitness == ind.genes["sizing_factor"]
+            assert ind.fitness == ind.genes["base_size_pct"]
 
     def test_evolve_preserves_elites(self):
         pop = Population("test", size=10, seed=1)
-        pop.evaluate(lambda genes: genes["sizing_factor"])
+        pop.evaluate(lambda genes: genes["base_size_pct"])
         # Record top-2 fitness values
         top_fitness = sorted([g.fitness for g in pop.individuals], reverse=True)[:2]
         pop.evolve(elitism=2)
@@ -95,7 +93,7 @@ class TestPopulation:
 
     def test_evolve_changes_population(self):
         pop = Population("test", size=20, seed=1)
-        pop.evaluate(lambda genes: genes["sizing_factor"])
+        pop.evaluate(lambda genes: genes["base_size_pct"])
         old_ids = {g.id for g in pop.individuals}
         pop.evolve(elitism=2)
         new_ids = {g.id for g in pop.individuals}
@@ -104,7 +102,7 @@ class TestPopulation:
 
     def test_inject_replaces_worst(self):
         pop = Population("test", size=5, seed=1)
-        pop.evaluate(lambda genes: genes["sizing_factor"])
+        pop.evaluate(lambda genes: genes["base_size_pct"])
         alien = Genome.random(seed=99)
         alien.fitness = 999.0
         pop.inject(alien)
@@ -136,7 +134,9 @@ class TestIslandEvolver:
         best = evolver.get_best_genome("R0")
         assert "genes" in best
         assert "fitness" in best
-        assert isinstance(best["genes"]["sizing_curve"], str)
+        # All 6 pipeline genes should be present
+        for name in GENE_BOUNDS:
+            assert name in best["genes"], f"Missing gene: {name}"
 
     def test_migrate_siblings_exchanges(self):
         evolver = IslandEvolver(
@@ -184,7 +184,7 @@ class TestIslandEvolver:
         )
         # Evaluate without evolving so all have fitness
         for g in evolver.populations["R0"].individuals:
-            g.fitness = g.genes["sizing_factor"]
+            g.fitness = g.genes["base_size_pct"]
         summary = evolver.get_fitness_summary()
         assert "R0" in summary
         assert summary["R0"]["n"] == 5
