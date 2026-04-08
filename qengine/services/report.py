@@ -210,6 +210,9 @@ def hedge_sessions() -> List[dict]:
     result = []
     for num in sorted(sessions_map.keys()):
         s = sessions_map[num]
+        # Sort trades by leg_index so L0, L1, L2... appear in order
+        # (engine may close them in different order due to TP/STOP race)
+        s['trades'].sort(key=lambda t: (t.get('meta') or {}).get('leg_index', 999))
         s['total_pnl'] = round(s['total_pnl'], 6)
         s['total_fee'] = round(s['total_fee'], 6)
         s['trade_count'] = len(s['trades'])

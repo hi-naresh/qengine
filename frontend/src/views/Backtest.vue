@@ -234,15 +234,24 @@
               </p>
             </div>
 
+            <!-- ═ NORMAL MODE: Preset Selector ═ -->
+            <div v-if="form.backtestMode === 'normal' && btPreset" class="pt-2">
+              <h3 class="text-xs font-semibold text-surface-400 mb-1">Preset</h3>
+              <p class="text-[10px] text-surface-600 mb-1.5">Pre-configured strategy mode — selects which parameters are tunable</p>
+              <select v-model="btPreset.value" @change="onPresetChange" class="select text-xs py-1.5 w-full">
+                <option v-for="opt in btPreset.options" :key="opt" :value="opt">{{ opt }}</option>
+              </select>
+            </div>
+
             <!-- ═ NORMAL MODE: Hyperparameters ═ -->
-            <div v-if="form.backtestMode === 'normal' && btHyperParams.length" class="pt-2">
+            <div v-if="form.backtestMode === 'normal' && visibleBtHPs.length" class="pt-2">
               <button @click="showHyperparams = !showHyperparams" class="flex items-center justify-between w-full text-left mb-1">
                 <div>
                   <h3 class="text-xs font-semibold text-surface-400">Hyperparameters</h3>
                   <p v-if="!showHyperparams" class="text-[10px] text-surface-600 mt-0.5">Strategy-specific tuning values — multipliers, levels, thresholds</p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
-                  <span class="text-[10px] text-surface-500">{{ btHyperParams.length }} param{{ btHyperParams.length > 1 ? 's' : '' }}</span>
+                  <span class="text-[10px] text-surface-500">{{ visibleBtHPs.length }} param{{ visibleBtHPs.length > 1 ? 's' : '' }}</span>
                   <svg class="w-3 h-3 text-surface-500 transition-transform" :class="showHyperparams ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                 </div>
               </button>
@@ -250,19 +259,24 @@
                 <div class="flex justify-end mb-1">
                   <button @click="resetBtHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
                 </div>
-              <div v-for="(hp, idx) in btHyperParams" :key="idx" v-show="isHpVisible(hp)" class="mb-2">
-                <div class="flex gap-2 items-center">
-                  <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
-                  <select v-if="hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
-                    <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
-                  </select>
-                  <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
-                  <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
-                    :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
-                  <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+              <template v-for="group in btHpGroups" :key="group.name">
+                <div v-if="group.hps.length" class="mb-3">
+                  <div class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1.5 mt-2 border-b border-surface-800 pb-1">{{ group.name }}</div>
+                  <div v-for="hp in group.hps" :key="hp.name" class="mb-2">
+                    <div class="flex gap-2 items-center">
+                      <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
+                      <select v-if="hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
+                        <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
+                      </select>
+                      <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
+                      <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
+                        :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
+                      <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+                    </div>
+                    <div v-if="hp.description" class="text-[10px] text-surface-600 ml-[7.5rem] mt-0.5">{{ hp.description }}</div>
+                  </div>
                 </div>
-                <div v-if="hp.description" class="text-[10px] text-surface-600 ml-[7.5rem] mt-0.5">{{ hp.description }}</div>
-              </div>
+              </template>
               </div>
             </div>
 
@@ -2324,6 +2338,23 @@ const logFilter = ref('all')
 const btHyperParams = ref([])
 const btHyperParamsDefaults = ref([])
 const btCustomHPs = ref([])
+const btPreset = ref(null)
+const btPresetData = ref({})
+
+const visibleBtHPs = computed(() =>
+  btHyperParams.value.filter(hp => hp.name !== 'preset' && isHpVisible(hp))
+)
+
+const btHpGroups = computed(() => {
+  const groups = []
+  const seen = new Set()
+  for (const hp of visibleBtHPs.value) {
+    const g = hp.group || 'Other'
+    if (!seen.has(g)) { seen.add(g); groups.push({ name: g, hps: [] }) }
+    groups.find(x => x.name === g).hps.push(hp)
+  }
+  return groups
+})
 
 // Strategy code
 const sessionStrategyCodes = ref(null)
@@ -2510,7 +2541,7 @@ function autoSetDates() {
 
 // ── Hyperparameter loading ──
 async function loadBacktestHyperparams(name) {
-  if (!name) { btHyperParams.value = []; btHyperParamsDefaults.value = []; return }
+  if (!name) { btHyperParams.value = []; btHyperParamsDefaults.value = []; btPreset.value = null; return }
   try {
     const res = await api.getStrategyHyperparams(name)
     const hps = (res.hyperparameters || []).map(hp => ({
@@ -2521,10 +2552,28 @@ async function loadBacktestHyperparams(name) {
       min: hp.min,
       max: hp.max,
       description: hp.description || '',
+      group: hp.group || undefined,
       options: hp.options || undefined,
       depends_on: hp.depends_on || undefined,
+      presets: hp.presets || undefined,
     }))
     btHyperParams.value = hps
+
+    // Extract preset selector (separate from HPs)
+    const presetHp = hps.find(h => h.name === 'preset')
+    if (presetHp) {
+      btPreset.value = presetHp
+      btPresetData.value = presetHp.presets || {}
+      // Apply default preset values on initial load (not just on user change)
+      if (presetHp.value && presetHp.value !== 'custom') {
+        onPresetChange()
+      }
+    } else {
+      btPreset.value = null
+      btPresetData.value = {}
+    }
+
+    // Snapshot defaults AFTER preset application so "Reset" restores preset values
     btHyperParamsDefaults.value = JSON.parse(JSON.stringify(hps))
   } catch {
     btHyperParams.value = []
@@ -2541,8 +2590,27 @@ function isHpVisible(hp) {
   return true
 }
 
+function onPresetChange() {
+  const presetName = btPreset.value?.value
+  if (!presetName || presetName === 'custom') return
+
+  const presetValues = btPresetData.value[presetName]
+  if (!presetValues) return
+
+  // Apply preset defaults to HPs
+  for (const hp of btHyperParams.value) {
+    if (hp.name === 'preset') continue
+    if (presetValues[hp.name] !== undefined) {
+      hp.value = presetValues[hp.name]
+    }
+  }
+}
+
 function resetBtHyperParams() {
   btHyperParams.value = JSON.parse(JSON.stringify(btHyperParamsDefaults.value))
+  // Re-extract preset ref
+  const presetHp = btHyperParams.value.find(h => h.name === 'preset')
+  if (presetHp) btPreset.value = presetHp
 }
 
 function buildBtHyperparamsPayload() {
@@ -2938,7 +3006,7 @@ const _wsRefs = {
   trades, hedgeSessions, exposureTable, exposureHasTpSl, exposureMeta, exposureSizeDisplay,
   activeTab, selectedRouteIdx, tradesPage, sessionsPage, expandedSessions, costTradesPage,
   logs, backtestLogs, logFilter,
-  btHyperParams, btHyperParamsDefaults, btCustomHPs,
+  btHyperParams, btHyperParamsDefaults, btCustomHPs, btPreset, btPresetData, visibleBtHPs, btHpGroups, onPresetChange,
   sessionStrategyCodes, selectedStrategyCodeKey,
   btChartCandles, btChartRawCandles, btChartOrders, btChartVisible,
   selectedSession, openTabs, tabCache,
@@ -2973,7 +3041,7 @@ function _freshDefaults() {
     trades: [], hedgeSessions: [], exposureTable: [],
     activeTab: 'summary', selectedRouteIdx: 0, tradesPage: 1, sessionsPage: 1, expandedSessions: {}, costTradesPage: 1,
     logs: null, backtestLogs: [], logFilter: 'all',
-    btHyperParams: [], btHyperParamsDefaults: [], btCustomHPs: [],
+    btHyperParams: [], btHyperParamsDefaults: [], btCustomHPs: [], btPreset: null, btPresetData: {},
     sessionStrategyCodes: null, selectedStrategyCodeKey: '',
     btChartCandles: [], btChartRawCandles: [], btChartOrders: [], btChartVisible: false,
     selectedSession: null, openTabs: [], tabCache: {},
@@ -3445,6 +3513,8 @@ function buildSessionsFromTrades(tradesList) {
   }
   const result = Object.keys(map).sort((a, b) => a - b).map(k => {
     const s = map[k]
+    // Sort trades by leg_index so L0, L1, L2... appear in order
+    s.trades.sort((a, b) => (a.meta?.leg_index ?? 999) - (b.meta?.leg_index ?? 999))
     s.trade_count = s.trades.length
     s.total_pnl = parseFloat(s.total_pnl.toFixed(6))
     s.total_fee = parseFloat(s.total_fee.toFixed(6))

@@ -132,6 +132,26 @@ class TestRegimeTree:
             if len(siblings) > 1:
                 assert tree.leaf_sample_counts[lid] >= tree.min_leaf_samples
 
+    def test_classify_batch_matches_single(self):
+        """Vectorized classify_batch should match per-sample classify_best."""
+        X = _make_feature_matrix(n=1000, n_features=5, n_clusters=2, seed=66)
+        tree = RegimeTree(min_leaf_samples=50, max_macro=6, max_sub=4)
+        tree.fit(X, macro_features=[0, 1], sub_features=[2, 3, 4])
+
+        # Single classification
+        single_labels = []
+        single_confs = []
+        for i in range(len(X)):
+            lid, conf = tree.classify_best(X[i])
+            single_labels.append(lid)
+            single_confs.append(conf)
+
+        # Batch classification
+        batch_labels, batch_confs = tree.classify_batch(X)
+
+        np.testing.assert_array_equal(batch_labels, single_labels)
+        np.testing.assert_allclose(batch_confs, single_confs, atol=1e-10)
+
     def test_leaf_map_consistent(self):
         X = _make_feature_matrix(n=800, n_features=5, n_clusters=2, seed=44)
         tree = RegimeTree(min_leaf_samples=50, max_macro=6, max_sub=4)

@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from qengine.repositories import candle_repository
 from qengine.services.auth_dependency import get_current_user, require_admin, CurrentUser
 from qengine.services.multiprocessing import process_manager
-from qengine.services.web import ImportCandlesRequestJson, CancelRequestJson, GetCandlesRequestJson, DeleteCandlesRequestJson
+from qengine.services.web import ImportCandlesRequestJson, CancelRequestJson, GetCandlesRequestJson, DeleteCandlesRequestJson, DownloadCandlesRequestJson
 import qengine.helpers as jh
+import arrow
+import csv
+import io
 
 router = APIRouter(prefix="/candles", tags=["Candles"])
 
@@ -113,3 +116,33 @@ def delete_all_candles(current_user: CurrentUser = Depends(require_admin)) -> JS
         return JSONResponse({'message': f'Deleted all candle data ({count:,} candles)', 'deleted': count}, status_code=200)
     except Exception as e:
         return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.post("/download")
+def download_candles_csv(json_request: DownloadCandlesRequestJson, current_user: CurrentUser = Depends(get_current_user)):
+    """
+    Download candles as CSV for a given exchange/symbol/timeframe and date range.
+    """
+    start_ts = arrow.get(json_request.start_date, 'YYYY-MM-DD').int_timestamp * 1000
+    end_ts = arrow.get(json_request.end_date, 'YYYY-MM-DD').shift(days=1).int_timestamp * 1000 - 1
+
+    candles = candle_repository.fetch_candles_from_db(
+        json_request.exchange, json_request.symbol, json_request.timeframe,
+        start_ts, end_ts
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['timestamp', 'datetime', 'open', 'high', 'low', 'close', 'volume'])
+    for c in candles:
+        # c = (timestamp, open, close, high, low, volume)
+        dt = arrow.get(c[0] / 1000).format('YYYY-MM-DD HH:mm:ss')
+        writer.writerow([c[0], dt, c[1], c[3], c[4], c[2], c[5]])
+    output.seek(0)
+
+    filename = f"{json_request.exchange}_{json_request.symbol}_{json_request.timeframe}_{json_request.start_date}_to_{json_request.end_date}.csv"
+    return StreamingResponse(
+        output,
+        media_type='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )

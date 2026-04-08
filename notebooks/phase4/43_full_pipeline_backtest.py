@@ -166,17 +166,36 @@ def simulate_cycle(candles: np.ndarray, entry_idx: int, direction: str,
 def main():
     # 1. Load models
     tree_path = MODELS_DIR / 'regime_tree.pkl'
-    evolver_path = MODELS_DIR / 'island_genomes.json'
 
     if not tree_path.exists():
         log.error(f"regime_tree.pkl not found at {tree_path}. Run script 40 first.")
         return
-    if not evolver_path.exists():
-        log.error(f"island_genomes.json not found at {evolver_path}. Run script 41 first.")
-        return
 
     tree = RegimeTree.load(str(tree_path))
-    evolver = IslandEvolver.load(str(evolver_path))
+
+    # Load evolver - try full state first, fall back to simple genomes
+    evolver_path = MODELS_DIR / 'island_evolver.json'
+    if not evolver_path.exists():
+        evolver_path = MODELS_DIR / 'island_genomes.json'
+
+    if not evolver_path.exists():
+        log.error(f"No evolver file found in {MODELS_DIR}. Run script 41 first.")
+        return
+
+    try:
+        evolver = IslandEvolver.load(str(evolver_path))
+    except (KeyError, Exception):
+        # Simple genomes format — build minimal evolver
+        import json as _json
+        with open(str(evolver_path)) as f:
+            genomes_data = _json.load(f)
+        leaf_ids = list(genomes_data.keys())
+        evolver = IslandEvolver(leaf_ids=leaf_ids, config={})
+        for lid, gdata in genomes_data.items():
+            genome = Genome.from_dict(gdata if 'genes' not in gdata else gdata['genes'])
+            genome.fitness = gdata.get('fitness', 0.0)
+            if lid in evolver.populations:
+                evolver.populations[lid].individuals[0] = genome
     log.info(f"Loaded tree ({tree.n_leaves} leaves) and evolver ({len(evolver.populations)} islands)")
 
     # 2. Load test candles

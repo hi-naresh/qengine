@@ -1,5 +1,5 @@
 """
-UniversalMartingale — A fully configurable grid/hedged martingale strategy.
+Martingale — A fully configurable grid/hedged martingale strategy.
 
 Every aspect is modular and pluggable:
   - Direction/Entry: random, any indicator, composite, ML model
@@ -33,92 +33,136 @@ _CUSTOM_SEQUENCES = {
 }
 
 
-class UniversalMartingale(Strategy):
+class Martingale(Strategy):
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                        HYPERPARAMETERS                              ║
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
     def hyperparameters(self):
+        from .presets import PRESETS
+
         # Signal modes that use each indicator group
         _ema_modes = ['ema_cross', 'ema_rsi', 'ema_macd', 'triple']
         _rsi_modes = ['rsi', 'ema_rsi', 'triple']
         _macd_modes = ['macd', 'ema_macd', 'triple']
 
-        return [
+        # HPs marked 'general': True are shown for ALL presets (not just custom).
+        # Group names are used as section headers in the UI.
+        _G = 'General'
+        _E = 'Entry Signal'
+        _H = 'Grid / Hedge'
+        _T = 'Take Profit'
+        _F = 'Filters'
+        _R = 'Risk Management'
+        _P = 'Position Management'
+
+        all_hps = [
             # ── Preset ──
             {'name': 'preset', 'type': 'categorical',
-             'options': ['custom', 'raw', 'surefire_v1', 'surefire_v2', 'conservative',
-                         'aggressive', 'fibonacci', 'scalper', 'momentum', 'mean_reversion',
-                         'trend_rider', 'phase3_optimized'],
-             'default': 'custom'},
+             'options': ['custom'] + sorted(PRESETS.keys()),
+             'default': 'original',
+             'presets': PRESETS},
 
-            # ── Direction / Entry ──
-            {'name': 'signal_mode', 'type': 'categorical',
-             'options': ['random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch',
+            # ── General (always visible) ──
+            {'name': 'sizing_curve', 'type': 'categorical', 'group': _G, 'general': True,
+             'options': ['geometric', 'sqrt', 'linear', 'fibonacci', 'fixed', 'anti_martingale'],
+             'default': 'geometric'},
+            {'name': 'sizing_factor', 'type': float, 'group': _G, 'general': True,
+             'min': 1.1, 'max': 5.0, 'default': 2.0,
+             'depends_on': {'sizing_curve': ['geometric', 'sqrt', 'anti_martingale']}},
+            {'name': 'sizing_custom_sequence', 'type': 'categorical', 'group': _G, 'general': True,
+             'options': ['none', '1_1_2_3_5_8', '1_2_4_8_16', '1_1_2_4_7_11',
+                         '1_2_3_5_8_13_21', '1_3_6_12_24'],
+             'default': 'none',
+             'description': 'Predefined sizing sequences. Overrides sizing_curve when not none.'},
+            {'name': 'base_size_mode', 'type': 'categorical', 'group': _G, 'general': True,
+             'options': ['fixed', 'pct_equity', 'risk_pips', 'capital_aware'], 'default': 'pct_equity'},
+            {'name': 'base_size_value', 'type': float, 'group': _G, 'general': True,
+             'min': 0.01, 'max': 100.0, 'default': 1.0},
+            {'name': 'max_bust_dd_pct', 'type': float, 'group': _G, 'general': True,
+             'min': 5, 'max': 50, 'default': 20,
+             'depends_on': {'base_size_mode': ['capital_aware']},
+             'description': 'Max % of account a single bust can lose.'},
+            {'name': 'max_levels', 'type': int, 'group': _G, 'general': True,
+             'min': 0, 'max': 20, 'default': 6,
+             'description': '0 = no hedging, N = allow up to N hedge levels'},
+
+            # ── Entry Signal ──
+            {'name': 'signal_mode', 'type': 'categorical', 'group': _E,
+             'options': ['none', 'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch',
                          'cci', 'adx', 'bollinger', 'ema_rsi', 'ema_macd', 'triple',
                          'indicator', 'dual_indicator', 'model'],
              'default': 'random'},
-            {'name': 'direction_bias', 'type': 'categorical',
+            {'name': 'direction_bias', 'type': 'categorical', 'group': _E,
              'options': ['both', 'long_only', 'short_only'], 'default': 'both'},
-            {'name': 'entry_on_crossover', 'type': 'categorical',
+            {'name': 'entry_on_crossover', 'type': 'categorical', 'group': _E,
              'options': ['yes', 'no'], 'default': 'no',
              'description': 'Only enter on crossover moment (not while condition holds)'},
-
-            # EMA params
-            {'name': 'ema_fast', 'type': int, 'min': 3, 'max': 50, 'default': 8,
+            {'name': 'ema_fast', 'type': int, 'group': _E,
+             'min': 3, 'max': 50, 'default': 8,
              'depends_on': {'signal_mode': _ema_modes}},
-            {'name': 'ema_slow', 'type': int, 'min': 10, 'max': 200, 'default': 21,
+            {'name': 'ema_slow', 'type': int, 'group': _E,
+             'min': 10, 'max': 200, 'default': 21,
              'depends_on': {'signal_mode': _ema_modes}},
-            # RSI params
-            {'name': 'rsi_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
+            {'name': 'rsi_period', 'type': int, 'group': _E,
+             'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'signal_mode': _rsi_modes}},
-            {'name': 'rsi_ob', 'type': float, 'min': 60, 'max': 85, 'default': 70,
+            {'name': 'rsi_ob', 'type': float, 'group': _E,
+             'min': 60, 'max': 85, 'default': 70,
              'depends_on': {'signal_mode': _rsi_modes}},
-            {'name': 'rsi_os', 'type': float, 'min': 15, 'max': 40, 'default': 30,
+            {'name': 'rsi_os', 'type': float, 'group': _E,
+             'min': 15, 'max': 40, 'default': 30,
              'depends_on': {'signal_mode': _rsi_modes}},
-            # MACD params
-            {'name': 'macd_fast', 'type': int, 'min': 5, 'max': 20, 'default': 12,
+            {'name': 'macd_fast', 'type': int, 'group': _E,
+             'min': 5, 'max': 20, 'default': 12,
              'depends_on': {'signal_mode': _macd_modes}},
-            {'name': 'macd_slow', 'type': int, 'min': 15, 'max': 40, 'default': 26,
+            {'name': 'macd_slow', 'type': int, 'group': _E,
+             'min': 15, 'max': 40, 'default': 26,
              'depends_on': {'signal_mode': _macd_modes}},
-            {'name': 'macd_signal', 'type': int, 'min': 5, 'max': 15, 'default': 9,
+            {'name': 'macd_signal', 'type': int, 'group': _E,
+             'min': 5, 'max': 15, 'default': 9,
              'depends_on': {'signal_mode': _macd_modes}},
-            # SuperTrend params
-            {'name': 'st_period', 'type': int, 'min': 5, 'max': 20, 'default': 10,
+            {'name': 'st_period', 'type': int, 'group': _E,
+             'min': 5, 'max': 20, 'default': 10,
              'depends_on': {'signal_mode': ['supertrend']}},
-            {'name': 'st_factor', 'type': float, 'min': 1.0, 'max': 6.0, 'default': 3.0,
+            {'name': 'st_factor', 'type': float, 'group': _E,
+             'min': 1.0, 'max': 6.0, 'default': 3.0,
              'depends_on': {'signal_mode': ['supertrend']}},
-            # Stochastic params
-            {'name': 'stoch_k', 'type': int, 'min': 5, 'max': 21, 'default': 14,
+            {'name': 'stoch_k', 'type': int, 'group': _E,
+             'min': 5, 'max': 21, 'default': 14,
              'depends_on': {'signal_mode': ['stoch']}},
-            {'name': 'stoch_d', 'type': int, 'min': 3, 'max': 9, 'default': 3,
+            {'name': 'stoch_d', 'type': int, 'group': _E,
+             'min': 3, 'max': 9, 'default': 3,
              'depends_on': {'signal_mode': ['stoch']}},
-            {'name': 'stoch_ob', 'type': float, 'min': 70, 'max': 90, 'default': 80,
+            {'name': 'stoch_ob', 'type': float, 'group': _E,
+             'min': 70, 'max': 90, 'default': 80,
              'depends_on': {'signal_mode': ['stoch']}},
-            {'name': 'stoch_os', 'type': float, 'min': 10, 'max': 30, 'default': 20,
+            {'name': 'stoch_os', 'type': float, 'group': _E,
+             'min': 10, 'max': 30, 'default': 20,
              'depends_on': {'signal_mode': ['stoch']}},
-            # CCI params
-            {'name': 'cci_period', 'type': int, 'min': 10, 'max': 30, 'default': 20,
+            {'name': 'cci_period', 'type': int, 'group': _E,
+             'min': 10, 'max': 30, 'default': 20,
              'depends_on': {'signal_mode': ['cci']}},
-            {'name': 'cci_ob', 'type': float, 'min': 100, 'max': 250, 'default': 100,
+            {'name': 'cci_ob', 'type': float, 'group': _E,
+             'min': 100, 'max': 250, 'default': 100,
              'depends_on': {'signal_mode': ['cci']}},
-            {'name': 'cci_os', 'type': float, 'min': -250, 'max': -100, 'default': -100,
+            {'name': 'cci_os', 'type': float, 'group': _E,
+             'min': -250, 'max': -100, 'default': -100,
              'depends_on': {'signal_mode': ['cci']}},
-            # ADX params
-            {'name': 'adx_period', 'type': int, 'min': 10, 'max': 30, 'default': 14,
+            {'name': 'adx_period', 'type': int, 'group': _E,
+             'min': 10, 'max': 30, 'default': 14,
              'depends_on': {'signal_mode': ['adx']}},
-            {'name': 'adx_threshold', 'type': float, 'min': 15, 'max': 40, 'default': 25,
+            {'name': 'adx_threshold', 'type': float, 'group': _E,
+             'min': 15, 'max': 40, 'default': 25,
              'depends_on': {'signal_mode': ['adx']}},
-            # Bollinger params
-            {'name': 'bb_period', 'type': int, 'min': 10, 'max': 30, 'default': 20,
+            {'name': 'bb_period', 'type': int, 'group': _E,
+             'min': 10, 'max': 30, 'default': 20,
              'depends_on': {'signal_mode': ['bollinger']}},
-            {'name': 'bb_std', 'type': float, 'min': 1.0, 'max': 3.5, 'default': 2.0,
+            {'name': 'bb_std', 'type': float, 'group': _E,
+             'min': 1.0, 'max': 3.5, 'default': 2.0,
              'depends_on': {'signal_mode': ['bollinger']}},
-
-            # ── Generic Indicator Mode ──
-            # Use ANY of 175+ indicators by name (ta.rsi, ta.cci, ta.fisher, etc.)
-            {'name': 'ind_name', 'type': 'categorical',
+            {'name': 'ind_name', 'type': 'categorical', 'group': _E,
              'options': ['rsi', 'cci', 'mfi', 'willr', 'stc', 'fisher', 'dpo', 'cmo',
                          'tsi', 'rsx', 'lrsi', 'srsi', 'ift_rsi', 'mom', 'roc', 'ao',
                          'bop', 'eri', 'kst', 'trix', 'ppo', 'apo', 'dx', 'adxr',
@@ -128,160 +172,184 @@ class UniversalMartingale(Strategy):
                          'linearreg_slope', 'linearreg_angle'],
              'default': 'rsi',
              'depends_on': {'signal_mode': ['indicator', 'dual_indicator']}},
-            {'name': 'ind_period', 'type': int, 'min': 3, 'max': 100, 'default': 14,
+            {'name': 'ind_period', 'type': int, 'group': _E,
+             'min': 3, 'max': 100, 'default': 14,
              'depends_on': {'signal_mode': ['indicator', 'dual_indicator']}},
-            {'name': 'ind_rule', 'type': 'categorical',
+            {'name': 'ind_rule', 'type': 'categorical', 'group': _E,
              'options': ['ob_os', 'cross_zero', 'threshold', 'rising_falling'],
              'default': 'ob_os',
              'depends_on': {'signal_mode': ['indicator', 'dual_indicator']},
-             'description': 'ob_os=overbought/oversold, cross_zero=above/below 0, threshold=custom, rising_falling=direction'},
-            {'name': 'ind_long_threshold', 'type': float, 'min': -500, 'max': 500, 'default': 30,
-             'depends_on': {'signal_mode': ['indicator', 'dual_indicator']},
-             'description': 'Long when value <= this (ob_os/threshold) or > 0 (cross_zero)'},
-            {'name': 'ind_short_threshold', 'type': float, 'min': -500, 'max': 500, 'default': 70,
-             'depends_on': {'signal_mode': ['indicator', 'dual_indicator']},
-             'description': 'Short when value >= this (ob_os/threshold)'},
-
-            # ── Dual Indicator (confirmation) ──
-            {'name': 'ind2_name', 'type': 'categorical',
+             'description': 'ob_os=overbought/oversold, cross_zero=above/below 0'},
+            {'name': 'ind_long_threshold', 'type': float, 'group': _E,
+             'min': -500, 'max': 500, 'default': 30,
+             'depends_on': {'signal_mode': ['indicator', 'dual_indicator']}},
+            {'name': 'ind_short_threshold', 'type': float, 'group': _E,
+             'min': -500, 'max': 500, 'default': 70,
+             'depends_on': {'signal_mode': ['indicator', 'dual_indicator']}},
+            {'name': 'ind2_name', 'type': 'categorical', 'group': _E,
              'options': ['ema_cross', 'rsi', 'cci', 'mfi', 'willr', 'stc', 'fisher',
                          'adx', 'tsi', 'mom', 'roc', 'macd', 'supertrend', 'bollinger',
                          'stoch', 'aroonosc', 'dx', 'ppo', 'apo', 'zscore', 'trendflex'],
              'default': 'ema_cross',
              'depends_on': {'signal_mode': ['dual_indicator']},
              'description': 'Second indicator for confirmation'},
-            {'name': 'ind2_period', 'type': int, 'min': 3, 'max': 100, 'default': 21,
+            {'name': 'ind2_period', 'type': int, 'group': _E,
+             'min': 3, 'max': 100, 'default': 21,
              'depends_on': {'signal_mode': ['dual_indicator']}},
-            {'name': 'ind2_rule', 'type': 'categorical',
-             'options': ['agree', 'filter'],
-             'default': 'agree',
+            {'name': 'ind2_rule', 'type': 'categorical', 'group': _E,
+             'options': ['agree', 'filter'], 'default': 'agree',
              'depends_on': {'signal_mode': ['dual_indicator']},
-             'description': 'agree=both must give same signal, filter=ind2 must not contradict'},
-
-            # ── ML Model Mode ──
-            # Calls self.signal_fn(candles, hp) -> 'long'|'short'|None
-            # Set signal_fn on instance before running, or override _signal_model()
-            {'name': 'model_lookback', 'type': int, 'min': 10, 'max': 500, 'default': 50,
+             'description': 'agree=both must agree, filter=ind2 must not contradict'},
+            {'name': 'model_lookback', 'type': int, 'group': _E,
+             'min': 10, 'max': 500, 'default': 50,
              'depends_on': {'signal_mode': ['model']},
              'description': 'Number of candles to feed to the model'},
 
-            # ── Sizing ──
-            {'name': 'sizing_curve', 'type': 'categorical',
-             'options': ['geometric', 'sqrt', 'linear', 'fibonacci', 'fixed', 'anti_martingale'],
-             'default': 'geometric'},
-            {'name': 'sizing_factor', 'type': float, 'min': 1.1, 'max': 5.0, 'default': 2.0,
-             'depends_on': {'sizing_curve': ['geometric', 'sqrt', 'anti_martingale']}},
-            {'name': 'base_size_mode', 'type': 'categorical',
-             'options': ['fixed', 'pct_equity', 'risk_pips', 'capital_aware'], 'default': 'pct_equity'},
-            {'name': 'base_size_value', 'type': float, 'min': 0.01, 'max': 100.0, 'default': 1.0},
-            {'name': 'max_bust_dd_pct', 'type': float, 'min': 5, 'max': 50, 'default': 20,
-             'depends_on': {'base_size_mode': ['capital_aware']},
-             'description': 'Max % of account a single bust can lose. Base lot auto-computed from this.'},
-
-            # ── Grid / Hedge Structure ──
-            {'name': 'max_levels', 'type': int, 'min': 0, 'max': 20, 'default': 6,
-             'description': '0 = no hedging (single entry only), N = allow up to N hedge levels'},
-            {'name': 'hedge_mode', 'type': 'categorical',
+            # ── Grid / Hedge ──
+            {'name': 'hedge_mode', 'type': 'categorical', 'group': _H,
              'options': ['fixed_pips', 'atr_based', 'percentage', 'fibonacci_levels'],
              'default': 'fixed_pips'},
-            {'name': 'hedge_value', 'type': float, 'min': 0.1, 'max': 500.0, 'default': 10.0,
+            {'name': 'hedge_value', 'type': float, 'group': _H,
+             'min': 0.1, 'max': 500.0, 'default': 10.0,
              'description': 'Pips (fixed), ATR mult (atr), % (pct)'},
-            {'name': 'hedge_atr_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
+            {'name': 'hedge_atr_period', 'type': int, 'group': _H,
+             'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'hedge_mode': ['atr_based']}},
-            {'name': 'hedge_expand', 'type': 'categorical', 'options': ['no', 'yes'], 'default': 'no',
+            {'name': 'hedge_expand', 'type': 'categorical', 'group': _H,
+             'options': ['no', 'yes'], 'default': 'no',
              'description': 'Expand hedge distance at deeper levels'},
-            {'name': 'hedge_expand_factor', 'type': float, 'min': 1.0, 'max': 2.0, 'default': 1.2,
+            {'name': 'hedge_expand_factor', 'type': float, 'group': _H,
+             'min': 1.0, 'max': 2.0, 'default': 1.2,
              'depends_on': {'hedge_expand': ['yes']}},
 
             # ── Take Profit ──
-            {'name': 'tp_mode', 'type': 'categorical',
+            {'name': 'tp_mode', 'type': 'categorical', 'group': _T,
              'options': ['fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward', 'trailing'],
              'default': 'fixed_pips'},
-            {'name': 'tp_value', 'type': float, 'min': 0.01, 'max': 500.0, 'default': 20.0,
+            {'name': 'tp_value', 'type': float, 'group': _T,
+             'min': 0.01, 'max': 500.0, 'default': 20.0,
              'description': 'Pips (fixed), ATR mult (atr), equity % (bucket), ratio (rr), pips (trail)'},
-            {'name': 'tp_atr_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
+            {'name': 'tp_atr_period', 'type': int, 'group': _T,
+             'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'tp_mode': ['atr_based']}},
 
             # ── Filters ──
-            {'name': 'session_filter', 'type': 'categorical',
+            {'name': 'session_filter', 'type': 'categorical', 'group': _F,
              'options': ['any', 'london', 'new_york', 'overlap', 'london_ny', 'asian'],
              'default': 'any'},
-            {'name': 'day_filter', 'type': 'categorical',
+            {'name': 'day_filter', 'type': 'categorical', 'group': _F,
              'options': ['any', 'weekdays_only', 'skip_monday', 'skip_friday', 'skip_mon_fri'],
              'default': 'any'},
-            {'name': 'vol_filter', 'type': 'categorical',
+            {'name': 'vol_filter', 'type': 'categorical', 'group': _F,
              'options': ['none', 'atr_range', 'natr_min'], 'default': 'none'},
-            {'name': 'vol_filter_period', 'type': int, 'min': 5, 'max': 30, 'default': 14,
+            {'name': 'vol_filter_period', 'type': int, 'group': _F,
+             'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'vol_filter': ['atr_range', 'natr_min']}},
-            {'name': 'vol_filter_min', 'type': float, 'min': 0.0, 'max': 100.0, 'default': 0.5,
+            {'name': 'vol_filter_min', 'type': float, 'group': _F,
+             'min': 0.0, 'max': 100.0, 'default': 0.5,
              'depends_on': {'vol_filter': ['atr_range', 'natr_min']}},
-            {'name': 'vol_filter_max', 'type': float, 'min': 0.0, 'max': 500.0, 'default': 50.0,
+            {'name': 'vol_filter_max', 'type': float, 'group': _F,
+             'min': 0.0, 'max': 500.0, 'default': 50.0,
              'depends_on': {'vol_filter': ['atr_range']}},
-            {'name': 'trend_filter', 'type': 'categorical',
+            {'name': 'trend_filter', 'type': 'categorical', 'group': _F,
              'options': ['none', 'ema_slope', 'adx_gate', 'dm_gate'], 'default': 'none'},
-            {'name': 'trend_filter_period', 'type': int, 'min': 5, 'max': 50, 'default': 14,
+            {'name': 'trend_filter_period', 'type': int, 'group': _F,
+             'min': 5, 'max': 50, 'default': 14,
              'depends_on': {'trend_filter': ['ema_slope', 'adx_gate', 'dm_gate']}},
-            {'name': 'trend_filter_threshold', 'type': float, 'min': 0, 'max': 50, 'default': 25,
+            {'name': 'trend_filter_threshold', 'type': float, 'group': _F,
+             'min': 0, 'max': 50, 'default': 25,
              'depends_on': {'trend_filter': ['adx_gate', 'dm_gate']}},
-            {'name': 'spread_filter', 'type': 'categorical',
+            {'name': 'spread_filter', 'type': 'categorical', 'group': _F,
              'options': ['none', 'max_spread'], 'default': 'none'},
-            {'name': 'spread_filter_max', 'type': float, 'min': 0.1, 'max': 20.0, 'default': 3.0,
+            {'name': 'spread_filter_max', 'type': float, 'group': _F,
+             'min': 0.1, 'max': 20.0, 'default': 3.0,
              'depends_on': {'spread_filter': ['max_spread']}},
-
-            # ── Confidence Gate (Phase 3 validated) ──
-            {'name': 'confidence_gate', 'type': 'categorical',
+            {'name': 'confidence_gate', 'type': 'categorical', 'group': _F,
              'options': ['none', 'enabled'], 'default': 'none',
              'description': 'Composite gate: NATR + ADX + ER. Validated on 2024-2025.'},
-            {'name': 'confidence_threshold', 'type': float, 'min': 0.1, 'max': 0.9, 'default': 0.4,
+            {'name': 'confidence_threshold', 'type': float, 'group': _F,
+             'min': 0.1, 'max': 0.9, 'default': 0.4,
              'depends_on': {'confidence_gate': ['enabled']}},
 
             # ── Risk Management ──
-            {'name': 'max_daily_loss_pct', 'type': float, 'min': 0, 'max': 20, 'default': 0,
-             'description': '0 = disabled'},
-            {'name': 'max_consec_busts', 'type': int, 'min': 0, 'max': 20, 'default': 0,
-             'description': '0 = disabled'},
-            {'name': 'cooldown_mode', 'type': 'categorical',
+            {'name': 'max_daily_loss_pct', 'type': float, 'group': _R,
+             'min': 0, 'max': 20, 'default': 0, 'description': '0 = disabled'},
+            {'name': 'max_weekly_loss_pct', 'type': float, 'group': _R,
+             'min': 0, 'max': 50, 'default': 0, 'description': '0 = disabled'},
+            {'name': 'max_consec_busts', 'type': int, 'group': _R,
+             'min': 0, 'max': 20, 'default': 0, 'description': '0 = disabled'},
+            {'name': 'max_exposure_pct', 'type': float, 'group': _R,
+             'min': 0, 'max': 100, 'default': 0,
+             'description': 'Max margin as % of equity. 0 = disabled'},
+            {'name': 'cooldown_mode', 'type': 'categorical', 'group': _R,
              'options': ['none', 'bars', 'atr_expansion'], 'default': 'none'},
-            {'name': 'cooldown_value', 'type': float, 'min': 1, 'max': 100, 'default': 10,
+            {'name': 'cooldown_value', 'type': float, 'group': _R,
+             'min': 1, 'max': 100, 'default': 10,
              'depends_on': {'cooldown_mode': ['bars', 'atr_expansion']}},
-            {'name': 'abort_mode', 'type': 'categorical',
+            {'name': 'abort_mode', 'type': 'categorical', 'group': _R,
              'options': ['none', 'level_threshold', 'time_bars', 'pnl_pct'], 'default': 'none'},
-            {'name': 'abort_level', 'type': int, 'min': 2, 'max': 20, 'default': 6,
+            {'name': 'abort_level', 'type': int, 'group': _R,
+             'min': 2, 'max': 20, 'default': 6,
              'depends_on': {'abort_mode': ['level_threshold']}},
-            {'name': 'abort_time_bars', 'type': int, 'min': 10, 'max': 1000, 'default': 100,
+            {'name': 'abort_time_bars', 'type': int, 'group': _R,
+             'min': 10, 'max': 1000, 'default': 100,
              'depends_on': {'abort_mode': ['time_bars']}},
-            {'name': 'abort_pnl_pct', 'type': float, 'min': -50, 'max': -1, 'default': -10,
+            {'name': 'abort_pnl_pct', 'type': float, 'group': _R,
+             'min': -50, 'max': -1, 'default': -10,
              'depends_on': {'abort_mode': ['pnl_pct']}},
-            {'name': 'max_exposure_pct', 'type': float, 'min': 0, 'max': 100, 'default': 0,
-             'description': 'Max total margin as % of equity. 0 = disabled'},
-
-            # ── Position Management ──
-            {'name': 'partial_close', 'type': 'categorical',
-             'options': ['none', 'at_breakeven', 'oldest_at_profit'], 'default': 'none'},
-            {'name': 'partial_close_pct', 'type': float, 'min': 10, 'max': 90, 'default': 50,
-             'depends_on': {'partial_close': ['at_breakeven', 'oldest_at_profit']}},
-            {'name': 'breakeven_mode', 'type': 'categorical',
-             'options': ['none', 'after_n_levels'], 'default': 'none'},
-            {'name': 'breakeven_levels', 'type': int, 'min': 1, 'max': 10, 'default': 3,
-             'depends_on': {'breakeven_mode': ['after_n_levels']}},
-
-            # ── Advanced Risk ──
-            {'name': 'max_weekly_loss_pct', 'type': float, 'min': 0, 'max': 50, 'default': 0,
-             'description': 'Max weekly drawdown %. 0 = disabled'},
-            {'name': 'equity_curve_filter', 'type': 'categorical',
-             'options': ['none', 'above_ema'],
-             'default': 'none',
+            {'name': 'equity_curve_filter', 'type': 'categorical', 'group': _R,
+             'options': ['none', 'above_ema'], 'default': 'none',
              'description': 'Only trade when equity curve is above its own EMA'},
-            {'name': 'equity_ema_period', 'type': int, 'min': 5, 'max': 100, 'default': 20,
+            {'name': 'equity_ema_period', 'type': int, 'group': _R,
+             'min': 5, 'max': 100, 'default': 20,
              'depends_on': {'equity_curve_filter': ['above_ema']}},
 
-            # ── Sizing Curve: Custom ──
-            {'name': 'sizing_custom_sequence', 'type': 'categorical',
-             'options': ['none', '1_1_2_3_5_8', '1_2_4_8_16', '1_1_2_4_7_11',
-                         '1_2_3_5_8_13_21', '1_3_6_12_24'],
-             'default': 'none',
-             'description': 'Predefined sizing sequences (multipliers). Overrides sizing_curve when not none.'},
+            # ── Position Management ──
+            # partial_close: not yet implemented with STOP order architecture.
+            # Kept as 'none' only — other options would silently do nothing.
+            {'name': 'breakeven_mode', 'type': 'categorical', 'group': _P,
+             'options': ['none', 'after_n_levels'], 'default': 'none'},
+            {'name': 'breakeven_levels', 'type': int, 'group': _P,
+             'min': 1, 'max': 10, 'default': 3,
+             'depends_on': {'breakeven_mode': ['after_n_levels']}},
         ]
+
+        # ── Preset-aware HP filtering ──
+        # HPs with general=True are visible in ALL presets.
+        # Other HPs are visible only in presets that use them.
+        all_preset_names = sorted(PRESETS.keys())
+        for hp_def in all_hps:
+            if hp_def['name'] == 'preset':
+                continue
+
+            # General HPs: visible in every preset
+            if hp_def.get('general'):
+                preset_dep = ['custom'] + all_preset_names
+            else:
+                relevant_presets = set()
+                for pname, pvals in PRESETS.items():
+                    # HP is directly set by this preset
+                    if hp_def['name'] in pvals:
+                        relevant_presets.add(pname)
+                        continue
+                    # HP is a dependent whose parent condition is met by preset values
+                    deps = hp_def.get('depends_on', {})
+                    if deps:
+                        all_met = True
+                        for dep_key, dep_vals in deps.items():
+                            parent_val = pvals.get(dep_key)
+                            if parent_val is None or parent_val not in dep_vals:
+                                all_met = False
+                                break
+                        if all_met:
+                            relevant_presets.add(pname)
+                preset_dep = ['custom'] + sorted(relevant_presets)
+
+            existing_deps = hp_def.get('depends_on', {})
+            existing_deps['preset'] = preset_dep
+            hp_def['depends_on'] = existing_deps
+
+        return all_hps
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                          LIFECYCLE                                  ║
@@ -308,13 +376,16 @@ class UniversalMartingale(Strategy):
         """Initialize all strategy state on first candle."""
         self.hedge_mode = True  # Allow simultaneous long+short (CFD tickets)
 
-        # Apply preset if not custom
+        # Apply preset as defaults for keys NOT already provided by the user.
+        # The frontend applies preset values on load (onPresetChange), so by the
+        # time we get here, user-modified HPs already have their final values.
+        # We only fill in keys the frontend didn't send (invisible/filtered HPs).
         hp = self.hp
         if hp.get('preset', 'custom') != 'custom':
             from .presets import PRESETS
             preset = PRESETS.get(hp['preset'], {})
             for k, v in preset.items():
-                if k not in hp or hp[k] is None:
+                if k not in hp:
                     hp[k] = v
 
         self.vars.update({
@@ -338,6 +409,9 @@ class UniversalMartingale(Strategy):
             'prev_signal': None,
             'sessions': [],
             'equity_history': [],
+            'hedge_stop_order_id': None,
+            'pending_hedge_level': None,
+            'pending_hedge_dir': None,
         })
 
     def should_long(self) -> bool:
@@ -400,13 +474,69 @@ class UniversalMartingale(Strategy):
             'dir': direction,
             'qty': abs(order.qty),
             'entry': entry,
+            'ticket_id': getattr(order, 'ticket_id', None),
         }
         self.vars['legs'] = [leg]
 
         # Compute TP and hedge trigger
-        self.vars['tp_price'] = self._compute_tp(entry, direction)
         self.vars['hedge_trigger_price'] = self._compute_hedge_trigger(entry, direction, 0)
         self.vars['trailing_tp'] = None
+
+        # Compute TP price (handles fixed_pips, atr, risk_reward, AND bucket_pct)
+        tp_mode = self.hp.get('tp_mode', 'fixed_pips')
+        if tp_mode == 'bucket_pct':
+            target_pct = self.hp.get('tp_value', 0.1)
+            start_bal = self.vars.get('session_start_balance', self.balance)
+            target_dollars = start_bal * (target_pct / 100.0)
+            self.vars['tp_price'] = self._compute_target_price(target_dollars)
+        else:
+            self.vars['tp_price'] = self._compute_tp(entry, direction)
+
+        # Set engine-managed TP on this ticket (1m resolution)
+        if self.vars['tp_price'] is not None and leg.get('ticket_id'):
+            self.set_ticket_tp_sl(leg['ticket_id'], tp=self.vars['tp_price'])
+
+        # Place STOP order for next hedge level (also 1m resolution)
+        self._place_hedge_stop()
+
+    def on_ticket_opened(self, order):
+        """Hedge STOP order filled — add the new leg, recalculate TP, place next hedge.
+        In CFD mode, new non-reduce_only orders fire on_ticket_opened (not on_increased_position)."""
+        if not self.vars.get('cycle_active'):
+            return
+
+        level = self.vars.get('pending_hedge_level')
+        new_dir = self.vars.get('pending_hedge_dir')
+        if level is None or new_dir is None:
+            return
+
+        self.vars['level'] = level
+        entry = order.price
+
+        ticket_id = None
+        if self.position.is_cfd_mode and self.position._tickets:
+            ticket_id = self.position._tickets[-1].id
+
+        leg = {
+            'level': level,
+            'dir': new_dir,
+            'qty': abs(order.qty),
+            'entry': entry,
+            'ticket_id': ticket_id,
+        }
+        self.vars['legs'].append(leg)
+
+        # Clear pending state
+        self.vars['hedge_stop_order_id'] = None
+        self.vars['pending_hedge_level'] = None
+        self.vars['pending_hedge_dir'] = None
+
+        # Recalculate TP from new last leg
+        self._recalculate_tp()
+
+        # Compute and place next hedge trigger
+        self.vars['hedge_trigger_price'] = self._compute_hedge_trigger(entry, new_dir, level)
+        self._place_hedge_stop()
 
     def update_position(self):
         if not self.vars.get('cycle_active'):
@@ -414,31 +544,176 @@ class UniversalMartingale(Strategy):
 
         # Check abort conditions
         if self._should_abort():
+            self._cancel_hedge_stop()
             self._close_cycle('abort')
             return
 
-        # Check TP
-        if self._check_tp():
-            self._close_cycle('tp_hit')
-            return
-
-        # Check hedge trigger
-        if self._check_hedge_trigger():
-            self._execute_hedge()
-            return
+        # Session-level TP modes that can't use ticket TP (bucket_pct, trailing)
+        tp_mode = self.hp.get('tp_mode', 'fixed_pips')
+        if tp_mode in ('bucket_pct', 'trailing'):
+            if self._check_tp():
+                self._cancel_hedge_stop()
+                self._close_cycle('tp_hit')
+                return
 
         # Check partial close / breakeven
         self._check_position_management()
 
-    def on_close_position(self, order, closed_trade):
-        pass  # Handled by _close_cycle
+    def on_close_position(self, order, closed_trade=None):
+        """Catch engine-forced closes (margin call, liquidation) and tag trades with session info.
+
+        When the engine force-closes all tickets (e.g. margin call), trades are
+        created by _handle_cfd_order without session metadata.  We retroactively
+        tag recent trades that are missing session info.
+        """
+        if not self.vars.get('session_number'):
+            return
+        sn = self.vars['session_number']
+        level = self.vars.get('level', 0)
+        from qengine.store import store
+        # Tag all recent trades from this session that are missing session metadata
+        for t in reversed(store.closed_trades.trades):
+            if not t.meta:
+                t.meta = {}
+            if t.meta.get('session') is not None:
+                break  # reached trades from previous session, stop
+            t.meta['session'] = sn
+            t.meta.setdefault('exit_reason', 'margin_call')
+            t.meta.setdefault('session_exit_reason', 'margin_call')
+            t.meta.setdefault('level', level)
+            t.meta.setdefault('leg_index', level)
+        # End the cycle
+        if self.vars.get('cycle_active'):
+            self._cancel_hedge_stop()
+            self._end_cycle('margin_call')
+
+    def _find_leg_for_ticket(self, ticket):
+        """Find the leg dict that matches a ticket (by ticket_id or position)."""
+        legs = self.vars.get('legs', [])
+        for leg in legs:
+            if leg.get('ticket_id') and leg['ticket_id'] == ticket.id:
+                return leg
+        return None
+
+    def _tag_last_trade_with_session(self, ticket, exit_reason):
+        """Tag the most recently closed trade (engine-closed ticket) with session metadata.
+
+        The engine's _check_ticket_tp_sl_triggers records the trigger trade BEFORE
+        calling this callback, but only with exit_reason — no session number.  We
+        retroactively patch it here so session grouping works.
+        """
+        from qengine.store import store
+        if store.closed_trades.trades:
+            last = store.closed_trades.trades[-1]
+            if not last.meta:
+                last.meta = {}
+            last.meta.setdefault('session', self.vars.get('session_number', 0))
+            last.meta['session_exit_reason'] = exit_reason
+            # Find specific leg for this ticket to get correct level/leg_index
+            leg = self._find_leg_for_ticket(ticket)
+            if leg:
+                last.meta['level'] = leg['level']
+                last.meta['leg_index'] = leg['level']
+            else:
+                last.meta.setdefault('level', self.vars.get('level', 0))
+                last.meta.setdefault('leg_index', self.vars.get('level', 0))
+
+    def _close_remaining_tickets(self, fill_price, exit_reason):
+        """Close remaining open tickets with per-leg metadata."""
+        if not self.position._tickets:
+            return
+        remaining_ticket_ids = {t.id for t in self.position._tickets}
+        # Build per-leg meta for remaining tickets
+        legs = self.vars.get('legs', [])
+        leg_by_ticket = {}
+        for leg in legs:
+            tid = leg.get('ticket_id')
+            if tid and tid in remaining_ticket_ids:
+                leg_by_ticket[tid] = leg
+
+        # Close all tickets — the base method applies the same meta to all,
+        # so we close individually for correct per-leg metadata.
+        from qengine.services import closed_trade_service
+        for ticket in list(self.position._tickets):
+            close_result = self.position.close_ticket(ticket.id, fill_price)
+            if close_result is None:
+                continue
+            pnl = close_result['pnl']
+            if self.position.exchange:
+                self.position.exchange.add_realized_pnl(pnl)
+            leg = leg_by_ticket.get(ticket.id)
+            # Per-trade exit reason: winning legs show session reason,
+            # losing legs show 'session_close' (they were force-closed, not TP'd)
+            trade_exit = exit_reason if pnl >= 0 else 'session_close'
+            meta = {
+                'session': self.vars.get('session_number', 0),
+                'exit_reason': trade_exit,
+                'session_exit_reason': exit_reason,
+                'level': leg['level'] if leg else self.vars.get('level', 0),
+                'leg_index': leg['level'] if leg else self.vars.get('level', 0),
+            }
+            closed_trade_service.record_ticket_close(
+                self.position, close_result['ticket'], fill_price, pnl, meta=meta
+            )
+        self.trades_count += len(remaining_ticket_ids)
+        # Reset position state so engine's _terminate doesn't double-close
+        self.position.entry_price = None
+        self.position.exit_price = fill_price
+        import qengine.helpers as jh
+        self.position.closed_at = jh.now_to_timestamp()
+        # Cancel any remaining active orders (hedge STOPs, etc.)
+        # Use broker.cancel_all_orders directly (not _execute_cancel which
+        # validates position.is_close and resets strategy state)
+        self.broker.cancel_all_orders()
+
+    def on_ticket_tp_hit(self, ticket, fill_price):
+        """Engine closed last leg's ticket at TP. Cancel hedge STOP, close rest, end cycle."""
+        if not self.vars.get('cycle_active'):
+            return
+        self._cancel_hedge_stop()
+        self._tag_last_trade_with_session(ticket, 'tp_hit')
+        self._close_remaining_tickets(fill_price, 'tp_hit')
+        self._end_cycle('tp_hit')
+
+    def on_ticket_sl_hit(self, ticket, fill_price):
+        """Engine closed last leg's ticket at SL (bust). Close rest, end cycle.
+        At max level, the SL is the bust trigger — price moved one more hedge
+        distance against the last leg with no more hedges available."""
+        if not self.vars.get('cycle_active'):
+            return
+        self._cancel_hedge_stop()
+        # Use 'max_level_bust' when at the last allowed level (SL = bust trigger)
+        # max_levels=6 means levels 0-5 (6 levels). Level 5 is the last → bust.
+        max_levels = self.hp.get('max_levels', 6)
+        at_max = self.vars.get('level', 0) >= max_levels - 1
+        reason = 'max_level_bust' if at_max else 'sl_hit'
+        self._tag_last_trade_with_session(ticket, reason)
+        self._close_remaining_tickets(fill_price, reason)
+        self._end_cycle(reason)
 
     def after(self):
         pass
 
     def before_terminate(self):
         if self.vars.get('cycle_active'):
+            self._cancel_hedge_stop()
             self._close_cycle('terminate')
+
+    def close_all_tickets(self, exit_price=None, meta=None):
+        """Override base to inject session metadata when engine terminates.
+
+        The engine's _terminate() calls close_all_tickets(price, meta={'exit_reason':'terminated'})
+        if the position is still open after before_terminate.  We enrich the meta
+        with session info so these trades are grouped correctly, not orphaned as
+        standalone.
+        """
+        if meta is None:
+            meta = {}
+        if self.vars.get('session_number') and 'session' not in meta:
+            meta['session'] = self.vars.get('session_number', 0)
+            meta.setdefault('session_exit_reason', 'terminate')
+            meta.setdefault('level', self.vars.get('level', 0))
+        super().close_all_tickets(exit_price=exit_price, meta=meta)
 
     def terminate(self):
         pass
@@ -464,6 +739,16 @@ class UniversalMartingale(Strategy):
                 return None  # Signal unchanged — not a crossover
 
         return raw
+
+    def _signal_none(self):
+        """Always-enter mode: returns 'long' (direction_bias handles filtering)."""
+        bias = self.hp.get('direction_bias', 'both')
+        if bias == 'long_only':
+            return 'long'
+        elif bias == 'short_only':
+            return 'short'
+        # 'both': alternate based on bar index for even distribution
+        return 'long' if self.index % 2 == 0 else 'short'
 
     def _signal_random(self):
         # Use candle timestamp as seed component for reproducibility across runs
@@ -679,21 +964,34 @@ class UniversalMartingale(Strategy):
     # ║                         SIZING MODULE                               ║
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
+    def _margin_to_qty(self, margin_dollars):
+        """Convert a margin amount (dollars) to position qty (units).
+
+        qty = margin * leverage / price
+        This matches the exposure table formula exactly.
+        """
+        price = self.price if self.price > 0 else 1.0
+        lev = self.leverage if hasattr(self, 'leverage') else 1
+        return margin_dollars * lev / price
+
     def _base_size(self):
-        """Calculate base position size (level 0)."""
+        """Calculate base position size in UNITS (level 0)."""
         mode = self.hp.get('base_size_mode', 'pct_equity')
         val = self.hp.get('base_size_value', 1.0)
 
         if mode == 'fixed':
             return val
         elif mode == 'pct_equity':
-            return self.balance * (val / 100.0)
+            # val% of equity as margin, converted to units
+            margin = self.balance * (val / 100.0)
+            return self._margin_to_qty(margin)
         elif mode == 'risk_pips':
             # Size such that hedge_distance pips = val% of equity risk
             hedge_dist = self._hedge_distance_pips()
             if hedge_dist <= 0:
-                return self.balance * 0.01
-            return self.balance * (val / 100.0) / (hedge_dist * self.pip_size)
+                return self._margin_to_qty(self.balance * 0.01)
+            pip_val = self.pip_size if hasattr(self, 'pip_size') else 0.0001
+            return self.balance * (val / 100.0) / (hedge_dist * pip_val)
         elif mode == 'capital_aware':
             return self._capital_aware_base_size()
         return val
@@ -842,6 +1140,68 @@ class UniversalMartingale(Strategy):
         else:
             return entry_price + dist_price  # Price rises → hedge with long
 
+    def _place_hedge_stop(self):
+        """Place a STOP order for the next hedge level via the engine order system.
+        This runs at 1m resolution in _simulate_price_change_effect, matching
+        ticket TP resolution — so both TP and hedge race fairly.
+
+        At max level: instead of another hedge, set SL on the last ticket at the
+        would-be next hedge trigger price. This is the bust price — if hit, the
+        session closes at a loss (all tickets liquidated).
+        """
+        trigger = self.vars.get('hedge_trigger_price')
+        if trigger is None:
+            return
+
+        level = self.vars['level'] + 1
+        max_levels = self.hp.get('max_levels', 6)
+        if level >= max_levels:
+            # At max level — set SL on last leg's ticket at the bust price.
+            # Bust SL = TP distance AGAINST the last leg (mirrors TP but opposite).
+            # E.g., TP is 20 pips in favor, SL is 20 pips against.
+            # This means: for L5 short @ P-10, TP = P-30, SL = P+10.
+            # Shorts lose 20p, longs gain 10p per the standard surefire bust.
+            last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
+            if last_leg and last_leg.get('ticket_id'):
+                tp_dist = self._hedge_distance_pips(self.vars['level'])
+                tp_val = self.hp.get('tp_value', 20.0)
+                bust_dist = self.pips_to_price(tp_val) if hasattr(self, 'pips_to_price') else tp_val * 0.0001
+                if last_leg['dir'] == 'long':
+                    bust_price = last_leg['entry'] - bust_dist
+                else:
+                    bust_price = last_leg['entry'] + bust_dist
+                self.set_ticket_tp_sl(last_leg['ticket_id'],
+                                      tp=self.vars.get('tp_price'),
+                                      sl=bust_price)
+            return
+
+        last_leg = self.vars['legs'][-1]
+        new_dir = 'short' if last_leg['dir'] == 'long' else 'long'
+        qty = self._calc_size(level)
+        side = 'buy' if new_dir == 'long' else 'sell'
+
+        try:
+            order = self.broker.api.stop_order(
+                self.exchange, self.symbol, abs(qty), trigger, side, reduce_only=False
+            )
+        except Exception:
+            # Insufficient margin or other error — can't place hedge, session
+            # will end via TP or terminate. This is normal at deep levels.
+            return
+        if order:
+            self.vars['hedge_stop_order_id'] = order.id
+            self.vars['pending_hedge_level'] = level
+            self.vars['pending_hedge_dir'] = new_dir
+
+    def _cancel_hedge_stop(self):
+        """Cancel the pending hedge STOP order if it exists."""
+        order_id = self.vars.get('hedge_stop_order_id')
+        if order_id:
+            self.broker.cancel_order(order_id)
+            self.vars['hedge_stop_order_id'] = None
+            self.vars['pending_hedge_level'] = None
+            self.vars['pending_hedge_dir'] = None
+
     def _compute_tp(self, entry_price, direction):
         """Compute take-profit price (or None for bucket/trailing modes)."""
         mode = self.hp.get('tp_mode', 'fixed_pips')
@@ -867,7 +1227,12 @@ class UniversalMartingale(Strategy):
             return entry_price - dist
 
     def _check_tp(self):
-        """Check if take-profit condition is met."""
+        """Check if take-profit condition is met.
+
+        For price-based modes (fixed_pips, atr_based, risk_reward), the engine
+        handles TP via ticket triggers — this method only checks session-level
+        modes (bucket_pct, trailing).
+        """
         mode = self.hp.get('tp_mode', 'fixed_pips')
 
         if mode == 'bucket_pct':
@@ -878,19 +1243,9 @@ class UniversalMartingale(Strategy):
         if mode == 'trailing':
             return self._check_trailing_tp()
 
-        # Fixed/ATR/RR: price-based TP
-        tp = self.vars.get('tp_price')
-        if tp is None:
-            return False
-
-        # TP is computed relative to the LAST leg's direction (via _recalculate_tp),
-        # so the check must use the last leg's direction, not session_dir.
-        last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
-        direction = last_leg['dir'] if last_leg else self.vars['session_dir']
-        if direction == 'long':
-            return self.high >= tp
-        else:
-            return self.low <= tp
+        # Price-based modes (fixed_pips, atr_based, risk_reward) are handled
+        # by the engine via on_ticket_tp_hit callback. No manual check needed.
+        return False
 
     def _check_trailing_tp(self):
         """Trailing TP: activate after reaching profit, then trail back."""
@@ -915,79 +1270,35 @@ class UniversalMartingale(Strategy):
                 return self.high >= trailing
         return False
 
-    def _check_hedge_trigger(self):
-        """Check if price has hit the hedge trigger level."""
-        trigger = self.vars.get('hedge_trigger_price')
-        if trigger is None:
-            return False
-
-        level = self.vars['level']
-        max_levels = self.hp.get('max_levels', 6)
-        if level >= max_levels:
-            return False  # At max level — no more hedges
-
-        # Block hedge if exposure limit would be exceeded
-        if not self._exposure_ok():
-            return False
-
-        direction = self.vars['session_dir']
-        last_leg = self.vars['legs'][-1]
-
-        # Hedge triggers when price moves against the last leg
-        if last_leg['dir'] == 'long':
-            return self.low <= trigger
-        else:
-            return self.high >= trigger
-
-    def _execute_hedge(self):
-        """Add the next hedge level.
-
-        Uses market order at the exact trigger price (not candle close).
-        self.buy/self.sell would go through is_price_near() and fill at candle
-        close when trigger ≈ current price. Instead we call the API directly
-        to get immediate execution at the precise trigger.
-        """
-        level = self.vars['level'] + 1
-        self.vars['level'] = level
-
-        last_leg = self.vars['legs'][-1]
-        new_dir = 'short' if last_leg['dir'] == 'long' else 'long'
-        qty = self._calc_size(level)
-        entry = self.vars['hedge_trigger_price']
-
-        # Market order at exact trigger price — executes immediately on this candle
-        from qengine.enums import sides
-        if new_dir == 'long':
-            self.broker.api.market_order(
-                self.exchange, self.symbol, abs(qty), entry, sides.BUY, reduce_only=False
-            )
-        else:
-            self.broker.api.market_order(
-                self.exchange, self.symbol, abs(qty), entry, sides.SELL, reduce_only=False
-            )
-
-        leg = {
-            'level': level,
-            'dir': new_dir,
-            'qty': qty,
-            'entry': entry,
-        }
-        self.vars['legs'].append(leg)
-
-        # Recalculate TP for all legs (moves toward the new entry)
-        self._recalculate_tp()
-
-        # Set next hedge trigger
-        self.vars['hedge_trigger_price'] = self._compute_hedge_trigger(entry, new_dir, level)
-
     def _recalculate_tp(self):
         """Recalculate TP price after adding a new hedge level.
-        TP is set relative to the LAST leg's entry (the newest, largest position)."""
-        if self.hp.get('tp_mode') in ('bucket_pct', 'trailing'):
-            return  # These modes don't use fixed TP price
+        Clears TP on all other tickets, sets TP only on last leg's ticket.
 
-        last_leg = self.vars['legs'][-1]
-        self.vars['tp_price'] = self._compute_tp(last_leg['entry'], last_leg['dir'])
+        For bucket_pct mode: computes the exact price at which the target PnL
+        is hit across all open legs, then sets it as ticket TP for 1m precision.
+        """
+        tp_mode = self.hp.get('tp_mode', 'fixed_pips')
+
+        if tp_mode == 'trailing':
+            return  # Trailing TP is dynamic, can't pre-compute a price
+
+        if tp_mode == 'bucket_pct':
+            # Compute the price where session PnL = target % of equity
+            target_pct = self.hp.get('tp_value', 0.1)
+            start_bal = self.vars.get('session_start_balance', self.balance)
+            target_dollars = start_bal * (target_pct / 100.0)
+            tp_price = self._compute_target_price(target_dollars)
+        else:
+            last_leg = self.vars['legs'][-1]
+            tp_price = self._compute_tp(last_leg['entry'], last_leg['dir'])
+
+        self.vars['tp_price'] = tp_price
+
+        if tp_price is not None:
+            last_leg = self.vars['legs'][-1]
+            self.set_all_tickets_tp_sl(tp=None)
+            if last_leg.get('ticket_id'):
+                self.set_ticket_tp_sl(last_leg['ticket_id'], tp=tp_price)
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                        FILTER MODULE                                ║
@@ -1206,12 +1517,13 @@ class UniversalMartingale(Strategy):
     # ║                   POSITION MANAGEMENT MODULE                        ║
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
-    def _compute_breakeven_price(self):
-        """Find the price where net PnL of all tickets is zero.
+    def _compute_target_price(self, target_pnl=0.0):
+        """Find the price where net PnL of all tickets equals target_pnl.
 
-        For alternating long/short legs, solve: sum(qty_i * dir_i * (P - entry_i)) = 0
-        where dir_i = +1 for long, -1 for short.
-        Solution: P = sum(qty_i * dir_i * entry_i) / sum(qty_i * dir_i)
+        Solves: sum(qty_i * dir_i * (P - entry_i)) = target_pnl
+        Solution: P = (target_pnl + sum(qty_i * dir_i * entry_i)) / sum(qty_i * dir_i)
+
+        target_pnl=0 gives breakeven price. target_pnl>0 gives profit target price.
         """
         legs = self.vars.get('legs', [])
         if not legs:
@@ -1223,8 +1535,12 @@ class UniversalMartingale(Strategy):
             weighted_sum += leg['qty'] * sign * leg['entry']
             net_signed_qty += leg['qty'] * sign
         if abs(net_signed_qty) < 1e-10:
-            return None  # perfectly hedged — no breakeven price exists
-        return weighted_sum / net_signed_qty
+            return None  # perfectly hedged — no target price exists
+        return (target_pnl + weighted_sum) / net_signed_qty
+
+    def _compute_breakeven_price(self):
+        """Find the price where net PnL of all tickets is zero."""
+        return self._compute_target_price(0.0)
 
     def _check_position_management(self):
         """Mid-session adjustments: partial close, breakeven move."""
@@ -1235,15 +1551,21 @@ class UniversalMartingale(Strategy):
                 be_price = self._compute_breakeven_price()
                 if be_price is not None:
                     self.vars['tp_price'] = be_price
+                    self.set_all_tickets_tp_sl(tp=None)
+                    last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
+                    if last_leg and last_leg.get('ticket_id'):
+                        self.set_ticket_tp_sl(last_leg['ticket_id'], tp=be_price)
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                     EXECUTION ENGINE                                ║
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
     def _close_cycle(self, reason):
-        """Close all tickets and reset for next cycle."""
-        is_bust = reason in ('abort', 'terminate', 'max_level_sl')
-        level = self.vars.get('level', 0)
+        """Close all tickets/positions and reset for next cycle.
+        Called from update_position() for manual exits (abort, bucket_pct, trailing, terminate).
+        Works in both CFD mode (_close_remaining_tickets) and futures mode (liquidate).
+        """
+        self._cancel_hedge_stop()
 
         # Use exact TP price for TP exits, candle close for everything else
         if reason == 'tp_hit' and self.vars.get('tp_price') is not None:
@@ -1253,14 +1575,35 @@ class UniversalMartingale(Strategy):
 
         # Close all positions
         if self.is_open:
-            self.close_all_tickets(
-                exit_price=exit_price,
-                meta={
-                    'session': self.vars.get('session_number', 0),
-                    'exit_reason': reason,
-                    'level': level,
-                }
-            )
+            is_cfd = getattr(self.position, 'is_cfd_mode', False)
+            if is_cfd:
+                self._close_remaining_tickets(exit_price, reason)
+            else:
+                # Futures/spot mode: use broker to close at the exact price
+                self.broker.reduce_position_at(
+                    self.position.qty, exit_price, self.price
+                )
+                # Tag the resulting trade with session metadata
+                from qengine.store import store
+                if store.closed_trades.trades:
+                    last_trade = store.closed_trades.trades[-1]
+                    if not last_trade.meta:
+                        last_trade.meta = {}
+                    last_trade.meta.update({
+                        'session': self.vars.get('session_number', 0),
+                        'exit_reason': reason,
+                        'level': 0,
+                        'leg_index': 0,
+                    })
+
+        self._end_cycle(reason)
+
+    def _end_cycle(self, reason):
+        """Record session, update bust tracking, set cooldown, reset state.
+        Called by _close_cycle (manual exit) and on_ticket_tp_hit/on_ticket_sl_hit (engine exit).
+        """
+        is_bust = reason in ('abort', 'terminate', 'max_level_sl', 'max_level_bust', 'sl_hit', 'margin_call')
+        level = self.vars.get('level', 0)
 
         # Record session
         pnl = self.balance - self.vars.get('session_start_balance', self.balance)
@@ -1290,7 +1633,7 @@ class UniversalMartingale(Strategy):
             atr = ta.atr(self.candles, period=14)
             avg_atr = ta.atr(self.candles, period=50)
             if atr > avg_atr * self.hp.get('cooldown_value', 2.0):
-                self.vars['cooldown_until'] = self.index + 50  # Extended cooldown in high vol
+                self.vars['cooldown_until'] = self.index + 50
             else:
                 self.vars['cooldown_until'] = self.index + 5
 
@@ -1301,6 +1644,9 @@ class UniversalMartingale(Strategy):
         self.vars['tp_price'] = None
         self.vars['hedge_trigger_price'] = None
         self.vars['trailing_tp'] = None
+        self.vars['hedge_stop_order_id'] = None
+        self.vars['pending_hedge_level'] = None
+        self.vars['pending_hedge_dir'] = None
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                         UTILITIES                                   ║

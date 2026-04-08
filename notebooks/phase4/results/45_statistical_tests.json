@@ -1,0 +1,97 @@
+{
+  "baseline": {
+    "variant": "full_pipeline",
+    "profit_factor": 2.763167742080615,
+    "win_rate": 0.8280961182994455,
+    "bust_rate": 0.17190388170055454,
+    "net_pnl": 15149155617.178288
+  },
+  "comparisons": [
+    {
+      "variant": "no_pipeline",
+      "component_removed": "pipeline",
+      "pf_full": 2.763,
+      "pf_variant": 1.074,
+      "pf_delta": 1.689,
+      "pf_pct_change": 157.2,
+      "wr_delta": -0.0249,
+      "bust_delta": 0.0249,
+      "pnl_delta": 15149154126.9,
+      "helps": true
+    },
+    {
+      "variant": "single_global",
+      "component_removed": "single global",
+      "pf_full": 2.763,
+      "pf_variant": 1.311,
+      "pf_delta": 1.452,
+      "pf_pct_change": 110.7,
+      "wr_delta": -0.0523,
+      "bust_delta": 0.0523,
+      "pnl_delta": 15149149758.2,
+      "helps": true
+    },
+    {
+      "variant": "uniform_sizing",
+      "component_removed": "uniform sizing",
+      "pf_full": 2.763,
+      "pf_variant": 1.859,
+      "pf_delta": 0.904,
+      "pf_pct_change": 48.6,
+      "wr_delta": 0.0,
+      "bust_delta": 0.0,
+      "pnl_delta": -21467176049.9,
+      "helps": true
+    },
+    {
+      "variant": "no_migration",
+      "component_removed": "migration",
+      "pf_full": 2.763,
+      "pf_variant": 2.763,
+      "pf_delta": 0.0,
+      "pf_pct_change": 0.0,
+      "wr_delta": 0.0,
+      "bust_delta": 0.0,
+      "pnl_delta": 0.0,
+      "helps": false
+    },
+    {
+      "variant": "flat_clustering",
+      "component_removed": "flat clustering",
+      "pf_full": 2.763,
+      "pf_variant": 2.763,
+      "pf_delta": 0.0,
+      "pf_pct_change": 0.0,
+      "wr_delta": 0.0,
+      "bust_delta": 0.0,
+      "pnl_delta": 0.0,
+      "helps": false
+    },
+    {
+      "variant": "no_hysteresis",
+      "component_removed": "hysteresis",
+      "pf_full": 2.763,
+      "pf_variant": 2.763,
+      "pf_delta": 0.0,
+      "pf_pct_change": 0.0,
+      "wr_delta": 0.0,
+      "bust_delta": 0.0,
+      "pnl_delta": 0.0,
+      "helps": false
+    },
+    {
+      "variant": "random_configs",
+      "component_removed": "random configs",
+      "pf_full": 2.763,
+      "pf_variant": 13.747,
+      "pf_delta": -10.984,
+      "pf_pct_change": -79.9,
+      "wr_delta": 0.4123,
+      "bust_delta": -0.4123,
+      "pnl_delta": 15148676567.0,
+      "helps": false
+    }
+  ],
+  "most_impactful": "no_pipeline",
+  "least_impactful": "random_configs"
+}

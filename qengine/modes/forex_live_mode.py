@@ -409,18 +409,40 @@ def _sync_trades_with_broker(driver, exchange_name: str, client_id: str) -> int:
                  f'[Trade sync] Trade {ticket.exchange_trade_id} closed on broker '
                  f'(ticket {ticket.id[:8]}, {ticket.type} {ticket.qty:.0f})')
 
-            # Find the fill price from broker trades (estimate from last known price)
+            # TODO: query broker transaction log for actual fill price instead of
+            # using cached current_price, which may be stale by the poll interval.
             fill_price = p.current_price
 
-            # Close the internal ticket
+            # Determine if this was a TP or SL closure based on ticket's stored levels
+            exit_reason = None
+            if ticket.tp_price is not None and ticket.sl_price is not None:
+                # Both set — infer from fill price proximity
+                tp_dist = abs(fill_price - ticket.tp_price)
+                sl_dist = abs(fill_price - ticket.sl_price)
+                exit_reason = 'tp_hit' if tp_dist <= sl_dist else 'sl_hit'
+            elif ticket.tp_price is not None:
+                exit_reason = 'tp_hit'
+            elif ticket.sl_price is not None:
+                exit_reason = 'sl_hit'
+
             result = p.close_ticket(ticket.id, fill_price)
             if result:
                 pnl = result['pnl']
                 if p.exchange and p.exchange.type in ('cfd',):
                     p.exchange.add_realized_pnl(pnl)
                 from qengine.services import closed_trade_service
-                closed_trade_service.record_ticket_close(p, result['ticket'], fill_price, pnl)
+                closed_trade_service.record_ticket_close(
+                    p, result['ticket'], fill_price, pnl,
+                    meta={'exit_reason': exit_reason} if exit_reason else None,
+                )
                 closed_count += 1
+
+                # Fire strategy callback
+                if r.strategy is not None and exit_reason:
+                    if exit_reason == 'tp_hit':
+                        r.strategy.on_ticket_tp_hit(ticket, fill_price)
+                    elif exit_reason == 'sl_hit':
+                        r.strategy.on_ticket_sl_hit(ticket, fill_price)
 
     if closed_count > 0:
         _log(client_id, f'Trade sync: {closed_count} trade(s) closed by broker TP/SL')

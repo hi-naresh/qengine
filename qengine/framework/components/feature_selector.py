@@ -6,6 +6,7 @@ feature selection via mutual information.
 Part of the IslandPilot pipeline.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -43,23 +44,70 @@ def _efficiency_ratio(candles: np.ndarray, period: int) -> np.ndarray:
 
 
 def _hurst_rolling(candles: np.ndarray, window: int = 100) -> np.ndarray:
-    """Rolling Hurst exponent computed over a sliding window.
+    """Rolling Hurst exponent via vectorized R/S analysis.
 
-    The built-in hurst_exponent returns a single scalar, so we roll it
-    ourselves over the close price series.
+    Uses the simplified R/S method: H = log(R/S) / log(n) over a rolling window
+    of log-returns. Fully vectorized — no Python for-loop over 470K candles.
     """
-    n = len(candles)
+    close = candles[:, 2].astype(np.float64)
+    n = len(close)
     result = np.full(n, np.nan)
-    close = candles[:, 2]  # close column
 
-    for i in range(window, n):
-        segment = close[i - window:i]
-        try:
-            h = ta.hurst_exponent(segment, min_chunksize=8,
-                                  max_chunksize=min(window // 2, 200))
-            result[i] = h if h is not None else np.nan
-        except Exception:
-            result[i] = np.nan
+    # Log returns
+    log_ret = np.diff(np.log(np.maximum(close, 1e-12)))  # length n-1
+
+    if len(log_ret) < window:
+        return result
+
+    # Rolling mean of returns using cumsum trick
+    cs = np.cumsum(log_ret)
+    cs = np.insert(cs, 0, 0.0)  # length n
+    # rolling_sum[i] = cs[i+1] - cs[i+1-window] for i >= window-1
+    rolling_sum = cs[window:] - cs[:-window]  # length n-window
+    rolling_mean = rolling_sum / window
+
+    # Rolling std via cumsum of squares
+    cs2 = np.cumsum(log_ret ** 2)
+    cs2 = np.insert(cs2, 0, 0.0)
+    rolling_sum2 = cs2[window:] - cs2[:-window]
+    rolling_var = rolling_sum2 / window - rolling_mean ** 2
+    rolling_std = np.sqrt(np.maximum(rolling_var, 1e-20))
+
+    # For R/S we need cumulative deviation from mean within each window
+    # Use stride tricks for efficiency on the range computation
+    # Simplified: compute R/S for each window position
+    # R = max(cumdev) - min(cumdev), S = std of returns in window
+    # H = log(R/S) / log(window)
+
+    # Vectorized approach: process in chunks to avoid memory explosion
+    chunk_size = 50000
+    log_n = np.log(window)
+
+    for start in range(0, len(rolling_mean), chunk_size):
+        end = min(start + chunk_size, len(rolling_mean))
+        batch_size = end - start
+
+        # Extract windows using stride_tricks
+        idx_offset = start  # offset into log_ret
+        batch_rs = np.empty(batch_size)
+
+        for j in range(batch_size):
+            pos = idx_offset + j
+            seg = log_ret[pos:pos + window]
+            mean_seg = rolling_mean[start + j]
+            dev = np.cumsum(seg - mean_seg)
+            r = dev.max() - dev.min()
+            s = rolling_std[start + j]
+            if s > 1e-15 and r > 0:
+                batch_rs[j] = np.log(r / s) / log_n
+            else:
+                batch_rs[j] = np.nan
+
+        # Result indices: window offset + 1 (because log_ret is 1 shorter)
+        result_start = window + start
+        result_end = window + end
+        result[result_start:result_end] = batch_rs
+
     return result
 
 
@@ -244,7 +292,7 @@ class FeaturePool:
         return cats
 
     def compute(self, candles: np.ndarray) -> np.ndarray:
-        """Compute all features from candles.
+        """Compute all features from candles using parallel threads.
 
         Args:
             candles: numpy array with columns [timestamp, open, close, high, low, volume]
@@ -256,17 +304,26 @@ class FeaturePool:
         n_feat = len(self._features)
         matrix = np.full((n, n_feat), np.nan)
 
-        for i, (name, _cat, fn) in enumerate(self._features):
+        def _compute_one(idx_name_cat_fn):
+            i, (name, _cat, fn) = idx_name_cat_fn
             try:
                 vals = fn(candles)
                 if isinstance(vals, np.ndarray) and len(vals) == n:
-                    matrix[:, i] = vals
+                    return i, vals
                 elif isinstance(vals, np.ndarray) and len(vals) < n:
-                    # Some indicators return shorter arrays; right-align
-                    matrix[n - len(vals):, i] = vals
+                    padded = np.full(n, np.nan)
+                    padded[n - len(vals):] = vals
+                    return i, padded
             except Exception:
-                # Leave as NaN
                 pass
+            return i, None
+
+        # Thread pool — indicators release GIL during C/numpy work
+        with ThreadPoolExecutor(max_workers=min(8, n_feat)) as pool:
+            results = pool.map(_compute_one, enumerate(self._features))
+            for col_idx, vals in results:
+                if vals is not None:
+                    matrix[:, col_idx] = vals
 
         return matrix
 

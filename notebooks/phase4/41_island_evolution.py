@@ -14,12 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from utils import (
     load_candles, concat_candles, save_results, load_results, savefig,
-    get_logger, MODELS_DIR, CycleResult, SimConfig, calc_size,
+    get_logger, MODELS_DIR, RESULTS_DIR, CycleResult, SimConfig, calc_size,
     cycle_summary,
 )
 
 import json
+import os
 import numpy as np
+import numba
 import matplotlib.pyplot as plt
 
 from qengine.framework.components.island_evolver import (
@@ -77,159 +79,216 @@ def generate_crossover_signals(candles: np.ndarray) -> list:
     return signals
 
 
-# ── cycle simulator ──────────────────────────────────────────────────────────
+# ── cycle simulator (Numba JIT compiled) ─────────────────────────────────────
+#
+# The inner loop is compiled to machine code via @numba.njit.
+# Same logic as the Python version — just ~50-100x faster.
+# Returns raw floats: (bust, level_reached, pnl, bars_held)
 
-def simulate_cycle(
-    candles: np.ndarray,
-    entry_idx: int,
-    direction: str,
-    cfg: SimConfig,
-) -> CycleResult:
-    """Simulate a single surefire hedging cycle from entry_idx.
+# Pre-compute sizing tables for each curve type (avoids string ops in JIT)
+# curve_id: 0=geometric, 1=sqrt, 2=linear, 3=fibonacci
+_FIB = np.array([1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233], dtype=np.float64)
 
-    Tracks positions at each level.  TP = all positions net positive.
-    Hedge trigger = price moves against current direction by hedge_dist.
-    Bust = max_levels exceeded or max_bars elapsed.
+
+@numba.njit(cache=True)
+def _calc_size_jit(level, curve_id, factor, base_size):
+    """Position size at hedge level (JIT)."""
+    if curve_id == 0:  # geometric
+        return base_size * (factor ** level)
+    elif curve_id == 1:  # sqrt
+        return base_size * (factor ** 0.5) ** level
+    elif curve_id == 2:  # linear
+        return base_size * (1.0 + level)
+    elif curve_id == 3:  # fibonacci
+        idx = min(level, 12)
+        return base_size * _FIB[idx]
+    return base_size
+
+
+@numba.njit(cache=True)
+def _simulate_cycle_jit(
+    close_arr, high_arr, low_arr,
+    entry_idx, direction_int,  # +1 = long, -1 = short
+    base_size, curve_id, sizing_factor,
+    tp_pips, hedge_dist_pips, max_levels, max_bars,
+):
+    """JIT-compiled surefire cycle simulator.
+
+    Returns: (bust_int, level_reached, pnl, bars_held)
+      bust_int: 1 = bust, 0 = win
     """
-    n = len(candles)
-    pip = 0.0001  # EUR-USD pip size
+    pip = 0.0001
+    n = len(close_arr)
 
-    entry_price = float(candles[entry_idx, 2])  # close
-    positions = []  # list of (direction, price, size)
-    size0 = cfg.base_size
-    positions.append((direction, entry_price, size0))
+    # Position arrays (pre-allocate for max_levels+1 positions)
+    max_pos = max_levels + 2
+    pos_dir = np.zeros(max_pos, dtype=np.float64)    # +1 or -1
+    pos_entry = np.zeros(max_pos, dtype=np.float64)
+    pos_size = np.zeros(max_pos, dtype=np.float64)
+
+    entry_price = close_arr[entry_idx]
+    pos_dir[0] = direction_int
+    pos_entry[0] = entry_price
+    pos_size[0] = base_size
+    n_pos = 1
 
     current_level = 0
-    current_dir = direction
+    current_dir = direction_int  # +1 long, -1 short
     last_entry_price = entry_price
 
-    for bar in range(1, cfg.max_bars + 1):
+    for bar in range(1, max_bars + 1):
         ci = entry_idx + bar
         if ci >= n:
-            # Ran out of candles — treat as bust
-            pnl = _calc_net_pnl(positions, candles[min(ci, n-1), 2], pip)
-            return CycleResult(
-                bust=True, level_reached=current_level,
-                pnl=pnl, bars_held=bar,
-                entry_idx=entry_idx, direction=direction,
-            )
+            # Out of data — bust
+            exit_price = close_arr[n - 1]
+            pnl = 0.0
+            for p in range(n_pos):
+                pnl += pos_dir[p] * (exit_price - pos_entry[p]) / pip * pos_size[p]
+            return 1, current_level, pnl, bar
 
-        high = float(candles[ci, 3])
-        low = float(candles[ci, 4])
-        close = float(candles[ci, 2])
+        high = high_arr[ci]
+        low = low_arr[ci]
+        close = close_arr[ci]
 
-        # Check TP: can we close all positions at net profit?
-        tp_price = _calc_tp_price(positions, cfg.tp_pips, pip)
-        if tp_price is not None:
-            if current_dir == 'long' and high >= tp_price:
-                pnl = _calc_net_pnl(positions, tp_price, pip)
-                return CycleResult(
-                    bust=False, level_reached=current_level,
-                    pnl=pnl, bars_held=bar,
-                    entry_idx=entry_idx, direction=direction,
-                )
-            elif current_dir == 'short' and low <= tp_price:
-                pnl = _calc_net_pnl(positions, tp_price, pip)
-                return CycleResult(
-                    bust=False, level_reached=current_level,
-                    pnl=pnl, bars_held=bar,
-                    entry_idx=entry_idx, direction=direction,
-                )
+        # TP price: tp_pips beyond last entry in current direction
+        if current_dir > 0:
+            tp_price = last_entry_price + tp_pips * pip
+        else:
+            tp_price = last_entry_price - tp_pips * pip
+
+        # Check TP hit
+        tp_hit = False
+        if current_dir > 0 and high >= tp_price:
+            tp_hit = True
+        elif current_dir < 0 and low <= tp_price:
+            tp_hit = True
+
+        if tp_hit:
+            pnl = 0.0
+            for p in range(n_pos):
+                pnl += pos_dir[p] * (tp_price - pos_entry[p]) / pip * pos_size[p]
+            return 0, current_level, pnl, bar
+
+        # Hedge price
+        if current_dir > 0:
+            hedge_price = last_entry_price - hedge_dist_pips * pip
+        else:
+            hedge_price = last_entry_price + hedge_dist_pips * pip
 
         # Check hedge trigger
-        hedge_price = _calc_hedge_price(last_entry_price, current_dir,
-                                         cfg.hedge_dist_pips, pip)
-        triggered = False
-        if current_dir == 'long' and low <= hedge_price:
-            triggered = True
-        elif current_dir == 'short' and high >= hedge_price:
-            triggered = True
+        hedge_hit = False
+        if current_dir > 0 and low <= hedge_price:
+            hedge_hit = True
+        elif current_dir < 0 and high >= hedge_price:
+            hedge_hit = True
 
-        if triggered:
+        if hedge_hit:
             current_level += 1
-            if current_level > cfg.max_levels:
-                # Bust — exceeded max levels
-                pnl = _calc_net_pnl(positions, close, pip)
-                return CycleResult(
-                    bust=True, level_reached=current_level - 1,
-                    pnl=pnl, bars_held=bar,
-                    entry_idx=entry_idx, direction=direction,
-                )
-            # Flip direction and add hedge position
-            current_dir = 'short' if current_dir == 'long' else 'long'
-            new_size = calc_size(current_level, cfg)
-            positions.append((current_dir, hedge_price, new_size))
+            if current_level > max_levels:
+                pnl = 0.0
+                for p in range(n_pos):
+                    pnl += pos_dir[p] * (close - pos_entry[p]) / pip * pos_size[p]
+                return 1, current_level - 1, pnl, bar
+            # Flip direction, add position
+            current_dir = -current_dir
+            new_size = _calc_size_jit(current_level, curve_id, sizing_factor, base_size)
+            pos_dir[n_pos] = current_dir
+            pos_entry[n_pos] = hedge_price
+            pos_size[n_pos] = new_size
+            n_pos += 1
             last_entry_price = hedge_price
 
-    # Max bars elapsed — bust
-    final_price = float(candles[min(entry_idx + cfg.max_bars, n-1), 2])
-    pnl = _calc_net_pnl(positions, final_price, pip)
+    # Max bars — bust
+    exit_price = close_arr[min(entry_idx + max_bars, n - 1)]
+    pnl = 0.0
+    for p in range(n_pos):
+        pnl += pos_dir[p] * (exit_price - pos_entry[p]) / pip * pos_size[p]
+    return 1, current_level, pnl, max_bars
+
+
+# Sizing curve name → int mapping for JIT
+_CURVE_MAP = {'geometric': 0, 'sqrt': 1, 'linear': 2, 'fibonacci': 3}
+
+
+def simulate_cycle(candles, entry_idx, direction, cfg):
+    """Wrapper: calls JIT simulator, returns CycleResult."""
+    direction_int = 1 if direction == 'long' else -1
+    curve_id = _CURVE_MAP.get(cfg.sizing_curve, 1)
+
+    bust_int, level, pnl, bars = _simulate_cycle_jit(
+        candles[:, 2], candles[:, 3], candles[:, 4],
+        entry_idx, direction_int,
+        cfg.base_size, curve_id, cfg.sizing_factor,
+        cfg.tp_pips, cfg.hedge_dist_pips, cfg.max_levels, cfg.max_bars,
+    )
     return CycleResult(
-        bust=True, level_reached=current_level,
-        pnl=pnl, bars_held=cfg.max_bars,
+        bust=bool(bust_int), level_reached=int(level),
+        pnl=float(pnl), bars_held=int(bars),
         entry_idx=entry_idx, direction=direction,
     )
 
 
-def _calc_net_pnl(positions, exit_price, pip):
-    """Compute total P&L of all open positions at exit_price."""
-    total = 0.0
-    for d, entry, size in positions:
-        if d == 'long':
-            total += (exit_price - entry) / pip * size
-        else:
-            total += (entry - exit_price) / pip * size
-    return total
-
-
-def _calc_tp_price(positions, tp_pips, pip):
-    """Compute TP price: price at which net P&L = tp_pips * base_size.
-
-    For the latest direction, TP is tp_pips beyond the last entry.
-    Returns None if no positions.
-    """
-    if not positions:
-        return None
-    last_dir, last_entry, _ = positions[-1]
-    if last_dir == 'long':
-        return last_entry + tp_pips * pip
-    else:
-        return last_entry - tp_pips * pip
-
-
-def _calc_hedge_price(entry_price, direction, hedge_pips, pip):
-    """Compute hedge trigger price."""
-    if direction == 'long':
-        return entry_price - hedge_pips * pip
-    else:
-        return entry_price + hedge_pips * pip
-
-
 # ── fitness function factory ─────────────────────────────────────────────────
 
+# Max bars per cycle for fitness eval (most cycles resolve within 200 bars;
+# 500 is generous while 10x faster than the default 5000)
+_FITNESS_MAX_BARS = 500
+# Max signals to evaluate per genome (stochastic fitness — rotated each call)
+_FITNESS_SAMPLE_SIZE = 60
+
+
 def make_fitness_fn(candles, signals_for_island):
-    """Create a fitness function that evaluates a genome on island signals."""
+    """Create a fitness function that evaluates a genome on island signals.
+
+    Uses stochastic sub-sampling: each call evaluates a random subset of signals
+    (rotated via a counter), keeping evaluation fast while covering all signals
+    over multiple generations.
+    """
+    n_signals = len(signals_for_island)
+    _call_count = [0]  # mutable counter for rotation
+
+    # Precompute signal indices and directions as arrays for fast access
+    sig_indices = np.array([s['idx'] for s in signals_for_island], dtype=np.int64)
+    sig_dirs = [s['direction'] for s in signals_for_island]
 
     def fitness_fn(genes: dict) -> float:
         cfg = SimConfig.from_genome({'genes': genes})
-        results = []
-        for sig in signals_for_island:
-            res = simulate_cycle(candles, sig['idx'], sig['direction'], cfg)
-            results.append(res)
+        cfg.max_bars = _FITNESS_MAX_BARS
 
-        if not results:
+        # Stochastic sub-sample: rotate through signals
+        _call_count[0] += 1
+        if n_signals <= _FITNESS_SAMPLE_SIZE:
+            sample_idx = range(n_signals)
+        else:
+            rng = np.random.RandomState(_call_count[0] % 10000)
+            sample_idx = rng.choice(n_signals, _FITNESS_SAMPLE_SIZE, replace=False)
+
+        wins = 0
+        busts = 0
+        total_pnl = 0.0
+        gross_profit = 0.0
+        gross_loss = 0.0
+
+        for si in sample_idx:
+            res = simulate_cycle(candles, int(sig_indices[si]), sig_dirs[si], cfg)
+            total_pnl += res.pnl
+            if res.bust:
+                busts += 1
+                gross_loss += abs(res.pnl)
+            else:
+                wins += 1
+                gross_profit += res.pnl
+
+        n_eval = len(sample_idx)
+        if n_eval == 0:
             return -1e6
 
-        stats = cycle_summary(results)
-        # Fitness = net P&L adjusted for bust rate penalty
-        # Reward high win rate and PF, penalise busts heavily
-        net_pnl = stats['net_pnl']
-        bust_rate = stats['bust_rate']
-        pf = stats['profit_factor'] if stats['profit_factor'] != float('inf') else 100.0
+        bust_rate = busts / n_eval
+        pf = gross_profit / (gross_loss + 1e-10)
         pf = min(pf, 100.0)
 
         # Composite fitness
-        fitness = net_pnl * (1.0 - bust_rate) * min(pf, 10.0) / 10.0
+        fitness = total_pnl * (1.0 - bust_rate) * min(pf, 10.0) / 10.0
         return fitness
 
     return fitness_fn
@@ -325,29 +384,50 @@ def main():
     log.info(f"Candles shape: {candles.shape}")
 
     # 3. Compute feature matrix for regime classification
-    log.info("Computing feature matrix...")
+    cache_path = RESULTS_DIR / 'feature_matrix_cache.npz'
     pool = FeaturePool()
-    feature_matrix, _ = compute_feature_matrix(candles, pool)
+    if cache_path.exists():
+        log.info("Loading cached feature matrix...")
+        cached = np.load(str(cache_path), allow_pickle=True)
+        feature_matrix = cached['matrix']
+        if feature_matrix.shape[0] != len(candles):
+            log.info("Cache shape mismatch, recomputing...")
+            feature_matrix, _ = compute_feature_matrix(candles, pool)
+    else:
+        log.info("Computing feature matrix...")
+        feature_matrix, _ = compute_feature_matrix(candles, pool)
 
     # 4. Generate EMA 8/21 crossover signals
     log.info("Generating EMA 8/21 crossover signals...")
     signals = generate_crossover_signals(candles)
     log.info(f"Total crossover signals: {len(signals)}")
 
-    # 5. Assign signals to leaf islands
+    # 5. Assign signals to leaf islands (vectorized)
     log.info("Assigning signals to regime islands...")
     island_signals = {str(lid): [] for lid in tree.leaf_ids}
-    unassigned = 0
 
-    for sig in signals:
-        fv = feature_matrix[sig['idx']]
-        if np.any(np.isnan(fv[selected_indices])):
+    sig_indices = np.array([s['idx'] for s in signals])
+    sig_features = feature_matrix[sig_indices]
+
+    # Filter out NaN rows
+    valid_sigs = ~np.any(np.isnan(sig_features[:, selected_indices]), axis=1)
+    valid_features = sig_features[valid_sigs]
+
+    # Batch classify
+    labels, confs = tree.classify_batch(valid_features)
+
+    # Assign back
+    valid_idx = 0
+    unassigned = 0
+    for i, sig in enumerate(signals):
+        if not valid_sigs[i]:
             unassigned += 1
             continue
-        lid, conf = tree.classify_best(fv)
+        lid = int(labels[valid_idx])
         sig['regime_id'] = lid
-        sig['confidence'] = conf
+        sig['confidence'] = float(confs[valid_idx])
         island_signals[str(lid)].append(sig)
+        valid_idx += 1
 
     log.info(f"Unassigned (NaN features): {unassigned}")
     for lid in tree.leaf_ids:
@@ -415,18 +495,27 @@ def main():
     best_global_fitness = -np.inf
     patience_counter = 0
 
+    from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+    n_workers = min(os.cpu_count() or 4, len(active_ids), 8)
+    log.info(f"Using {n_workers} parallel workers for island evaluation")
+
+    evo_cfg = evolver.config
+
+    def _evaluate_and_evolve(lid):
+        pop = evolver.populations[lid]
+        pop.evaluate(fitness_fns[lid])
+        pop.evolve(
+            elitism=evo_cfg.get('elitism', 2),
+            crossover_rate=evo_cfg.get('crossover_rate', 0.7),
+            mutation_rate=evo_cfg.get('mutation_rate', 0.2),
+            mutation_sigma=evo_cfg.get('mutation_sigma', 0.05),
+            tournament_k=evo_cfg.get('tournament_k', 3),
+        )
+
     for gen in range(GA_GENERATIONS):
-        # Evaluate and evolve each island with its own fitness function
-        for lid in active_ids:
-            pop = evolver.populations[lid]
-            pop.evaluate(fitness_fns[lid])
-            pop.evolve(
-                elitism=evolver.config.get('elitism', 2),
-                crossover_rate=evolver.config.get('crossover_rate', 0.7),
-                mutation_rate=evolver.config.get('mutation_rate', 0.2),
-                mutation_sigma=evolver.config.get('mutation_sigma', 0.05),
-                tournament_k=evolver.config.get('tournament_k', 3),
-            )
+        # Evaluate and evolve islands in parallel (threads — shared memory for candles)
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            list(pool.map(_evaluate_and_evolve, active_ids))
 
         # Migration every N generations
         if (gen + 1) % MIGRATION_EVERY == 0:
@@ -488,9 +577,10 @@ def main():
     plot_migration(evolver.get_migration_log(), final_gen)
 
     # 14. Save results summary
-    # Run final evaluation for each island's best genome
-    island_results = {}
-    for lid in active_ids:
+    # Run final evaluation for each island's best genome (parallel)
+    log.info("Running final evaluation on all signals...")
+
+    def _eval_island(lid):
         best = best_genomes[lid]
         cfg = SimConfig.from_genome(best)
         cycles = []
@@ -498,12 +588,16 @@ def main():
             res = simulate_cycle(candles, sig['idx'], sig['direction'], cfg)
             res.regime_id = int(lid)
             cycles.append(res)
-        stats = cycle_summary(cycles)
-        island_results[lid] = {
-            'n_signals': len(island_signals[lid]),
-            'best_genome': best,
-            'cycle_stats': stats,
-        }
+        return lid, cycle_summary(cycles), cycles
+
+    island_results = {}
+    with ThreadPoolExecutor(max_workers=n_workers) as pool:
+        for lid, stats, _cycles in pool.map(_eval_island, active_ids):
+            island_results[lid] = {
+                'n_signals': len(island_signals[lid]),
+                'best_genome': best_genomes[lid],
+                'cycle_stats': stats,
+            }
 
     results = {
         'n_candles': int(candles.shape[0]),

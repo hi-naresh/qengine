@@ -275,25 +275,38 @@
               </div>
               <div><label class="label">Warm-up Candles</label><input v-model.number="pgForm.warm_up_candles" type="number" class="input" min="0" /></div>
 
-              <!-- Hyperparameters (auto-loaded from strategy) -->
-              <div v-if="pgHyperParams.length">
+              <!-- Preset selector (separate from HPs) -->
+              <div v-if="pgPreset">
+                <label class="label">Preset</label>
+                <select v-model="pgPreset.value" @change="onPgPresetChange" class="select text-xs py-1.5 w-full mb-2">
+                  <option v-for="opt in pgPreset.options" :key="opt" :value="opt">{{ opt }}</option>
+                </select>
+              </div>
+
+              <!-- Hyperparameters (filtered by preset, grouped) -->
+              <div v-if="visiblePgHPs.length">
                 <div class="flex items-center justify-between mb-2">
-                  <label class="label mb-0">Hyperparameters</label>
+                  <label class="label mb-0">Hyperparameters <span class="text-surface-600 text-[10px]">({{ visiblePgHPs.length }})</span></label>
                   <button @click="resetHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
                 </div>
-                <div v-for="(hp, idx) in pgHyperParams" :key="idx" class="mb-2">
-                  <div class="flex gap-2 items-center">
-                    <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
-                    <select v-if="hp.type === 'str' && hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
-                      <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
-                    </select>
-                    <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
-                    <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
-                      :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
-                    <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+                <template v-for="group in pgHpGroups" :key="group.name">
+                  <div v-if="group.hps.length" class="mb-3">
+                    <div class="text-[10px] font-semibold text-surface-500 uppercase tracking-wider mb-1.5 mt-2 border-b border-surface-800 pb-1">{{ group.name }}</div>
+                    <div v-for="hp in group.hps" :key="hp.name" class="mb-2">
+                      <div class="flex gap-2 items-center">
+                        <span class="text-xs text-surface-400 w-28 truncate" :title="hp.description || hp.name">{{ hp.name }}</span>
+                        <select v-if="hp.type === 'str' && hp.options" v-model="hp.value" class="select text-xs py-1.5 flex-1">
+                          <option v-for="opt in hp.options" :key="opt" :value="opt">{{ opt }}</option>
+                        </select>
+                        <input v-else-if="hp.type === 'str'" v-model="hp.value" class="input text-xs py-1.5 flex-1" />
+                        <input v-else v-model.number="hp.value" type="number" :step="hp.type === 'int' ? 1 : 'any'"
+                          :min="hp.min" :max="hp.max" class="input text-xs py-1.5 flex-1" />
+                        <span v-if="hp.min !== undefined" class="text-[10px] text-surface-600 whitespace-nowrap">{{ hp.min }}-{{ hp.max }}</span>
+                      </div>
+                      <div v-if="hp.description" class="text-[10px] text-surface-600 ml-[7.5rem] mt-0.5">{{ hp.description }}</div>
+                    </div>
                   </div>
-                  <div v-if="hp.description" class="text-[10px] text-surface-600 ml-[7.5rem] mt-0.5">{{ hp.description }}</div>
-                </div>
+                </template>
               </div>
               <div v-else>
                 <div class="flex items-center justify-between mb-1">
@@ -362,6 +375,9 @@
 
             <!-- Summary -->
             <div v-if="pgActiveTab === 'summary'">
+              <div class="mb-1">
+                <p class="text-[10px] text-surface-600 italic">No cost model — spread, swap, and fees are disabled. Results reflect pure execution logic only.</p>
+              </div>
               <div class="mb-4">
                 <h3 class="text-xs font-semibold text-surface-500 mb-2">Performance</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -651,6 +667,45 @@ const pgLogFilter = ref('all')
 const pgHyperParams = ref([])        // Auto-loaded from strategy code
 const pgHyperParamsDefaults = ref([]) // Store defaults for reset
 const pgCustomHPs = ref([])           // Manual hyperparams if strategy has none
+const pgPreset = ref(null)
+const pgPresetData = ref({})
+
+const visiblePgHPs = computed(() =>
+  pgHyperParams.value.filter(hp => hp.name !== 'preset' && isPgHpVisible(hp))
+)
+
+const pgHpGroups = computed(() => {
+  const groups = []
+  const seen = new Set()
+  for (const hp of visiblePgHPs.value) {
+    const g = hp.group || 'Other'
+    if (!seen.has(g)) { seen.add(g); groups.push({ name: g, hps: [] }) }
+    groups.find(x => x.name === g).hps.push(hp)
+  }
+  return groups
+})
+
+function isPgHpVisible(hp) {
+  if (!hp.depends_on) return true
+  for (const [key, allowedValues] of Object.entries(hp.depends_on)) {
+    const parent = pgHyperParams.value.find(p => p.name === key)
+    if (parent && !allowedValues.includes(parent.value)) return false
+  }
+  return true
+}
+
+function onPgPresetChange() {
+  const presetName = pgPreset.value?.value
+  if (!presetName || presetName === 'custom') return
+  const presetValues = pgPresetData.value[presetName]
+  if (!presetValues) return
+  for (const hp of pgHyperParams.value) {
+    if (hp.name === 'preset') continue
+    if (presetValues[hp.name] !== undefined) {
+      hp.value = presetValues[hp.name]
+    }
+  }
+}
 
 const tradeChartRef = ref(null)
 const pgChartCandles = ref([])
@@ -679,28 +734,6 @@ const pgTimeframes = [
 
 // ── Strategy metadata for descriptions & labels ──
 const strategyMeta = {
-  Surefire: {
-    description: 'Recovery/martingale hedging strategy for CFD trading using broker-side orders (OANDA).',
-    longDescription: 'Opens an initial ticket in a configurable direction with TP and hedge trigger. When price moves against, opens opposite-direction ticket with larger size. Continues adding hedged tickets until TP hit or max_levels reached. Uses broker orders for sub-second execution.',
-    labels: [
-      { text: 'CFD', class: 'bg-blue-500/20 text-blue-400' },
-      { text: 'Hedging', class: 'bg-amber-500/20 text-amber-400' },
-      { text: 'Live Ready', class: 'bg-green-500/20 text-green-400' },
-    ],
-    iconClass: 'bg-amber-900/50 text-amber-400',
-    params: ['direction', 'initial_size', 'sizing_operator', 'sizing_factor', 'tp_distance', 'hedge_distance', 'max_levels'],
-  },
-  SurefireV2: {
-    description: 'Enhanced hedging with indicator-based entries, bucket PnL exits, and circuit breakers.',
-    longDescription: 'Indicator-driven entry signals (EMA, RSI, MACD, Supertrend, or combinations) with ATR-based hedge distances. Session closes when floating PnL reaches bucket_threshold. Circuit breakers for daily loss limits and consecutive bust protection. Supports London/NY/overlap session filtering.',
-    labels: [
-      { text: 'CFD', class: 'bg-blue-500/20 text-blue-400' },
-      { text: 'Hedging', class: 'bg-amber-500/20 text-amber-400' },
-      { text: 'Multi-Indicator', class: 'bg-purple-500/20 text-purple-400' },
-    ],
-    iconClass: 'bg-purple-900/50 text-purple-400',
-    params: ['initial_size', 'sizing_operator', 'sizing_factor', 'max_levels', 'bucket_pct', 'signal_mode', 'atr_period', 'hedge_atr_mult', 'session_filter', 'cooldown_bars', 'max_daily_loss_pct', 'max_consec_busts', 'ema_fast', 'ema_slow', 'rsi_period', 'rsi_ob', 'rsi_os'],
-  },
   ForexMA: {
     description: 'Simple SMA crossover strategy with session filtering and pip-based risk management.',
     longDescription: 'Educational example demonstrating forex-specific features. Enters long when fast SMA > slow SMA during London/NY/overlap sessions. Uses lot_size_for_risk() for pip-based position sizing and pips_to_price() for stop/TP calculation. Cancels entries before weekend close.',
@@ -935,18 +968,34 @@ async function loadStrategyHyperparams(name) {
       min: hp.min,
       max: hp.max,
       description: hp.description || '',
+      group: hp.group || undefined,
       options: hp.options || undefined,
+      depends_on: hp.depends_on || undefined,
+      presets: hp.presets || undefined,
     }))
     pgHyperParams.value = hps
     pgHyperParamsDefaults.value = JSON.parse(JSON.stringify(hps))
+
+    // Extract preset selector
+    const presetHp = hps.find(h => h.name === 'preset')
+    if (presetHp) {
+      pgPreset.value = presetHp
+      pgPresetData.value = presetHp.presets || {}
+    } else {
+      pgPreset.value = null
+      pgPresetData.value = {}
+    }
   } catch {
     pgHyperParams.value = []
     pgHyperParamsDefaults.value = []
+    pgPreset.value = null
   }
 }
 
 function resetHyperParams() {
   pgHyperParams.value = JSON.parse(JSON.stringify(pgHyperParamsDefaults.value))
+  const presetHp = pgHyperParams.value.find(h => h.name === 'preset')
+  if (presetHp) pgPreset.value = presetHp
 }
 
 function closeStrategyWorkspace() {
@@ -1112,7 +1161,7 @@ function _buildSessionsFromTrades(tradesList) {
     s.trades.push(t); s.total_pnl += (t.pnl || t.PNL || 0); s.total_fee += (t.fee || 0)
     s.levels = Math.max(s.levels, t.meta?.level || 0); s.closed_at = t.closed_at; s.outcome = t.meta?.exit_reason || s.outcome
   }
-  return Object.keys(map).sort((a, b) => a - b).map(k => { const s = map[k]; s.trade_count = s.trades.length; s.total_pnl = parseFloat(s.total_pnl.toFixed(6)); s.total_fee = parseFloat(s.total_fee.toFixed(6)); return s })
+  return Object.keys(map).sort((a, b) => a - b).map(k => { const s = map[k]; s.trades.sort((a, b) => (a.meta?.leg_index ?? 999) - (b.meta?.leg_index ?? 999)); s.trade_count = s.trades.length; s.total_pnl = parseFloat(s.total_pnl.toFixed(6)); s.total_fee = parseFloat(s.total_fee.toFixed(6)); return s })
 }
 
 function _togglePgSession(sn) { pgExpandedSessions.value[sn] = !pgExpandedSessions.value[sn] }

@@ -27,6 +27,7 @@ from datetime import timedelta
 from qengine.services.progressbar import Progressbar
 from qengine.constants import TIMEFRAME_TO_ONE_MINUTES
 from qengine.services import candle_service, order_service, position_service, exchange_service
+from qengine.services import ticket_service
 from qengine.core.market_hours import MarketHours
 
 _market_hours = MarketHours()
@@ -1062,6 +1063,69 @@ def _apply_gap_execution_prices(orders: list, candle: np.ndarray) -> list:
     return orders
 
 
+def _check_ticket_tp_sl_triggers(real_candle: np.ndarray, exchange: str, symbol: str) -> None:
+    """Check all open CFD tickets for TP/SL hits and close them.
+
+    Called once per candle AFTER order execution, so that new hedges set TP/SL
+    for the *next* candle (not the current one).
+    """
+    p = store.positions.get_position(exchange, symbol)
+    if not p or not p.is_cfd_mode or not p._tickets:
+        return
+
+    mode = config['app'].get('ticket_tp_sl_mode', 'ohlc_walk')
+    open_price = real_candle[1]
+    close_price = real_candle[2]
+    high = real_candle[3]
+    low = real_candle[4]
+
+    for ticket in list(p._tickets):
+        if ticket.tp_price is None and ticket.sl_price is None:
+            continue
+
+        result = ticket_service.check_ticket_triggers(
+            ticket, high, low, open_price, close_price, mode=mode
+        )
+        if result is None:
+            continue
+
+        fill_price = result['price']
+        reason = result['reason']
+
+        # Close the ticket
+        close_result = p.close_ticket(ticket.id, fill_price)
+        if close_result is None:
+            continue
+
+        pnl = close_result['pnl']
+        if p.exchange:
+            p.exchange.add_realized_pnl(pnl)
+
+        from qengine.services import closed_trade_service
+        closed_trade_service.record_ticket_close(
+            p, close_result['ticket'], fill_price, pnl,
+            meta={'exit_reason': f'{reason}_hit'}
+        )
+
+        # Fire strategy callback
+        strategy = None
+        for r in router.routes:
+            if r.exchange == exchange and r.symbol == symbol:
+                strategy = r.strategy
+                break
+
+        if strategy is not None:
+            if reason == 'tp':
+                strategy.on_ticket_tp_hit(ticket, fill_price)
+            else:
+                strategy.on_ticket_sl_hit(ticket, fill_price)
+
+            # Callback may have closed remaining tickets (e.g., martingale cycle end).
+            # No point checking already-closed tickets from the snapshot.
+            if not p._tickets:
+                break
+
+
 def _simulate_price_change_effect(real_candle: np.ndarray, exchange: str, symbol: str) -> None:
     current_temp_candle = real_candle.copy()
     executed_order = False
@@ -1122,6 +1186,7 @@ def _simulate_price_change_effect(real_candle: np.ndarray, exchange: str, symbol
                 p.current_price = real_candle[2]
             break
 
+    _check_ticket_tp_sl_triggers(real_candle, exchange, symbol)
     _check_for_liquidations(real_candle, exchange, symbol)
     _check_for_margin_call(exchange, symbol)
 

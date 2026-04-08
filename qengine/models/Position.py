@@ -7,7 +7,7 @@ class CFDTicket:
     """An independent sub-position (ticket) within a CFD position.
     Like MT4/MT5 tickets — each has its own entry, qty, direction, and PnL."""
 
-    __slots__ = ('id', 'type', 'qty', 'entry_price', 'opened_at', 'exchange_trade_id')
+    __slots__ = ('id', 'type', 'qty', 'entry_price', 'opened_at', 'exchange_trade_id', 'tp_price', 'sl_price')
 
     def __init__(self, ticket_type: str, qty: float, entry_price: float, opened_at: int):
         self.id = jh.generate_unique_id()
@@ -16,6 +16,8 @@ class CFDTicket:
         self.entry_price = entry_price
         self.opened_at = opened_at
         self.exchange_trade_id = None  # OANDA trade ID for per-trade TP/SL management
+        self.tp_price = None
+        self.sl_price = None
 
     def pnl(self, price: float) -> float:
         diff = price - self.entry_price
@@ -31,6 +33,8 @@ class CFDTicket:
             'entry_price': self.entry_price,
             'opened_at': self.opened_at,
             'exchange_trade_id': self.exchange_trade_id,
+            'tp_price': self.tp_price,
+            'sl_price': self.sl_price,
         }
 
 

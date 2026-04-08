@@ -1,0 +1,1107 @@
+{
+  "0": {
+    "id": "47e71f3b",
+    "genes": {
+      "gate_confidence_min": 0.7626171824592394,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 3.241186682127323,
+      "hedge_distance_atr_mult": 0.5778581979105494,
+      "abort_aggressiveness": 0.5125845963796104,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.2044420524978589,
+      "confidence_sensitivity": 0.982601403874162,
+      "recovery_aggression": 0.8358676161544055
+    },
+    "fitness": 80221565944.82585
+  },
+  "1": {
+    "id": "7a3a96c6",
+    "genes": {
+      "gate_confidence_min": 0.7626171824592394,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 3.241186682127323,
+      "hedge_distance_atr_mult": 0.5778581979105494,
+      "abort_aggressiveness": 0.5125845963796104,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.2044420524978589,
+      "confidence_sensitivity": 0.982601403874162,
+      "recovery_aggression": 0.8358676161544055
+    },
+    "fitness": 80221565944.82585
+  },
+  "2": {
+    "id": "39df0579",
+    "genes": {
+      "gate_confidence_min": 0.7588453309252782,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 3.3783578085822485,
+      "hedge_distance_atr_mult": 0.38598708296283685,
+      "abort_aggressiveness": 0.4502928342823611,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.20009690684973255,
+      "confidence_sensitivity": 1.0846360839808313,
+      "recovery_aggression": 0.8545738085733406
+    },
+    "fitness": 30969557033.76293
+  },
+  "3": {
+    "id": "c27cb881",
+    "genes": {
+      "gate_confidence_min": 0.48470393390790817,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.8923442983064402,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.7206505283223957,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.22618613668323842,
+      "confidence_sensitivity": 1.0158333847744818,
+      "recovery_aggression": 0.6967542628643371
+    },
+    "fitness": 147667304886.66647
+  },
+  "4": {
+    "id": "4d6cbe1e",
+    "genes": {
+      "gate_confidence_min": 0.48470393390790817,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.8923442983064402,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.7206505283223957,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.22618613668323842,
+      "confidence_sensitivity": 1.0158333847744818,
+      "recovery_aggression": 0.6967542628643371
+    },
+    "fitness": 147667304886.66647
+  },
+  "5": {
+    "id": "bed80a44",
+    "genes": {
+      "gate_confidence_min": 0.6457754821607236,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.980830698242299,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.1900609925669117,
+      "hedge_distance_atr_mult": 0.7438432115128426,
+      "abort_aggressiveness": 0.27419922278059283,
+      "base_size_pct": 3.683130522739428,
+      "hysteresis_margin": 0.26196279735791206,
+      "confidence_sensitivity": 1.1746992999659487,
+      "recovery_aggression": 0.7994466382263442
+    },
+    "fitness": 43995075703.11095
+  },
+  "6": {
+    "id": "3982f712",
+    "genes": {
+      "gate_confidence_min": 0.2666113538899136,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 4.085956860667556,
+      "hedge_distance_atr_mult": 0.5436739026489472,
+      "abort_aggressiveness": 0.061454239394775095,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.22958778669516602,
+      "confidence_sensitivity": 1.5191243250755169,
+      "recovery_aggression": 0.5198628614239571
+    },
+    "fitness": 89862624281.324
+  },
+  "7": {
+    "id": "10eed1ef",
+    "genes": {
+      "gate_confidence_min": 0.2666113538899136,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 4.085956860667556,
+      "hedge_distance_atr_mult": 0.5436739026489472,
+      "abort_aggressiveness": 0.061454239394775095,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.22958778669516602,
+      "confidence_sensitivity": 1.5191243250755169,
+      "recovery_aggression": 0.5198628614239571
+    },
+    "fitness": 89862624281.324
+  },
+  "8": {
+    "id": "c3923874",
+    "genes": {
+      "gate_confidence_min": 0.0,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.103295670327516,
+      "hedge_distance_atr_mult": 0.4568628423233555,
+      "abort_aggressiveness": 0.6862433774303741,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.1394656847951125,
+      "confidence_sensitivity": 1.2809111912517985,
+      "recovery_aggression": 0.9775000081167071
+    },
+    "fitness": 158868841902.69815
+  },
+  "9": {
+    "id": "0e17ce04",
+    "genes": {
+      "gate_confidence_min": 0.0,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.7147907440810546,
+      "hedge_distance_atr_mult": 0.4697646304645541,
+      "abort_aggressiveness": 0.05996300303948822,
+      "base_size_pct": 9.136548568311822,
+      "hysteresis_margin": 0.19327490873901218,
+      "confidence_sensitivity": 0.7930706767162661,
+      "recovery_aggression": 0.30693066390545853
+    },
+    "fitness": 118546039426.26062
+  },
+  "10": {
+    "id": "a05a366f",
+    "genes": {
+      "gate_confidence_min": 0.15729247050809617,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.119972990876023,
+      "hedge_distance_atr_mult": 0.7461759184930303,
+      "abort_aggressiveness": 0.7198706020265375,
+      "base_size_pct": 8.409282581604288,
+      "hysteresis_margin": 0.18647379370506253,
+      "confidence_sensitivity": 1.4057817019801424,
+      "recovery_aggression": 1.0
+    },
+    "fitness": 125977123369.58089
+  },
+  "11": {
+    "id": "3293974b",
+    "genes": {
+      "gate_confidence_min": 0.15729247050809617,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.119972990876023,
+      "hedge_distance_atr_mult": 0.7461759184930303,
+      "abort_aggressiveness": 0.7198706020265375,
+      "base_size_pct": 8.409282581604288,
+      "hysteresis_margin": 0.18647379370506253,
+      "confidence_sensitivity": 1.4057817019801424,
+      "recovery_aggression": 1.0
+    },
+    "fitness": 125977123369.58089
+  },
+  "12": {
+    "id": "6f79067a",
+    "genes": {
+      "gate_confidence_min": 0.45026162102900497,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.9790985603615034,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.8297864514504079,
+      "hedge_distance_atr_mult": 0.4640866225852426,
+      "abort_aggressiveness": 1.0,
+      "base_size_pct": 8.055603073436895,
+      "hysteresis_margin": 0.11495268229503042,
+      "confidence_sensitivity": 0.9000000681934914,
+      "recovery_aggression": 0.7406735011551152
+    },
+    "fitness": 77951661751.81691
+  },
+  "13": {
+    "id": "1dbd1724",
+    "genes": {
+      "gate_confidence_min": 0.7521217162381674,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.7344358739465109,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.8702440891589239,
+      "base_size_pct": 9.843437886158682,
+      "hysteresis_margin": 0.2903558971305245,
+      "confidence_sensitivity": 0.9451622809732472,
+      "recovery_aggression": 1.0
+    },
+    "fitness": 35750537122.69693
+  },
+  "14": {
+    "id": "fe0bd98b",
+    "genes": {
+      "gate_confidence_min": 0.0,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.103295670327516,
+      "hedge_distance_atr_mult": 0.4568628423233555,
+      "abort_aggressiveness": 0.6862433774303741,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.1394656847951125,
+      "confidence_sensitivity": 1.2809111912517985,
+      "recovery_aggression": 0.9775000081167071
+    },
+    "fitness": 158868841902.69815
+  },
+  "16": {
+    "id": "7e520a0d",
+    "genes": {
+      "gate_confidence_min": 0.535678509383762,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.3331903605947515,
+      "hedge_distance_atr_mult": 0.3614030022065674,
+      "abort_aggressiveness": 0.4605152721385397,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.15609886352890967,
+      "confidence_sensitivity": 1.8361217107770893,
+      "recovery_aggression": 0.933412583706538
+    },
+    "fitness": 470429753202.0934
+  },
+  "17": {
+    "id": "c7c23d0c",
+    "genes": {
+      "gate_confidence_min": 0.20356196525702377,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.8164458241026378,
+      "hedge_distance_atr_mult": 0.5029246634945513,
+      "abort_aggressiveness": 0.2831539111388302,
+      "base_size_pct": 8.890436070329928,
+      "hysteresis_margin": 0.2025018973451973,
+      "confidence_sensitivity": 0.6075960784041327,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 90835056105.96915
+  },
+  "18": {
+    "id": "3a6db15a",
+    "genes": {
+      "gate_confidence_min": 0.20356196525702377,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.8164458241026378,
+      "hedge_distance_atr_mult": 0.5029246634945513,
+      "abort_aggressiveness": 0.2831539111388302,
+      "base_size_pct": 8.890436070329928,
+      "hysteresis_margin": 0.2025018973451973,
+      "confidence_sensitivity": 0.6075960784041327,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 90835056105.96915
+  },
+  "19": {
+    "id": "5fca0571",
+    "genes": {
+      "gate_confidence_min": 0.7398251582904934,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 3.3750412311709086,
+      "hedge_distance_atr_mult": 0.4448667893548912,
+      "abort_aggressiveness": 0.7613016771163263,
+      "base_size_pct": 9.007126999123415,
+      "hysteresis_margin": 0.24151756509655253,
+      "confidence_sensitivity": 1.6661369870578508,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 109242568517.7463
+  },
+  "20": {
+    "id": "00a467ac",
+    "genes": {
+      "gate_confidence_min": 0.5449955718570542,
+      "sizing_curve": "linear",
+      "sizing_factor": 2.9025799811201423,
+      "max_levels": 9,
+      "tp_distance_atr_mult": 0.8995589371270252,
+      "hedge_distance_atr_mult": 1.0459024728760624,
+      "abort_aggressiveness": 0.30490028766052263,
+      "base_size_pct": 6.566968196831724,
+      "hysteresis_margin": 0.198501847419993,
+      "confidence_sensitivity": 0.654425721646433,
+      "recovery_aggression": 0.7989845977842123
+    },
+    "fitness": 3.17718700498002e+16
+  },
+  "21": {
+    "id": "7128cbf7",
+    "genes": {
+      "gate_confidence_min": 0.5449955718570542,
+      "sizing_curve": "linear",
+      "sizing_factor": 2.9025799811201423,
+      "max_levels": 9,
+      "tp_distance_atr_mult": 0.8995589371270252,
+      "hedge_distance_atr_mult": 1.0459024728760624,
+      "abort_aggressiveness": 0.30490028766052263,
+      "base_size_pct": 6.566968196831724,
+      "hysteresis_margin": 0.198501847419993,
+      "confidence_sensitivity": 0.654425721646433,
+      "recovery_aggression": 0.7989845977842123
+    },
+    "fitness": 3.17718700498002e+16
+  },
+  "22": {
+    "id": "a2d04e21",
+    "genes": {
+      "gate_confidence_min": 0.535678509383762,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.3331903605947515,
+      "hedge_distance_atr_mult": 0.3614030022065674,
+      "abort_aggressiveness": 0.4605152721385397,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.15609886352890967,
+      "confidence_sensitivity": 1.8361217107770893,
+      "recovery_aggression": 0.933412583706538
+    },
+    "fitness": 470429753202.0934
+  },
+  "23": {
+    "id": "46f6a647",
+    "genes": {
+      "gate_confidence_min": 0.22096659344958405,
+      "sizing_curve": "sqrt",
+      "sizing_factor": 1.9821138348281067,
+      "max_levels": 8,
+      "tp_distance_atr_mult": 0.5,
+      "hedge_distance_atr_mult": 1.1393814206376063,
+      "abort_aggressiveness": 0.7354694246598821,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.28318030225920077,
+      "confidence_sensitivity": 2.0,
+      "recovery_aggression": 0.5481963356729838
+    },
+    "fitness": 1.3251521528382572e+16
+  },
+  "24": {
+    "id": "a414dccc",
+    "genes": {
+      "gate_confidence_min": 0.011435917954338718,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.9399861245018215,
+      "hedge_distance_atr_mult": 0.495766488009626,
+      "abort_aggressiveness": 0.7878883351511744,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.10950193606666943,
+      "confidence_sensitivity": 1.3260660766986614,
+      "recovery_aggression": 0.8970651214170156
+    },
+    "fitness": 32612925022.190865
+  },
+  "25": {
+    "id": "efee1b35",
+    "genes": {
+      "gate_confidence_min": 0.9034226018388092,
+      "sizing_curve": "linear",
+      "sizing_factor": 4.325112995592058,
+      "max_levels": 10,
+      "tp_distance_atr_mult": 0.5668870542834801,
+      "hedge_distance_atr_mult": 0.7945567923230541,
+      "abort_aggressiveness": 0.9531131781567842,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.11840290542852396,
+      "confidence_sensitivity": 1.4877093406906647,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 1.1783985425572654e+16
+  },
+  "26": {
+    "id": "2a920251",
+    "genes": {
+      "gate_confidence_min": 0.9034226018388092,
+      "sizing_curve": "linear",
+      "sizing_factor": 4.325112995592058,
+      "max_levels": 10,
+      "tp_distance_atr_mult": 0.5668870542834801,
+      "hedge_distance_atr_mult": 0.7945567923230541,
+      "abort_aggressiveness": 0.9531131781567842,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.11840290542852396,
+      "confidence_sensitivity": 1.4877093406906647,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 1.1783985425572654e+16
+  },
+  "27": {
+    "id": "2b5d688e",
+    "genes": {
+      "gate_confidence_min": 0.40492237778616685,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.9281246983523301,
+      "hedge_distance_atr_mult": 0.4059452605402206,
+      "abort_aggressiveness": 0.15957261476200016,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.08521869084968225,
+      "confidence_sensitivity": 1.584517141705866,
+      "recovery_aggression": 0.4000017620876018
+    },
+    "fitness": 200366689918.66287
+  },
+  "28": {
+    "id": "631213f1",
+    "genes": {
+      "gate_confidence_min": 0.05539313279560454,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.5677608447965063,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.3567616174071481,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.061893112742079655,
+      "confidence_sensitivity": 1.5722706466653034,
+      "recovery_aggression": 0.7887259586500606
+    },
+    "fitness": 95986497632.34177
+  },
+  "29": {
+    "id": "79a0416c",
+    "genes": {
+      "gate_confidence_min": 0.959884920612074,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 4.799541042657384,
+      "hedge_distance_atr_mult": 0.6579289354851421,
+      "abort_aggressiveness": 0.009441823622728385,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.2187670198314096,
+      "confidence_sensitivity": 1.8140787168642485,
+      "recovery_aggression": 1.0
+    },
+    "fitness": 40265075982.96271
+  },
+  "30": {
+    "id": "9b6f5bdf",
+    "genes": {
+      "gate_confidence_min": 0.22096659344958405,
+      "sizing_curve": "sqrt",
+      "sizing_factor": 1.9821138348281067,
+      "max_levels": 8,
+      "tp_distance_atr_mult": 0.5,
+      "hedge_distance_atr_mult": 1.1393814206376063,
+      "abort_aggressiveness": 0.7354694246598821,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.28318030225920077,
+      "confidence_sensitivity": 2.0,
+      "recovery_aggression": 0.5481963356729838
+    },
+    "fitness": 1.3251521528382572e+16
+  },
+  "31": {
+    "id": "55300abe",
+    "genes": {
+      "gate_confidence_min": 0.7014052501457582,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.629653874980683,
+      "hedge_distance_atr_mult": 0.6603600346881354,
+      "abort_aggressiveness": 0.9107321627062432,
+      "base_size_pct": 7.773300343901617,
+      "hysteresis_margin": 0.1724131319607959,
+      "confidence_sensitivity": 0.7287456156674309,
+      "recovery_aggression": 0.9242984661406338
+    },
+    "fitness": 164685835284.36038
+  },
+  "32": {
+    "id": "3fa70e2f",
+    "genes": {
+      "gate_confidence_min": 0.4977510876964345,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.4787404280161183,
+      "hedge_distance_atr_mult": 0.37769047713008763,
+      "abort_aggressiveness": 0.0833805013411162,
+      "base_size_pct": 9.04814289475715,
+      "hysteresis_margin": 0.13208369119838967,
+      "confidence_sensitivity": 1.017100231541488,
+      "recovery_aggression": 0.3172571911882154
+    },
+    "fitness": 167194597653.49475
+  },
+  "33": {
+    "id": "b7a2a457",
+    "genes": {
+      "gate_confidence_min": 0.5689369843188453,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.7284582515196107,
+      "hedge_distance_atr_mult": 0.5999479425027561,
+      "abort_aggressiveness": 0.17966843025920343,
+      "base_size_pct": 6.478162432160206,
+      "hysteresis_margin": 0.13586408595319202,
+      "confidence_sensitivity": 0.734237198865481,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 207213565819.40335
+  },
+  "34": {
+    "id": "77cd8591",
+    "genes": {
+      "gate_confidence_min": 0.5689369843188453,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.7284582515196107,
+      "hedge_distance_atr_mult": 0.5999479425027561,
+      "abort_aggressiveness": 0.17966843025920343,
+      "base_size_pct": 6.478162432160206,
+      "hysteresis_margin": 0.13586408595319202,
+      "confidence_sensitivity": 0.734237198865481,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 207213565819.40335
+  },
+  "35": {
+    "id": "9d5bcf45",
+    "genes": {
+      "gate_confidence_min": 1.0,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.0877408698101156,
+      "hedge_distance_atr_mult": 0.32606854006499647,
+      "abort_aggressiveness": 0.2748287500472619,
+      "base_size_pct": 9.657147318743277,
+      "hysteresis_margin": 0.2442318438197583,
+      "confidence_sensitivity": 0.6707214478098292,
+      "recovery_aggression": 0.8532472295125306
+    },
+    "fitness": 56065351384.26927
+  },
+  "36": {
+    "id": "70b0bb4d",
+    "genes": {
+      "gate_confidence_min": 0.8018441816185141,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.3181131095886738,
+      "hedge_distance_atr_mult": 0.3258859250816816,
+      "abort_aggressiveness": 0.544808097328964,
+      "base_size_pct": 9.190483666087188,
+      "hysteresis_margin": 0.09426036393656306,
+      "confidence_sensitivity": 1.3032343881472865,
+      "recovery_aggression": 0.8400281001355263
+    },
+    "fitness": 52668773601.28589
+  },
+  "37": {
+    "id": "5ad53d8f",
+    "genes": {
+      "gate_confidence_min": 0.7014052501457582,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.629653874980683,
+      "hedge_distance_atr_mult": 0.6603600346881354,
+      "abort_aggressiveness": 0.9107321627062432,
+      "base_size_pct": 7.773300343901617,
+      "hysteresis_margin": 0.1724131319607959,
+      "confidence_sensitivity": 0.7287456156674309,
+      "recovery_aggression": 0.9242984661406338
+    },
+    "fitness": 164685835284.36038
+  },
+  "38": {
+    "id": "16e8c217",
+    "genes": {
+      "gate_confidence_min": 0.9343696713356993,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.2048820274224044,
+      "hedge_distance_atr_mult": 0.6187199548237396,
+      "abort_aggressiveness": 0.34119114083402563,
+      "base_size_pct": 8.016603833793116,
+      "hysteresis_margin": 0.09675785046956467,
+      "confidence_sensitivity": 1.3480293886991221,
+      "recovery_aggression": 0.3108128962017314
+    },
+    "fitness": 59301093412.2442
+  },
+  "43": {
+    "id": "40c3dfbf",
+    "genes": {
+      "gate_confidence_min": 0.9343696713356993,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.2048820274224044,
+      "hedge_distance_atr_mult": 0.6187199548237396,
+      "abort_aggressiveness": 0.34119114083402563,
+      "base_size_pct": 8.016603833793116,
+      "hysteresis_margin": 0.09675785046956467,
+      "confidence_sensitivity": 1.3480293886991221,
+      "recovery_aggression": 0.3108128962017314
+    },
+    "fitness": 59301093412.2442
+  },
+  "46": {
+    "id": "7f26c7c9",
+    "genes": {
+      "gate_confidence_min": 0.7441094150382528,
+      "sizing_curve": "fibonacci",
+      "sizing_factor": 2.4478980705464295,
+      "max_levels": 7,
+      "tp_distance_atr_mult": 0.5,
+      "hedge_distance_atr_mult": 0.7712325644545042,
+      "abort_aggressiveness": 0.6159002253472264,
+      "base_size_pct": 9.234873446528336,
+      "hysteresis_margin": 0.06736297824749549,
+      "confidence_sensitivity": 1.2012082012169794,
+      "recovery_aggression": 0.5200176372313046
+    },
+    "fitness": 7133026897374501.0
+  },
+  "47": {
+    "id": "f560642e",
+    "genes": {
+      "gate_confidence_min": 0.7441094150382528,
+      "sizing_curve": "fibonacci",
+      "sizing_factor": 2.4478980705464295,
+      "max_levels": 7,
+      "tp_distance_atr_mult": 0.5,
+      "hedge_distance_atr_mult": 0.7712325644545042,
+      "abort_aggressiveness": 0.6159002253472264,
+      "base_size_pct": 9.234873446528336,
+      "hysteresis_margin": 0.06736297824749549,
+      "confidence_sensitivity": 1.2012082012169794,
+      "recovery_aggression": 0.5200176372313046
+    },
+    "fitness": 7133026897374501.0
+  },
+  "48": {
+    "id": "6acd0cdb",
+    "genes": {
+      "gate_confidence_min": 0.6797442515778388,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.7233250007066838,
+      "hedge_distance_atr_mult": 0.5962273672254341,
+      "abort_aggressiveness": 1.0,
+      "base_size_pct": 9.570789525566386,
+      "hysteresis_margin": 0.2856049953507689,
+      "confidence_sensitivity": 1.5566888689494616,
+      "recovery_aggression": 0.555632692576299
+    },
+    "fitness": 172422442858.8158
+  },
+  "49": {
+    "id": "a57f6d38",
+    "genes": {
+      "gate_confidence_min": 0.8436715957010777,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.6923824838364658,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.3024995991999931,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.26319385548431307,
+      "confidence_sensitivity": 0.8133218617623927,
+      "recovery_aggression": 0.9624381835544298
+    },
+    "fitness": 224060019185.31012
+  },
+  "50": {
+    "id": "43b12bc5",
+    "genes": {
+      "gate_confidence_min": 0.8436715957010777,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.6923824838364658,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.3024995991999931,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.26319385548431307,
+      "confidence_sensitivity": 0.8133218617623927,
+      "recovery_aggression": 0.9624381835544298
+    },
+    "fitness": 224060019185.31012
+  },
+  "51": {
+    "id": "70a825b3",
+    "genes": {
+      "gate_confidence_min": 0.6347757734483461,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.987458856300198,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.04214586706693,
+      "hedge_distance_atr_mult": 0.35053341826977197,
+      "abort_aggressiveness": 0.24940777350427865,
+      "base_size_pct": 7.935118856160817,
+      "hysteresis_margin": 0.2799576523324551,
+      "confidence_sensitivity": 0.9282021922492252,
+      "recovery_aggression": 0.8545331460372994
+    },
+    "fitness": 83920025526.70216
+  },
+  "52": {
+    "id": "5d010263",
+    "genes": {
+      "gate_confidence_min": 0.6347757734483461,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.987458856300198,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.04214586706693,
+      "hedge_distance_atr_mult": 0.35053341826977197,
+      "abort_aggressiveness": 0.24940777350427865,
+      "base_size_pct": 7.935118856160817,
+      "hysteresis_margin": 0.2799576523324551,
+      "confidence_sensitivity": 0.9282021922492252,
+      "recovery_aggression": 0.8545331460372994
+    },
+    "fitness": 83920025526.70216
+  },
+  "53": {
+    "id": "7b2d55d0",
+    "genes": {
+      "gate_confidence_min": 0.6775542286946581,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.2360880605593834,
+      "hedge_distance_atr_mult": 0.4741278466940337,
+      "abort_aggressiveness": 0.6677463062478401,
+      "base_size_pct": 10.0,
+      "hysteresis_margin": 0.13976119941922985,
+      "confidence_sensitivity": 1.5989240946662748,
+      "recovery_aggression": 0.8745446164702789
+    },
+    "fitness": 55088671882.31649
+  },
+  "54": {
+    "id": "4b3e82bb",
+    "genes": {
+      "gate_confidence_min": 0.5482368556513365,
+      "sizing_curve": "linear",
+      "sizing_factor": 1.314002596424219,
+      "max_levels": 7,
+      "tp_distance_atr_mult": 0.6867980817931294,
+      "hedge_distance_atr_mult": 0.961439075269888,
+      "abort_aggressiveness": 0.7556419016492668,
+      "base_size_pct": 8.338467702327348,
+      "hysteresis_margin": 0.25590628765611423,
+      "confidence_sensitivity": 0.9035696396717368,
+      "recovery_aggression": 0.8933412913291433
+    },
+    "fitness": 1.0280036205432392e+16
+  },
+  "59": {
+    "id": "c4a4b259",
+    "genes": {
+      "gate_confidence_min": 0.5482368556513365,
+      "sizing_curve": "linear",
+      "sizing_factor": 1.314002596424219,
+      "max_levels": 7,
+      "tp_distance_atr_mult": 0.6867980817931294,
+      "hedge_distance_atr_mult": 0.961439075269888,
+      "abort_aggressiveness": 0.7556419016492668,
+      "base_size_pct": 8.338467702327348,
+      "hysteresis_margin": 0.25590628765611423,
+      "confidence_sensitivity": 0.9035696396717368,
+      "recovery_aggression": 0.8933412913291433
+    },
+    "fitness": 1.0280036205432392e+16
+  },
+  "61": {
+    "id": "0e8724ea",
+    "genes": {
+      "gate_confidence_min": 0.6585856126039065,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.964006090654006,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.773747702932895,
+      "hedge_distance_atr_mult": 0.3297726068237212,
+      "abort_aggressiveness": 0.9781696155586147,
+      "base_size_pct": 7.212587793592143,
+      "hysteresis_margin": 0.2867171189582762,
+      "confidence_sensitivity": 1.2552375567407477,
+      "recovery_aggression": 0.39665526350635916
+    },
+    "fitness": 111297826917.13269
+  },
+  "62": {
+    "id": "7d4540c6",
+    "genes": {
+      "gate_confidence_min": 0.6585856126039065,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.964006090654006,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.773747702932895,
+      "hedge_distance_atr_mult": 0.3297726068237212,
+      "abort_aggressiveness": 0.9781696155586147,
+      "base_size_pct": 7.212587793592143,
+      "hysteresis_margin": 0.2867171189582762,
+      "confidence_sensitivity": 1.2552375567407477,
+      "recovery_aggression": 0.39665526350635916
+    },
+    "fitness": 111297826917.13269
+  },
+  "63": {
+    "id": "25dd4198",
+    "genes": {
+      "gate_confidence_min": 0.5298985315690159,
+      "sizing_curve": "linear",
+      "sizing_factor": 5.0,
+      "max_levels": 5,
+      "tp_distance_atr_mult": 0.531297406545046,
+      "hedge_distance_atr_mult": 2.0572339936314843,
+      "abort_aggressiveness": 0.04253666285186555,
+      "base_size_pct": 9.173840620796089,
+      "hysteresis_margin": 0.09662335810822345,
+      "confidence_sensitivity": 0.5,
+      "recovery_aggression": 0.6768014839848615
+    },
+    "fitness": 7023138215726422.0
+  },
+  "64": {
+    "id": "8e3279d5",
+    "genes": {
+      "gate_confidence_min": 0.5298985315690159,
+      "sizing_curve": "linear",
+      "sizing_factor": 5.0,
+      "max_levels": 5,
+      "tp_distance_atr_mult": 0.531297406545046,
+      "hedge_distance_atr_mult": 2.0572339936314843,
+      "abort_aggressiveness": 0.04253666285186555,
+      "base_size_pct": 9.173840620796089,
+      "hysteresis_margin": 0.09662335810822345,
+      "confidence_sensitivity": 0.5,
+      "recovery_aggression": 0.6768014839848615
+    },
+    "fitness": 7023138215726422.0
+  },
+  "65": {
+    "id": "166161bc",
+    "genes": {
+      "gate_confidence_min": 1.0,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.952051778816747,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.0317838217266064,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.7512211870679553,
+      "base_size_pct": 8.693657165515285,
+      "hysteresis_margin": 0.06711564321547689,
+      "confidence_sensitivity": 0.7192540448382526,
+      "recovery_aggression": 0.3620240242821092
+    },
+    "fitness": 42830142349.91993
+  },
+  "66": {
+    "id": "e64efcc5",
+    "genes": {
+      "gate_confidence_min": 0.19382842171693285,
+      "sizing_curve": "geometric",
+      "sizing_factor": 1.5370578190074131,
+      "max_levels": 11,
+      "tp_distance_atr_mult": 0.7001127564902878,
+      "hedge_distance_atr_mult": 0.5721451031897434,
+      "abort_aggressiveness": 0.2677053801236046,
+      "base_size_pct": 9.707565675629615,
+      "hysteresis_margin": 0.2056846260996806,
+      "confidence_sensitivity": 0.9837875131542395,
+      "recovery_aggression": 0.9568947865549826
+    },
+    "fitness": 8901836264062909.0
+  },
+  "67": {
+    "id": "42fc1099",
+    "genes": {
+      "gate_confidence_min": 0.19382842171693285,
+      "sizing_curve": "geometric",
+      "sizing_factor": 1.5370578190074131,
+      "max_levels": 11,
+      "tp_distance_atr_mult": 0.7001127564902878,
+      "hedge_distance_atr_mult": 0.5721451031897434,
+      "abort_aggressiveness": 0.2677053801236046,
+      "base_size_pct": 9.707565675629615,
+      "hysteresis_margin": 0.2056846260996806,
+      "confidence_sensitivity": 0.9837875131542395,
+      "recovery_aggression": 0.9568947865549826
+    },
+    "fitness": 8901836264062909.0
+  },
+  "68": {
+    "id": "e16c328c",
+    "genes": {
+      "gate_confidence_min": 0.14325844685330008,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 2.3107965648004147,
+      "hedge_distance_atr_mult": 0.3764872365600179,
+      "abort_aggressiveness": 0.28057528388747116,
+      "base_size_pct": 7.893844646762339,
+      "hysteresis_margin": 0.1824028830131241,
+      "confidence_sensitivity": 0.8588883084344212,
+      "recovery_aggression": 0.839236506022013
+    },
+    "fitness": 96285291877.68727
+  },
+  "69": {
+    "id": "d08d09b5",
+    "genes": {
+      "gate_confidence_min": 0.23261043907111692,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 0.6620831777296724,
+      "hedge_distance_atr_mult": 0.302901556462149,
+      "abort_aggressiveness": 0.7840504248869813,
+      "base_size_pct": 6.200676874594904,
+      "hysteresis_margin": 0.26980405904669297,
+      "confidence_sensitivity": 1.7044141731390148,
+      "recovery_aggression": 0.340556759342617
+    },
+    "fitness": 29607918915.825714
+  },
+  "70": {
+    "id": "1af9816b",
+    "genes": {
+      "gate_confidence_min": 0.36992680531939215,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 0.8495466261041558,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.6860286206310914,
+      "base_size_pct": 7.264966112724052,
+      "hysteresis_margin": 0.07123452610390572,
+      "confidence_sensitivity": 1.69810401027343,
+      "recovery_aggression": 0.4313245176795028
+    },
+    "fitness": 37595451149.24248
+  },
+  "71": {
+    "id": "247f2634",
+    "genes": {
+      "gate_confidence_min": 0.36992680531939215,
+      "sizing_curve": "geometric",
+      "sizing_factor": 5.0,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 0.8495466261041558,
+      "hedge_distance_atr_mult": 0.3,
+      "abort_aggressiveness": 0.6860286206310914,
+      "base_size_pct": 7.264966112724052,
+      "hysteresis_margin": 0.07123452610390572,
+      "confidence_sensitivity": 1.69810401027343,
+      "recovery_aggression": 0.4313245176795028
+    },
+    "fitness": 37595451149.24248
+  },
+  "72": {
+    "id": "184c33cb",
+    "genes": {
+      "gate_confidence_min": 0.6864056897652986,
+      "sizing_curve": "linear",
+      "sizing_factor": 4.333125919156644,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 0.5,
+      "hedge_distance_atr_mult": 0.750485126657482,
+      "abort_aggressiveness": 0.8553806415768366,
+      "base_size_pct": 8.715548635176315,
+      "hysteresis_margin": 0.2501756364728103,
+      "confidence_sensitivity": 1.3190919496303988,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 9612244425345818.0
+  },
+  "73": {
+    "id": "49361d6d",
+    "genes": {
+      "gate_confidence_min": 0.6864056897652986,
+      "sizing_curve": "linear",
+      "sizing_factor": 4.333125919156644,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 0.5,
+      "hedge_distance_atr_mult": 0.750485126657482,
+      "abort_aggressiveness": 0.8553806415768366,
+      "base_size_pct": 8.715548635176315,
+      "hysteresis_margin": 0.2501756364728103,
+      "confidence_sensitivity": 1.3190919496303988,
+      "recovery_aggression": 0.3
+    },
+    "fitness": 9612244425345818.0
+  },
+  "74": {
+    "id": "b2c67718",
+    "genes": {
+      "gate_confidence_min": 0.7403807661759452,
+      "sizing_curve": "linear",
+      "sizing_factor": 4.618676795609312,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 0.5,
+      "hedge_distance_atr_mult": 0.3410580089023896,
+      "abort_aggressiveness": 0.7133603278594018,
+      "base_size_pct": 8.715548635176315,
+      "hysteresis_margin": 0.24891600165242916,
+      "confidence_sensitivity": 1.3190919496303988,
+      "recovery_aggression": 0.8482519594333884
+    },
+    "fitness": 2304192553020156.5
+  },
+  "75": {
+    "id": "50a08a54",
+    "genes": {
+      "gate_confidence_min": 0.08821471213386306,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.822494469875437,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.4618525903740345,
+      "hedge_distance_atr_mult": 0.32048819977954107,
+      "abort_aggressiveness": 0.6359892939057789,
+      "base_size_pct": 5.577737804612743,
+      "hysteresis_margin": 0.24342519830053191,
+      "confidence_sensitivity": 0.672697255786019,
+      "recovery_aggression": 0.8503415801393227
+    },
+    "fitness": 72314632764.52588
+  },
+  "76": {
+    "id": "36182a23",
+    "genes": {
+      "gate_confidence_min": 0.08821471213386306,
+      "sizing_curve": "geometric",
+      "sizing_factor": 4.822494469875437,
+      "max_levels": 12,
+      "tp_distance_atr_mult": 1.4618525903740345,
+      "hedge_distance_atr_mult": 0.32048819977954107,
+      "abort_aggressiveness": 0.6359892939057789,
+      "base_size_pct": 5.577737804612743,
+      "hysteresis_margin": 0.24342519830053191,
+      "confidence_sensitivity": 0.672697255786019,
+      "recovery_aggression": 0.8503415801393227
+    },
+    "fitness": 72314632764.52588
+  }
+}
