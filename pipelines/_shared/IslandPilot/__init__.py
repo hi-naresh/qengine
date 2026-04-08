@@ -154,9 +154,16 @@ class IslandPilot(Pipeline):
 
             if genome_dict is not None:
                 self._active_genome = genome_dict.get('genes', genome_dict)
-                # Pipeline does NOT override strategy.hp — strategy params belong
-                # to the user/optimizer. The genome only controls pipeline-level
-                # behavior (gating, sizing, aborting) via the pipeline hooks.
+                # Apply genome to strategy HP only between cycles (not mid-cycle).
+                # Changing HP mid-cycle breaks hedge direction and sizing chains.
+                position_open = False
+                if hasattr(strategy, 'position') and hasattr(strategy.position, 'is_open'):
+                    position_open = strategy.position.is_open
+                elif hasattr(strategy, 'vars') and strategy.vars.get('cycle_active'):
+                    position_open = True
+
+                if not position_open:
+                    self._apply_genome(strategy, self._active_genome)
             else:
                 self._active_genome = None
         else:
@@ -505,14 +512,63 @@ class IslandPilot(Pipeline):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    # NOTE: _apply_genome() was removed intentionally.
-    # The pipeline does NOT override strategy.hp. Strategy parameters belong
-    # to the user or optimizer. The genome only controls pipeline-level behavior:
-    # - gate_confidence_min → gate_entry() threshold
-    # - abort_aggressiveness → suggest_exit() threshold
-    # - base_size_pct, confidence_sensitivity, recovery_aggression → adjust_size()
-    # - hysteresis_margin → regime switch stickiness
-    # This makes IslandPilot work with ANY strategy without knowing its HP keys.
+    def _apply_genome(self, strategy, genome: dict) -> None:
+        """Apply evolved genome to strategy HP — discovered dynamically at runtime.
+
+        Instead of hardcoding strategy key names, the pipeline reads the strategy's
+        own hyperparameters() declaration to discover which params exist, their
+        valid ranges, and groups. Only 'General' and 'Grid / Hedge' group params
+        are overridden (entry signals, filters, risk management are left to user).
+
+        This works with ANY strategy that declares hyperparameters().
+        """
+        if not hasattr(strategy, 'hp') or not hasattr(strategy, 'hyperparameters'):
+            return
+
+        # Build lookup from strategy's declared HP
+        if not hasattr(self, '_hp_spec'):
+            try:
+                hp_list = strategy.hyperparameters()
+                self._hp_spec = {h['name']: h for h in hp_list if isinstance(h, dict) and 'name' in h}
+            except Exception:
+                self._hp_spec = {}
+
+        if not self._hp_spec:
+            return
+
+        # Groups the pipeline is allowed to tune (structural + sizing)
+        # Entry signals, filters, risk mgmt are left to the user
+        _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
+
+        hp = strategy.hp
+        for hp_name, spec in self._hp_spec.items():
+            group = spec.get('group', '')
+            if group not in _TUNABLE_GROUPS:
+                continue
+
+            if hp_name not in genome:
+                continue
+
+            val = genome[hp_name]
+
+            # Enforce declared bounds and convert types
+            hp_type = spec.get('type')
+            if hp_type == 'categorical':
+                options = spec.get('options', [])
+                # Genome may store int index (from GA) or string value
+                if isinstance(val, (int, float)):
+                    idx = int(round(val))
+                    idx = max(0, min(idx, len(options) - 1))
+                    hp[hp_name] = options[idx]
+                elif val in options:
+                    hp[hp_name] = val
+            elif hp_type in (int, float) or hp_type in ('int', 'float'):
+                lo = spec.get('min', float('-inf'))
+                hi = spec.get('max', float('inf'))
+                val = max(lo, min(hi, float(val)))
+                if hp_type in (int, 'int'):
+                    val = int(round(val))
+                hp[hp_name] = val
 
     def _compute_danger(self, strategy) -> float:
         """Simple volatility-based danger proxy in [0, 1]."""

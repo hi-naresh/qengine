@@ -19,8 +19,9 @@ import numpy as np
 # Gene definitions
 # ---------------------------------------------------------------------------
 
-# Pipeline-level genes only. Strategy HP (sizing, hedge, TP) are NOT included —
-# those belong to the user/optimizer, not the pipeline.
+# Pipeline-level genes (always present in every genome).
+# Strategy-specific genes are added dynamically from strategy.hyperparameters()
+# by the IslandPilot pipeline during training — see _build_gene_bounds().
 GENE_BOUNDS: Dict[str, Tuple[float, float, type]] = {
     "gate_confidence_min":    (0.0, 1.0, float),   # min regime confidence to allow entry
     "abort_aggressiveness":   (0.0, 1.0, float),   # danger threshold for mid-cycle abort
@@ -29,6 +30,48 @@ GENE_BOUNDS: Dict[str, Tuple[float, float, type]] = {
     "confidence_sensitivity": (0.5, 2.0, float),    # how aggressively confidence scales size
     "recovery_aggression":    (0.3, 1.0, float),    # how aggressively drawdown reduces size
 }
+
+
+def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, type]]:
+    """Extend GENE_BOUNDS with tunable strategy HP discovered at runtime.
+
+    Reads strategy.hyperparameters() and adds numeric params from
+    'General', 'Grid / Hedge', and 'Take Profit' groups.
+    Categorical params are encoded as int indices.
+    """
+    bounds = dict(GENE_BOUNDS)
+
+    if not hasattr(strategy, 'hyperparameters'):
+        return bounds
+
+    try:
+        hp_list = strategy.hyperparameters()
+    except Exception:
+        return bounds
+
+    _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
+
+    for spec in hp_list:
+        if not isinstance(spec, dict) or 'name' not in spec:
+            continue
+        group = spec.get('group', '')
+        if group not in _TUNABLE_GROUPS:
+            continue
+
+        name = spec['name']
+        if name in bounds:
+            continue  # don't override pipeline genes
+
+        hp_type = spec.get('type')
+        if hp_type in (int, 'int') and 'min' in spec and 'max' in spec:
+            bounds[name] = (spec['min'], spec['max'], int)
+        elif hp_type in (float, 'float') and 'min' in spec and 'max' in spec:
+            bounds[name] = (spec['min'], spec['max'], float)
+        elif hp_type == 'categorical' and 'options' in spec:
+            # Encode as int index into options list
+            bounds[name] = (0, len(spec['options']) - 1, int)
+
+    return bounds
 
 # Legacy — kept for backward compat with old genomes that have these keys
 SIZING_CURVE_MAP = {0: "geometric", 1: "sqrt", 2: "linear", 3: "fibonacci"}
