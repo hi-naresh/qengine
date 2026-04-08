@@ -154,16 +154,9 @@ class IslandPilot(Pipeline):
 
             if genome_dict is not None:
                 self._active_genome = genome_dict.get('genes', genome_dict)
-                # ONLY apply genome when no position is open (between cycles).
-                # Changing hp mid-cycle breaks hedge sizing/direction logic.
-                position_open = False
-                if hasattr(strategy, 'position') and hasattr(strategy.position, 'is_open'):
-                    position_open = strategy.position.is_open
-                elif hasattr(strategy, 'vars') and strategy.vars.get('cycle_active'):
-                    position_open = True
-
-                if not position_open:
-                    self._apply_genome(strategy, self._active_genome)
+                # Pipeline does NOT override strategy.hp — strategy params belong
+                # to the user/optimizer. The genome only controls pipeline-level
+                # behavior (gating, sizing, aborting) via the pipeline hooks.
             else:
                 self._active_genome = None
         else:
@@ -512,65 +505,14 @@ class IslandPilot(Pipeline):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _apply_genome(self, strategy, genome: dict) -> None:
-        """Override strategy.hp dict with genome parameters.
-
-        Maps genome keys to the correct hp keys for each strategy variant:
-        - Surefire v1: sizing_operator, sizing_factor, max_levels, hedge_distance, tp_distance
-        - SurefireV2: sizing_operator, sizing_factor, max_levels, hedge_atr_mult
-        - Martingale: sizing_curve, sizing_factor, max_levels, hedge_atr_mult
-
-        Applies sanity bounds to prevent GA's extreme evolved values from
-        blowing up real backtests with margin constraints.
-        """
-        if not hasattr(strategy, 'hp'):
-            return
-
-        hp = strategy.hp
-
-        # max_levels — universal, capped at 8 for safety
-        if 'max_levels' in genome:
-            hp['max_levels'] = min(int(genome['max_levels']), 8)
-
-        # sizing_factor — universal, capped at 2.5 for real margin
-        if 'sizing_factor' in genome:
-            hp['sizing_factor'] = min(genome['sizing_factor'], 2.5)
-
-        # sizing_curve → detect which key the strategy uses
-        sizing_curve = genome.get('sizing_curve')
-        if sizing_curve is not None:
-            curve_str = SIZING_CURVE_MAP.get(sizing_curve, sizing_curve) if isinstance(sizing_curve, int) else sizing_curve
-            # Surefire v1/v2 use 'sizing_operator', Martingale uses 'sizing_curve'
-            if 'sizing_operator' in hp:
-                hp['sizing_operator'] = curve_str
-            else:
-                hp['sizing_curve'] = curve_str
-
-        # hedge_distance_atr_mult → strategy-specific key
-        hedge_mult = genome.get('hedge_distance_atr_mult')
-        if hedge_mult is not None:
-            # Clamp to reasonable range
-            hedge_mult = max(0.5, min(hedge_mult, 3.0))
-            if 'hedge_atr_mult' in hp:
-                # SurefireV2, Martingale: ATR multiplier
-                hp['hedge_atr_mult'] = hedge_mult
-            elif 'hedge_distance' in hp:
-                # Surefire v1: fixed pips — convert ATR mult to approx pips
-                # Typical EUR-USD 5m ATR ~5-10 pips, so mult * 10 ≈ pips
-                # Floor at 8 pips to prevent near-instant hedging
-                hp['hedge_distance'] = max(8.0, round(hedge_mult * 10, 1))
-
-        # tp_distance_atr_mult → strategy-specific key
-        tp_mult = genome.get('tp_distance_atr_mult')
-        if tp_mult is not None:
-            tp_mult = max(1.0, min(tp_mult, 5.0))
-            if 'tp_distance' in hp:
-                # Surefire v1: fixed pips, floor at 10 pips
-                hp['tp_distance'] = max(10.0, round(tp_mult * 10, 1))
-            # SurefireV2 uses bucket_pct (not TP distance), so don't override
-            # Martingale may use tp_atr_mult
-            if 'tp_atr_mult' in hp:
-                hp['tp_atr_mult'] = tp_mult
+    # NOTE: _apply_genome() was removed intentionally.
+    # The pipeline does NOT override strategy.hp. Strategy parameters belong
+    # to the user or optimizer. The genome only controls pipeline-level behavior:
+    # - gate_confidence_min → gate_entry() threshold
+    # - abort_aggressiveness → suggest_exit() threshold
+    # - base_size_pct, confidence_sensitivity, recovery_aggression → adjust_size()
+    # - hysteresis_margin → regime switch stickiness
+    # This makes IslandPilot work with ANY strategy without knowing its HP keys.
 
     def _compute_danger(self, strategy) -> float:
         """Simple volatility-based danger proxy in [0, 1]."""

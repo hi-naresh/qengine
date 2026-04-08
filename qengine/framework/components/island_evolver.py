@@ -19,20 +19,18 @@ import numpy as np
 # Gene definitions
 # ---------------------------------------------------------------------------
 
+# Pipeline-level genes only. Strategy HP (sizing, hedge, TP) are NOT included —
+# those belong to the user/optimizer, not the pipeline.
 GENE_BOUNDS: Dict[str, Tuple[float, float, type]] = {
-    "gate_confidence_min":    (0.0, 1.0, float),
-    "sizing_curve":           (0, 3, int),
-    "sizing_factor":          (1.1, 5.0, float),
-    "max_levels":             (1, 12, int),
-    "tp_distance_atr_mult":   (0.5, 5.0, float),
-    "hedge_distance_atr_mult":(0.3, 3.0, float),
-    "abort_aggressiveness":   (0.0, 1.0, float),
-    "base_size_pct":          (0.1, 10.0, float),
-    "hysteresis_margin":      (0.05, 0.30, float),
-    "confidence_sensitivity": (0.5, 2.0, float),
-    "recovery_aggression":    (0.3, 1.0, float),
+    "gate_confidence_min":    (0.0, 1.0, float),   # min regime confidence to allow entry
+    "abort_aggressiveness":   (0.0, 1.0, float),   # danger threshold for mid-cycle abort
+    "base_size_pct":          (0.5, 5.0, float),    # base position scale as % of equity
+    "hysteresis_margin":      (0.05, 0.30, float),  # margin needed to switch regime
+    "confidence_sensitivity": (0.5, 2.0, float),    # how aggressively confidence scales size
+    "recovery_aggression":    (0.3, 1.0, float),    # how aggressively drawdown reduces size
 }
 
+# Legacy — kept for backward compat with old genomes that have these keys
 SIZING_CURVE_MAP = {0: "geometric", 1: "sqrt", 2: "linear", 3: "fibonacci"}
 SIZING_CURVE_REVERSE = {v: k for k, v in SIZING_CURVE_MAP.items()}
 
@@ -96,19 +94,28 @@ class Genome:
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict:
-        """Serialise genome.  sizing_curve int -> string name."""
+        """Serialise genome."""
         d = dict(self.genes)
-        d["sizing_curve"] = SIZING_CURVE_MAP.get(d["sizing_curve"], d["sizing_curve"])
+        # Convert legacy sizing_curve int -> string if present
+        if "sizing_curve" in d and isinstance(d["sizing_curve"], int):
+            d["sizing_curve"] = SIZING_CURVE_MAP.get(d["sizing_curve"], d["sizing_curve"])
         return {"id": self.id, "genes": d, "fitness": self.fitness}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Genome":
-        """Deserialise genome.  sizing_curve string -> int."""
-        genes = dict(d["genes"])
-        sc = genes.get("sizing_curve")
-        if isinstance(sc, str):
-            genes["sizing_curve"] = SIZING_CURVE_REVERSE[sc]
-        g = cls(genes)
+        """Deserialise genome. Handles both old (11-gene) and new (6-gene) formats."""
+        raw = d.get("genes", d)
+        if isinstance(raw, dict):
+            genes = dict(raw)
+        else:
+            genes = {}
+        # Only keep genes that are in GENE_BOUNDS (ignore legacy strategy params)
+        filtered = {k: v for k, v in genes.items() if k in GENE_BOUNDS}
+        # Fill missing genes with midpoint defaults
+        for name, (lo, hi, dtype) in GENE_BOUNDS.items():
+            if name not in filtered:
+                filtered[name] = (lo + hi) / 2 if dtype == float else (lo + hi) // 2
+        g = cls(filtered)
         g.id = d.get("id", uuid.uuid4().hex[:8])
         g.fitness = d.get("fitness")
         return g
