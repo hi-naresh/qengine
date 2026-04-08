@@ -165,6 +165,27 @@ export const api = {
   getExistingCandles: (data) => request('POST', '/candles/existing', data),
   deleteCandles: (exchange, symbol) => request('POST', '/candles/delete', { exchange, symbol }),
   deleteAllCandles: () => request('POST', '/candles/delete-all'),
+  downloadCandles: async (data) => {
+    const res = await fetch('/candles/download', {
+      method: 'POST',
+      headers: { 'Authorization': getToken(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Download failed' }))
+      throw new Error(err.error || 'Download failed')
+    }
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') || ''
+    const match = disposition.match(/filename="?(.+?)"?$/)
+    const filename = match ? match[1] : 'candles.csv'
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  },
 
   // Live Trading
   startLive: (data) => request('POST', '/live', data),

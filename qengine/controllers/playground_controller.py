@@ -272,6 +272,7 @@ def _run_playground_simulation(
     config['app']['trading_mode'] = 'backtest'
     config['app']['debug_mode'] = False
     config['app']['skip_market_hours'] = True  # Playground uses synthetic data, skip market hours
+    config['app']['cost_model'] = False  # Playground: no spread/swap/costs — pure execution testing
     register_custom_exception_handler()
 
     # Build user config — detect exchange type from broker_info

@@ -1,0 +1,67 @@
+{
+  "hysteresis_sweep": [
+    {
+      "hysteresis": 0.0,
+      "n_transitions": 15659,
+      "unique_regimes": 73,
+      "avg_confidence": 0.6147,
+      "transitions_per_1k": 208.67
+    },
+    {
+      "hysteresis": 0.1,
+      "n_transitions": 12915,
+      "unique_regimes": 73,
+      "avg_confidence": 0.612,
+      "transitions_per_1k": 172.1
+    },
+    {
+      "hysteresis": 0.15,
+      "n_transitions": 12010,
+      "unique_regimes": 73,
+      "avg_confidence": 0.609,
+      "transitions_per_1k": 160.04
+    },
+    {
+      "hysteresis": 0.2,
+      "n_transitions": 11253,
+      "unique_regimes": 73,
+      "avg_confidence": 0.6048,
+      "transitions_per_1k": 149.96
+    }
+  ],
+  "calibration": [
+    {
+      "bin": "0.0-0.2",
+      "count": 37,
+      "avg_confidence": 0.19,
+      "regime_stability": 0.0833
+    },
+    {
+      "bin": "0.2-0.4",
+      "count": 10142,
+      "avg_confidence": 0.3382,
+      "regime_stability": 0.4405
+    },
+    {
+      "bin": "0.4-0.6",
+      "count": 27122,
+      "avg_confidence": 0.5014,
+      "regime_stability": 0.6385
+    },
+    {
+      "bin": "0.6-0.8",
+      "count": 22952,
+      "avg_confidence": 0.6913,
+      "regime_stability": 0.7455
+    },
+    {
+      "bin": "0.8-1.0",
+      "count": 14789,
+      "avg_confidence": 0.8943,
+      "regime_stability": 0.8395
+    }
+  ],
+  "n_valid_bars": 75042,
+  "n_leaves": 73,
+  "n_macro": 10
+}

@@ -378,7 +378,7 @@ class IslandPilot(Pipeline):
             'summary': 'Multi-island evolutionary pipeline that discovers market regimes, '
                        'evolves per-regime execution configs via genetic algorithm, and applies '
                        'them at runtime with adaptive position sizing.',
-            'designed_for': ['Martingale strategies', 'SurefireHedge variants', 'UniversalMartingale'],
+            'designed_for': ['Martingale strategies', 'SurefireHedge variants', 'Martingale'],
             'research_basis': 'Phase4 research: hierarchical GMM regime discovery + island-model GA',
             'requires_training': True,
             'training_status': 'trained' if is_trained else 'untrained',
@@ -518,7 +518,7 @@ class IslandPilot(Pipeline):
         Maps genome keys to the correct hp keys for each strategy variant:
         - Surefire v1: sizing_operator, sizing_factor, max_levels, hedge_distance, tp_distance
         - SurefireV2: sizing_operator, sizing_factor, max_levels, hedge_atr_mult
-        - UniversalMartingale: sizing_curve, sizing_factor, max_levels, hedge_atr_mult
+        - Martingale: sizing_curve, sizing_factor, max_levels, hedge_atr_mult
 
         Applies sanity bounds to prevent GA's extreme evolved values from
         blowing up real backtests with margin constraints.
@@ -540,7 +540,7 @@ class IslandPilot(Pipeline):
         sizing_curve = genome.get('sizing_curve')
         if sizing_curve is not None:
             curve_str = SIZING_CURVE_MAP.get(sizing_curve, sizing_curve) if isinstance(sizing_curve, int) else sizing_curve
-            # Surefire v1/v2 use 'sizing_operator', UniversalMartingale uses 'sizing_curve'
+            # Surefire v1/v2 use 'sizing_operator', Martingale uses 'sizing_curve'
             if 'sizing_operator' in hp:
                 hp['sizing_operator'] = curve_str
             else:
@@ -552,7 +552,7 @@ class IslandPilot(Pipeline):
             # Clamp to reasonable range
             hedge_mult = max(0.5, min(hedge_mult, 3.0))
             if 'hedge_atr_mult' in hp:
-                # SurefireV2, UniversalMartingale: ATR multiplier
+                # SurefireV2, Martingale: ATR multiplier
                 hp['hedge_atr_mult'] = hedge_mult
             elif 'hedge_distance' in hp:
                 # Surefire v1: fixed pips — convert ATR mult to approx pips
@@ -568,7 +568,7 @@ class IslandPilot(Pipeline):
                 # Surefire v1: fixed pips, floor at 10 pips
                 hp['tp_distance'] = max(10.0, round(tp_mult * 10, 1))
             # SurefireV2 uses bucket_pct (not TP distance), so don't override
-            # UniversalMartingale may use tp_atr_mult
+            # Martingale may use tp_atr_mult
             if 'tp_atr_mult' in hp:
                 hp['tp_atr_mult'] = tp_mult
 

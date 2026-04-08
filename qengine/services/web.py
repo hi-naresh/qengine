@@ -312,6 +312,14 @@ class DeleteCandlesRequestJson(BaseModel):
     symbol: str
 
 
+class DownloadCandlesRequestJson(BaseModel):
+    exchange: str
+    symbol: str
+    timeframe: str
+    start_date: str
+    end_date: str
+
+
 class UpdateOptimizationSessionStateRequestJson(BaseModel):
     id: str
     state: dict

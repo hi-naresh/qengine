@@ -1087,6 +1087,7 @@ function buildSessionsFromTrades(tradesList) {
   }
   const result = Object.keys(map).sort((a, b) => a - b).map(k => {
     const s = map[k]
+    s.trades.sort((a, b) => (a.meta?.leg_index ?? 999) - (b.meta?.leg_index ?? 999))
     s.trade_count = s.trades.length
     s.total_pnl = parseFloat(s.total_pnl.toFixed(6))
     s.total_fee = parseFloat(s.total_fee.toFixed(6))

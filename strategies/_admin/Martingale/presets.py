@@ -1,5 +1,5 @@
 """
-Named presets for UniversalMartingale.
+Named presets for Martingale.
 Each preset is a dict of hyperparameter overrides applied on top of defaults.
 """
 
@@ -10,12 +10,11 @@ PRESETS = {
         'direction_bias': 'long_only',
         'sizing_curve': 'geometric',
         'sizing_factor': 2.0,
-        'max_levels': 9,
+        'max_levels': 7,
         'hedge_mode': 'fixed_pips',
         'hedge_value': 10.0,
         'tp_mode': 'fixed_pips',
         'tp_value': 20.0,
-        'partial_close':'at_breakeven'
     },
 
     'v2': {
@@ -35,33 +34,6 @@ PRESETS = {
         'cooldown_value': 10,
         'max_daily_loss_pct': 2.0,
         'max_consec_busts': 3,
-    },
-
-    'conservative': {
-        'signal_mode': 'ema_rsi',
-        'ema_fast': 8,
-        'ema_slow': 21,
-        'rsi_period': 14,
-        'rsi_ob': 70,
-        'rsi_os': 30,
-        'sizing_curve': 'sqrt',
-        'sizing_factor': 1.5,
-        'max_levels': 8,
-        'hedge_mode': 'atr_based',
-        'hedge_value': 2.0,
-        'hedge_atr_period': 14,
-        'tp_mode': 'bucket_pct',
-        'tp_value': 0.05,
-        'session_filter': 'overlap',
-        'vol_filter': 'atr_range',
-        'trend_filter': 'adx_gate',
-        'trend_filter_threshold': 25.0,
-        'cooldown_mode': 'bars',
-        'cooldown_value': 20,
-        'max_daily_loss_pct': 1.5,
-        'max_consec_busts': 2,
-        'abort_mode': 'level_threshold',
-        'abort_level': 6,
     },
 
     'momentum': {
@@ -106,45 +78,5 @@ PRESETS = {
         'cooldown_mode': 'bars',
         'cooldown_value': 10,
         'max_daily_loss_pct': 2.0,
-    },
-
-    'phase3_optimized': {
-        # Phase 3 research-validated config (walk-forward tested on 2024-2025)
-        # Entry: EMA crossover + DM directional gate + confidence filter
-        'signal_mode': 'ema_cross',
-        'ema_fast': 8,
-        'ema_slow': 21,
-        'entry_on_crossover': 'yes',
-        'direction_bias': 'both',
-        # Sizing: fibonacci at 10 levels, capital-aware base
-        'sizing_curve': 'fibonacci',
-        'sizing_factor': 2.0,
-        'base_size_mode': 'capital_aware',
-        'max_bust_dd_pct': 20,
-        'max_levels': 10,
-        # Grid: 15 pip hedge (proven optimal in script 29)
-        'hedge_mode': 'fixed_pips',
-        'hedge_value': 15.0,
-        # TP: 15 pips (matched to hedge for ~1:1 risk-reward per level)
-        'tp_mode': 'fixed_pips',
-        'tp_value': 15.0,
-        # Filters: DM gate + NATR vol filter + confidence gate
-        'trend_filter': 'dm_gate',
-        'trend_filter_period': 14,
-        'trend_filter_threshold': 0,  # Any directional movement
-        'vol_filter': 'natr_min',
-        'vol_filter_period': 14,
-        'vol_filter_min': 0.02,  # Skip very low vol (bottom 20%)
-        'confidence_gate': 'enabled',
-        'confidence_threshold': 0.4,  # Conservative; 0.5 for aggressive
-        # Session: London + NY (most liquid)
-        'session_filter': 'london_ny',
-        'spread_filter': 'max_spread',
-        'spread_filter_max': 3.0,
-        # Risk: weekly loss cap, no abort (proven destructive)
-        'max_weekly_loss_pct': 10.0,
-        'abort_mode': 'none',
-        'cooldown_mode': 'bars',
-        'cooldown_value': 5,
     },
 }

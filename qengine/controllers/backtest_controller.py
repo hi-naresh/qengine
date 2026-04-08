@@ -362,16 +362,19 @@ def compute_exposure_table(request_json: dict = Body(...), current_user: Current
 
     # Extract hedging params (support multiple naming conventions)
     # This is % of equity as MARGIN (e.g. 1 = 1% of balance used as margin)
-    base_pct = float(hp.get('base_size', hp.get('initial_size', hp.get('lot_size', hp.get('qty', 1.0)))))
-    sizing_operator = str(hp.get('sizing_operator', 'multiplier'))
+    base_pct = float(hp.get('base_size', hp.get('base_size_value', hp.get('initial_size', hp.get('lot_size', hp.get('qty', 1.0))))))
+    sizing_operator = str(hp.get('sizing_operator', hp.get('sizing_curve', 'geometric')))
+    # Normalise legacy 'multiplier' → 'geometric'
+    if sizing_operator == 'multiplier':
+        sizing_operator = 'geometric'
     sizing_factor = float(hp.get('sizing_factor', hp.get('multiplier', hp.get('lot_multiplier', 2.0))))
     max_levels = int(hp.get('max_levels', hp.get('max_orders', 1)))
 
-    # TP and hedge distances in pips (support tp_distance, tp_upper, tp_pips, take_profit_pips)
-    tp_pips = float(hp.get('tp_distance', hp.get('tp_upper', hp.get('tp_pips', hp.get('take_profit_pips', 0)))))
+    # TP and hedge distances in pips (support tp_distance, tp_upper, tp_pips, tp_value, take_profit_pips)
+    tp_pips = float(hp.get('tp_distance', hp.get('tp_upper', hp.get('tp_pips', hp.get('tp_value', hp.get('take_profit_pips', 0))))))
     tp_lower = float(hp.get('tp_lower', tp_pips))
     risk_reward = float(hp.get('risk_reward', 0))
-    hedge_pips = float(hp.get('hedge_distance', hp.get('hedge_pips', hp.get('sl_pips', hp.get('stop_loss_pips', 0)))))
+    hedge_pips = float(hp.get('hedge_distance', hp.get('hedge_pips', hp.get('hedge_value', hp.get('sl_pips', hp.get('stop_loss_pips', 0))))))
 
     if risk_reward > 0 and tp_pips > 0 and hedge_pips <= 0:
         hedge_pips = tp_pips / risk_reward
@@ -387,8 +390,19 @@ def compute_exposure_table(request_json: dict = Body(...), current_user: Current
             return 1 + level
         elif sizing_operator == 'fibonacci':
             return _FIB[level] if level < len(_FIB) else _FIB[-1]
-        else:  # 'multiplier'
+        elif sizing_operator == 'fixed':
+            return 1.0
+        elif sizing_operator == 'anti_martingale':
+            return (1.0 / sizing_factor ** level) if level > 0 else 1.0
+        else:  # 'geometric' (or legacy 'multiplier')
             return sizing_factor ** level
+
+    # If strategy has no hedge/sizing HPs at all, return empty table
+    _hedge_keys = {'max_levels', 'max_orders', 'sizing_operator', 'sizing_curve',
+                   'base_size', 'base_size_value', 'initial_size', 'hedge_distance',
+                   'hedge_pips', 'hedge_value', 'sizing_factor', 'lot_multiplier'}
+    if not (set(hp.keys()) & _hedge_keys):
+        return JSONResponse({'table': [], 'has_tp_sl': False, 'contract_size': 0, 'leverage': 0, 'price': 0})
 
     if max_levels <= 1:
         max_levels = 1

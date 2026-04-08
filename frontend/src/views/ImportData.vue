@@ -133,7 +133,12 @@
                   </div>
                 </td>
                 <td class="py-2 text-right font-mono text-surface-300">{{ d.count ? d.count.toLocaleString() : '-' }}</td>
-                <td class="py-2 text-right">
+                <td class="py-2 text-right space-x-2">
+                  <button
+                    @click="openDownload(d)"
+                    class="text-xs text-brand-400 hover:text-brand-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                    Download
+                  </button>
                   <button
                     @click="confirmDelete(d)"
                     class="text-xs text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -166,6 +171,46 @@
         <p v-if="deleteError" class="text-xs text-red-400 mt-2">{{ deleteError }}</p>
       </div>
     </div>
+    <!-- Download Modal -->
+    <div v-if="downloadItem" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="downloadItem = null">
+      <div class="card w-full max-w-sm mx-4">
+        <h2 class="text-base font-semibold mb-3">Download CSV</h2>
+        <p class="text-sm text-surface-400 mb-4">
+          <span class="text-surface-100 font-medium">{{ downloadItem.exchange }} / {{ downloadItem.symbol }}</span>
+        </p>
+
+        <div class="space-y-3">
+          <div>
+            <label class="label">Timeframe</label>
+            <select v-model="downloadForm.timeframe" class="select">
+              <option v-for="tf in (downloadItem.timeframes || [])" :key="tf" :value="tf">{{ tf }}</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="label">Start Date</label>
+              <input v-model="downloadForm.start_date" type="date" class="input"
+                :min="downloadItem.from || downloadItem.start_date"
+                :max="downloadForm.end_date" />
+            </div>
+            <div>
+              <label class="label">End Date</label>
+              <input v-model="downloadForm.end_date" type="date" class="input"
+                :min="downloadForm.start_date"
+                :max="downloadItem.to || downloadItem.end_date" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mt-4">
+          <button @click="doDownload" class="btn-primary flex-1" :disabled="downloading">
+            {{ downloading ? 'Downloading...' : 'Download' }}
+          </button>
+          <button @click="downloadItem = null" class="btn-secondary flex-1">Cancel</button>
+        </div>
+        <p v-if="downloadError" class="text-xs text-red-400 mt-2">{{ downloadError }}</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -192,6 +237,12 @@ const importInfo = ref(null)
 const deletingItem = ref(null)
 const deleting = ref(false)
 const deleteError = ref('')
+
+// Download state
+const downloadItem = ref(null)
+const downloading = ref(false)
+const downloadError = ref('')
+const downloadForm = ref({ timeframe: '', start_date: '', end_date: '' })
 
 const form = ref({
   exchange: '',
@@ -329,6 +380,35 @@ async function doDelete() {
     deleteError.value = e.message
   } finally {
     deleting.value = false
+  }
+}
+
+function openDownload(item) {
+  downloadItem.value = item
+  downloadError.value = ''
+  downloadForm.value = {
+    timeframe: item.timeframes?.[0] || '1m',
+    start_date: item.from || item.start_date || '',
+    end_date: item.to || item.end_date || '',
+  }
+}
+
+async function doDownload() {
+  downloading.value = true
+  downloadError.value = ''
+  try {
+    await api.downloadCandles({
+      exchange: downloadItem.value.exchange,
+      symbol: downloadItem.value.symbol,
+      timeframe: downloadForm.value.timeframe,
+      start_date: downloadForm.value.start_date,
+      end_date: downloadForm.value.end_date,
+    })
+    downloadItem.value = null
+  } catch (e) {
+    downloadError.value = e.message
+  } finally {
+    downloading.value = false
   }
 }
 

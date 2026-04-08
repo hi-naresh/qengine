@@ -2558,17 +2558,23 @@ async function loadBacktestHyperparams(name) {
       presets: hp.presets || undefined,
     }))
     btHyperParams.value = hps
-    btHyperParamsDefaults.value = JSON.parse(JSON.stringify(hps))
 
     // Extract preset selector (separate from HPs)
     const presetHp = hps.find(h => h.name === 'preset')
     if (presetHp) {
       btPreset.value = presetHp
       btPresetData.value = presetHp.presets || {}
+      // Apply default preset values on initial load (not just on user change)
+      if (presetHp.value && presetHp.value !== 'custom') {
+        onPresetChange()
+      }
     } else {
       btPreset.value = null
       btPresetData.value = {}
     }
+
+    // Snapshot defaults AFTER preset application so "Reset" restores preset values
+    btHyperParamsDefaults.value = JSON.parse(JSON.stringify(hps))
   } catch {
     btHyperParams.value = []
     btHyperParamsDefaults.value = []
@@ -3507,6 +3513,8 @@ function buildSessionsFromTrades(tradesList) {
   }
   const result = Object.keys(map).sort((a, b) => a - b).map(k => {
     const s = map[k]
+    // Sort trades by leg_index so L0, L1, L2... appear in order
+    s.trades.sort((a, b) => (a.meta?.leg_index ?? 999) - (b.meta?.leg_index ?? 999))
     s.trade_count = s.trades.length
     s.total_pnl = parseFloat(s.total_pnl.toFixed(6))
     s.total_fee = parseFloat(s.total_fee.toFixed(6))

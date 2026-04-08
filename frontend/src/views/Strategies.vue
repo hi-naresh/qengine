@@ -375,6 +375,9 @@
 
             <!-- Summary -->
             <div v-if="pgActiveTab === 'summary'">
+              <div class="mb-1">
+                <p class="text-[10px] text-surface-600 italic">No cost model — spread, swap, and fees are disabled. Results reflect pure execution logic only.</p>
+              </div>
               <div class="mb-4">
                 <h3 class="text-xs font-semibold text-surface-500 mb-2">Performance</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -1158,7 +1161,7 @@ function _buildSessionsFromTrades(tradesList) {
     s.trades.push(t); s.total_pnl += (t.pnl || t.PNL || 0); s.total_fee += (t.fee || 0)
     s.levels = Math.max(s.levels, t.meta?.level || 0); s.closed_at = t.closed_at; s.outcome = t.meta?.exit_reason || s.outcome
   }
-  return Object.keys(map).sort((a, b) => a - b).map(k => { const s = map[k]; s.trade_count = s.trades.length; s.total_pnl = parseFloat(s.total_pnl.toFixed(6)); s.total_fee = parseFloat(s.total_fee.toFixed(6)); return s })
+  return Object.keys(map).sort((a, b) => a - b).map(k => { const s = map[k]; s.trades.sort((a, b) => (a.meta?.leg_index ?? 999) - (b.meta?.leg_index ?? 999)); s.trade_count = s.trades.length; s.total_pnl = parseFloat(s.total_pnl.toFixed(6)); s.total_fee = parseFloat(s.total_fee.toFixed(6)); return s })
 }
 
 function _togglePgSession(sn) { pgExpandedSessions.value[sn] = !pgExpandedSessions.value[sn] }

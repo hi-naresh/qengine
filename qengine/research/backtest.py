@@ -119,6 +119,9 @@ def _isolated_backtest(
     store.candles.init_storage(5000)
     # initialize exchanges state
     exchange_service.initialize_exchanges_state()
+    # re-initialize API drivers for the current exchange configuration
+    from qengine.services.api import api
+    api.initiate_drivers()
     # initialize orders state
     order_service.initialize_orders_state()
     # initialize positions state

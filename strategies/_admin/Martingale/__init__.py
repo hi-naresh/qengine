@@ -305,11 +305,8 @@ class Martingale(Strategy):
              'depends_on': {'equity_curve_filter': ['above_ema']}},
 
             # ── Position Management ──
-            {'name': 'partial_close', 'type': 'categorical', 'group': _P,
-             'options': ['none', 'at_breakeven', 'oldest_at_profit'], 'default': 'none'},
-            {'name': 'partial_close_pct', 'type': float, 'group': _P,
-             'min': 10, 'max': 90, 'default': 50,
-             'depends_on': {'partial_close': ['at_breakeven', 'oldest_at_profit']}},
+            # partial_close: not yet implemented with STOP order architecture.
+            # Kept as 'none' only — other options would silently do nothing.
             {'name': 'breakeven_mode', 'type': 'categorical', 'group': _P,
              'options': ['none', 'after_n_levels'], 'default': 'none'},
             {'name': 'breakeven_levels', 'type': int, 'group': _P,
@@ -482,9 +479,18 @@ class Martingale(Strategy):
         self.vars['legs'] = [leg]
 
         # Compute TP and hedge trigger
-        self.vars['tp_price'] = self._compute_tp(entry, direction)
         self.vars['hedge_trigger_price'] = self._compute_hedge_trigger(entry, direction, 0)
         self.vars['trailing_tp'] = None
+
+        # Compute TP price (handles fixed_pips, atr, risk_reward, AND bucket_pct)
+        tp_mode = self.hp.get('tp_mode', 'fixed_pips')
+        if tp_mode == 'bucket_pct':
+            target_pct = self.hp.get('tp_value', 0.1)
+            start_bal = self.vars.get('session_start_balance', self.balance)
+            target_dollars = start_bal * (target_pct / 100.0)
+            self.vars['tp_price'] = self._compute_target_price(target_dollars)
+        else:
+            self.vars['tp_price'] = self._compute_tp(entry, direction)
 
         # Set engine-managed TP on this ticket (1m resolution)
         if self.vars['tp_price'] is not None and leg.get('ticket_id'):
@@ -493,8 +499,9 @@ class Martingale(Strategy):
         # Place STOP order for next hedge level (also 1m resolution)
         self._place_hedge_stop()
 
-    def on_increased_position(self, order):
-        """Hedge STOP order filled — add the new leg, recalculate TP, place next hedge."""
+    def on_ticket_opened(self, order):
+        """Hedge STOP order filled — add the new leg, recalculate TP, place next hedge.
+        In CFD mode, new non-reduce_only orders fire on_ticket_opened (not on_increased_position)."""
         if not self.vars.get('cycle_active'):
             return
 
@@ -552,8 +559,33 @@ class Martingale(Strategy):
         # Check partial close / breakeven
         self._check_position_management()
 
-    def on_close_position(self, order, closed_trade):
-        pass  # Handled by _close_cycle
+    def on_close_position(self, order, closed_trade=None):
+        """Catch engine-forced closes (margin call, liquidation) and tag trades with session info.
+
+        When the engine force-closes all tickets (e.g. margin call), trades are
+        created by _handle_cfd_order without session metadata.  We retroactively
+        tag recent trades that are missing session info.
+        """
+        if not self.vars.get('session_number'):
+            return
+        sn = self.vars['session_number']
+        level = self.vars.get('level', 0)
+        from qengine.store import store
+        # Tag all recent trades from this session that are missing session metadata
+        for t in reversed(store.closed_trades.trades):
+            if not t.meta:
+                t.meta = {}
+            if t.meta.get('session') is not None:
+                break  # reached trades from previous session, stop
+            t.meta['session'] = sn
+            t.meta.setdefault('exit_reason', 'margin_call')
+            t.meta.setdefault('session_exit_reason', 'margin_call')
+            t.meta.setdefault('level', level)
+            t.meta.setdefault('leg_index', level)
+        # End the cycle
+        if self.vars.get('cycle_active'):
+            self._cancel_hedge_stop()
+            self._end_cycle('margin_call')
 
     def _find_leg_for_ticket(self, ticket):
         """Find the leg dict that matches a ticket (by ticket_id or position)."""
@@ -610,9 +642,12 @@ class Martingale(Strategy):
             if self.position.exchange:
                 self.position.exchange.add_realized_pnl(pnl)
             leg = leg_by_ticket.get(ticket.id)
+            # Per-trade exit reason: winning legs show session reason,
+            # losing legs show 'session_close' (they were force-closed, not TP'd)
+            trade_exit = exit_reason if pnl >= 0 else 'session_close'
             meta = {
                 'session': self.vars.get('session_number', 0),
-                'exit_reason': exit_reason,
+                'exit_reason': trade_exit,
                 'session_exit_reason': exit_reason,
                 'level': leg['level'] if leg else self.vars.get('level', 0),
                 'leg_index': leg['level'] if leg else self.vars.get('level', 0),
@@ -621,12 +656,15 @@ class Martingale(Strategy):
                 self.position, close_result['ticket'], fill_price, pnl, meta=meta
             )
         self.trades_count += len(remaining_ticket_ids)
-        # Reset position state
+        # Reset position state so engine's _terminate doesn't double-close
         self.position.entry_price = None
         self.position.exit_price = fill_price
         import qengine.helpers as jh
         self.position.closed_at = jh.now_to_timestamp()
-        self._execute_cancel()
+        # Cancel any remaining active orders (hedge STOPs, etc.)
+        # Use broker.cancel_all_orders directly (not _execute_cancel which
+        # validates position.is_close and resets strategy state)
+        self.broker.cancel_all_orders()
 
     def on_ticket_tp_hit(self, ticket, fill_price):
         """Engine closed last leg's ticket at TP. Cancel hedge STOP, close rest, end cycle."""
@@ -638,13 +676,20 @@ class Martingale(Strategy):
         self._end_cycle('tp_hit')
 
     def on_ticket_sl_hit(self, ticket, fill_price):
-        """Engine closed a ticket at SL. Cancel hedge STOP, close rest, end cycle."""
+        """Engine closed last leg's ticket at SL (bust). Close rest, end cycle.
+        At max level, the SL is the bust trigger — price moved one more hedge
+        distance against the last leg with no more hedges available."""
         if not self.vars.get('cycle_active'):
             return
         self._cancel_hedge_stop()
-        self._tag_last_trade_with_session(ticket, 'sl_hit')
-        self._close_remaining_tickets(fill_price, 'sl_hit')
-        self._end_cycle('sl_hit')
+        # Use 'max_level_bust' when at the last allowed level (SL = bust trigger)
+        # max_levels=6 means levels 0-5 (6 levels). Level 5 is the last → bust.
+        max_levels = self.hp.get('max_levels', 6)
+        at_max = self.vars.get('level', 0) >= max_levels - 1
+        reason = 'max_level_bust' if at_max else 'sl_hit'
+        self._tag_last_trade_with_session(ticket, reason)
+        self._close_remaining_tickets(fill_price, reason)
+        self._end_cycle(reason)
 
     def after(self):
         pass
@@ -653,6 +698,22 @@ class Martingale(Strategy):
         if self.vars.get('cycle_active'):
             self._cancel_hedge_stop()
             self._close_cycle('terminate')
+
+    def close_all_tickets(self, exit_price=None, meta=None):
+        """Override base to inject session metadata when engine terminates.
+
+        The engine's _terminate() calls close_all_tickets(price, meta={'exit_reason':'terminated'})
+        if the position is still open after before_terminate.  We enrich the meta
+        with session info so these trades are grouped correctly, not orphaned as
+        standalone.
+        """
+        if meta is None:
+            meta = {}
+        if self.vars.get('session_number') and 'session' not in meta:
+            meta['session'] = self.vars.get('session_number', 0)
+            meta.setdefault('session_exit_reason', 'terminate')
+            meta.setdefault('level', self.vars.get('level', 0))
+        super().close_all_tickets(exit_price=exit_price, meta=meta)
 
     def terminate(self):
         pass
@@ -1083,6 +1144,10 @@ class Martingale(Strategy):
         """Place a STOP order for the next hedge level via the engine order system.
         This runs at 1m resolution in _simulate_price_change_effect, matching
         ticket TP resolution — so both TP and hedge race fairly.
+
+        At max level: instead of another hedge, set SL on the last ticket at the
+        would-be next hedge trigger price. This is the bust price — if hit, the
+        session closes at a loss (all tickets liquidated).
         """
         trigger = self.vars.get('hedge_trigger_price')
         if trigger is None:
@@ -1090,7 +1155,24 @@ class Martingale(Strategy):
 
         level = self.vars['level'] + 1
         max_levels = self.hp.get('max_levels', 6)
-        if level > max_levels:
+        if level >= max_levels:
+            # At max level — set SL on last leg's ticket at the bust price.
+            # Bust SL = TP distance AGAINST the last leg (mirrors TP but opposite).
+            # E.g., TP is 20 pips in favor, SL is 20 pips against.
+            # This means: for L5 short @ P-10, TP = P-30, SL = P+10.
+            # Shorts lose 20p, longs gain 10p per the standard surefire bust.
+            last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
+            if last_leg and last_leg.get('ticket_id'):
+                tp_dist = self._hedge_distance_pips(self.vars['level'])
+                tp_val = self.hp.get('tp_value', 20.0)
+                bust_dist = self.pips_to_price(tp_val) if hasattr(self, 'pips_to_price') else tp_val * 0.0001
+                if last_leg['dir'] == 'long':
+                    bust_price = last_leg['entry'] - bust_dist
+                else:
+                    bust_price = last_leg['entry'] + bust_dist
+                self.set_ticket_tp_sl(last_leg['ticket_id'],
+                                      tp=self.vars.get('tp_price'),
+                                      sl=bust_price)
             return
 
         last_leg = self.vars['legs'][-1]
@@ -1098,9 +1180,14 @@ class Martingale(Strategy):
         qty = self._calc_size(level)
         side = 'buy' if new_dir == 'long' else 'sell'
 
-        order = self.broker.api.stop_order(
-            self.exchange, self.symbol, abs(qty), trigger, side, reduce_only=False
-        )
+        try:
+            order = self.broker.api.stop_order(
+                self.exchange, self.symbol, abs(qty), trigger, side, reduce_only=False
+            )
+        except Exception:
+            # Insufficient margin or other error — can't place hedge, session
+            # will end via TP or terminate. This is normal at deep levels.
+            return
         if order:
             self.vars['hedge_stop_order_id'] = order.id
             self.vars['pending_hedge_level'] = level
@@ -1185,17 +1272,33 @@ class Martingale(Strategy):
 
     def _recalculate_tp(self):
         """Recalculate TP price after adding a new hedge level.
-        Clears TP on all other tickets, sets TP only on last leg's ticket."""
-        if self.hp.get('tp_mode') in ('bucket_pct', 'trailing'):
-            return
+        Clears TP on all other tickets, sets TP only on last leg's ticket.
 
-        last_leg = self.vars['legs'][-1]
-        self.vars['tp_price'] = self._compute_tp(last_leg['entry'], last_leg['dir'])
+        For bucket_pct mode: computes the exact price at which the target PnL
+        is hit across all open legs, then sets it as ticket TP for 1m precision.
+        """
+        tp_mode = self.hp.get('tp_mode', 'fixed_pips')
 
-        if self.vars['tp_price'] is not None:
+        if tp_mode == 'trailing':
+            return  # Trailing TP is dynamic, can't pre-compute a price
+
+        if tp_mode == 'bucket_pct':
+            # Compute the price where session PnL = target % of equity
+            target_pct = self.hp.get('tp_value', 0.1)
+            start_bal = self.vars.get('session_start_balance', self.balance)
+            target_dollars = start_bal * (target_pct / 100.0)
+            tp_price = self._compute_target_price(target_dollars)
+        else:
+            last_leg = self.vars['legs'][-1]
+            tp_price = self._compute_tp(last_leg['entry'], last_leg['dir'])
+
+        self.vars['tp_price'] = tp_price
+
+        if tp_price is not None:
+            last_leg = self.vars['legs'][-1]
             self.set_all_tickets_tp_sl(tp=None)
             if last_leg.get('ticket_id'):
-                self.set_ticket_tp_sl(last_leg['ticket_id'], tp=self.vars['tp_price'])
+                self.set_ticket_tp_sl(last_leg['ticket_id'], tp=tp_price)
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                        FILTER MODULE                                ║
@@ -1414,12 +1517,13 @@ class Martingale(Strategy):
     # ║                   POSITION MANAGEMENT MODULE                        ║
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
-    def _compute_breakeven_price(self):
-        """Find the price where net PnL of all tickets is zero.
+    def _compute_target_price(self, target_pnl=0.0):
+        """Find the price where net PnL of all tickets equals target_pnl.
 
-        For alternating long/short legs, solve: sum(qty_i * dir_i * (P - entry_i)) = 0
-        where dir_i = +1 for long, -1 for short.
-        Solution: P = sum(qty_i * dir_i * entry_i) / sum(qty_i * dir_i)
+        Solves: sum(qty_i * dir_i * (P - entry_i)) = target_pnl
+        Solution: P = (target_pnl + sum(qty_i * dir_i * entry_i)) / sum(qty_i * dir_i)
+
+        target_pnl=0 gives breakeven price. target_pnl>0 gives profit target price.
         """
         legs = self.vars.get('legs', [])
         if not legs:
@@ -1431,8 +1535,12 @@ class Martingale(Strategy):
             weighted_sum += leg['qty'] * sign * leg['entry']
             net_signed_qty += leg['qty'] * sign
         if abs(net_signed_qty) < 1e-10:
-            return None  # perfectly hedged — no breakeven price exists
-        return weighted_sum / net_signed_qty
+            return None  # perfectly hedged — no target price exists
+        return (target_pnl + weighted_sum) / net_signed_qty
+
+    def _compute_breakeven_price(self):
+        """Find the price where net PnL of all tickets is zero."""
+        return self._compute_target_price(0.0)
 
     def _check_position_management(self):
         """Mid-session adjustments: partial close, breakeven move."""
@@ -1494,7 +1602,7 @@ class Martingale(Strategy):
         """Record session, update bust tracking, set cooldown, reset state.
         Called by _close_cycle (manual exit) and on_ticket_tp_hit/on_ticket_sl_hit (engine exit).
         """
-        is_bust = reason in ('abort', 'terminate', 'max_level_sl', 'sl_hit')
+        is_bust = reason in ('abort', 'terminate', 'max_level_sl', 'max_level_bust', 'sl_hit', 'margin_call')
         level = self.vars.get('level', 0)
 
         # Record session

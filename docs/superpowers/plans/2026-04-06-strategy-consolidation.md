@@ -1321,7 +1321,7 @@ Expected: All tests PASS
 - [ ] **Step 7.10: Commit**
 
 ```bash
-git add strategies/_admin/UniversalMartingale/__init__.py
+git add strategies/_admin/Martingale/__init__.py
 git commit -m "feat: UniversalMartingale uses engine ticket TP/SL for price-based modes"
 ```
 
@@ -1341,7 +1341,7 @@ Append to `tests/test_universal_martingale.py`:
 # Engine TP/SL Integration Tests
 # ---------------------------------------------------------------------------
 class TestEngineTPSL:
-    """Tests that UniversalMartingale correctly uses engine ticket TP/SL."""
+    """Tests that Martingale correctly uses engine ticket TP/SL."""
 
     def test_ticket_id_tracked_on_legs(self):
         """Legs should store ticket_id after entry and hedge."""

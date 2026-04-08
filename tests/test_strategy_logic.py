@@ -1,5 +1,5 @@
 """
-Deterministic tests for UniversalMartingale strategy logic.
+Deterministic tests for Martingale strategy logic.
 
 Tests the pure math of TP calculation, hedge triggering, sizing curves,
 session PnL accounting, and the TP-negative-exit bug.
