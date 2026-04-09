@@ -528,6 +528,25 @@ class ARIAPipeline(Pipeline):
                  'tooltip': 'Online k-means clusters discovered'},
             ],
             'sections': [
+                # ── Danger Score time-series (always has data after warmup) ──
+                {
+                    'type': 'line_chart',
+                    'title': 'Danger Score Over Time',
+                    'subtitle': 'Market danger assessment from MarketBrain (L1)',
+                    'data_key': 'danger_scores',
+                    'empty_message': 'Danger scorer still warming up.',
+                    'series': [
+                        {'index': 1, 'label': 'Danger', 'color': '#ef4444',
+                         'width': 1.5, 'axis': 'left'},
+                    ],
+                    'x_label': 'Time',
+                    'summary_stats': [
+                        {'label': 'Current', 'key': 'danger.current', 'format': 'dec3'},
+                        {'label': 'Mean', 'key': 'danger.mean', 'format': 'dec3'},
+                        {'label': 'Std', 'key': 'danger.std', 'format': 'dec3'},
+                        {'label': 'High %', 'key': 'danger.high_danger_pct', 'format': 'pct'},
+                    ],
+                },
                 # ── Cycle scatter: danger at entry vs PnL ──
                 {
                     'type': 'scatter',

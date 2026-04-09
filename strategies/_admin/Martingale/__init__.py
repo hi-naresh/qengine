@@ -1621,6 +1621,15 @@ class Martingale(Strategy):
         }
         self.vars['sessions'].append(session_record)
 
+        # Notify pipeline of cycle end.
+        # _close_remaining_tickets (CFD) bypasses the engine's
+        # _on_closed_position flow, so the pipeline hook must be called
+        # explicitly.  For futures/spot, _on_close_position may also
+        # fire — the pipeline's on_cycle_end guards against double-fire
+        # via its _cycle_active flag.
+        if self._pipelines:
+            self._pipelines.on_cycle_end(pnl, self)
+
         # Update bust tracking
         if is_bust:
             self.vars['consecutive_busts'] = self.vars.get('consecutive_busts', 0) + 1
