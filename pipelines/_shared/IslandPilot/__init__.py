@@ -85,6 +85,9 @@ class IslandPilot(Pipeline):
         self._candle_count: int = 0
         self._feature_vector: Optional[np.ndarray] = None
         self._cycle_count: int = 0
+        self._abort_count: int = 0
+        self._gate_block_count: int = 0
+        self._gate_allow_count: int = 0
         self._sibling_groups: Dict[str, List[str]] = {}
 
         # Auto-load pre-trained models if available
@@ -173,21 +176,26 @@ class IslandPilot(Pipeline):
         """Block entry if no genome available, low confidence, or in grace period."""
         # During warmup, block
         if self._candle_count < self.cfg['warmup']:
+            self._gate_block_count += 1
             return False
 
         # No genome means the regime/evolver isn't ready
         if self._active_genome is None:
+            self._gate_block_count += 1
             return False
 
         # Low confidence
         min_conf = self.cfg['inference']['min_confidence']
         if self._active_confidence < min_conf:
+            self._gate_block_count += 1
             return False
 
         # Grace period after regime switch
         if self.inferencer is not None and self.inferencer.in_grace_period:
+            self._gate_block_count += 1
             return False
 
+        self._gate_allow_count += 1
         return True
 
     def adjust_size(self, strategy, qty: float, side: str) -> float:
@@ -247,14 +255,24 @@ class IslandPilot(Pipeline):
         return order_intent
 
     def suggest_exit(self, strategy) -> Optional[dict]:
-        """Abort based on danger proxy exceeding genome threshold."""
+        """Abort if danger exceeds threshold derived from genome.
+
+        abort_aggressiveness=0 means never abort (conservative).
+        abort_aggressiveness=1 means abort at any danger (aggressive).
+        The threshold is inverted: threshold = 1 - aggressiveness.
+        So aggressiveness=0.8 → abort when danger > 0.2 (aggressive).
+        And aggressiveness=0.2 → abort when danger > 0.8 (conservative).
+        """
         if self._active_genome is None:
             return None
 
-        danger = self._compute_danger(strategy)
-        abort_threshold = self._active_genome.get('abort_aggressiveness', 0.5)
+        aggressiveness = self._active_genome.get('abort_aggressiveness', 0.5)
+        # Convert to threshold: higher aggressiveness = lower threshold = easier to abort
+        threshold = 1.0 - aggressiveness
 
-        if danger > abort_threshold:
+        danger = self._compute_danger(strategy)
+        if danger > threshold:
+            self._abort_count += 1
             return {'action': 'close_all'}
 
         return None
@@ -277,11 +295,16 @@ class IslandPilot(Pipeline):
 
     def get_stats(self) -> dict:
         """Comprehensive stats from all components."""
+        total_gate = self._gate_allow_count + self._gate_block_count
         stats: Dict[str, Any] = {
             'active_regime': self._active_regime,
             'active_confidence': self._active_confidence,
             'candle_count': self._candle_count,
             'cycle_count': self._cycle_count,
+            'entries_allowed': self._gate_allow_count,
+            'entries_blocked': self._gate_block_count,
+            'block_rate': self._gate_block_count / total_gate if total_gate > 0 else 0,
+            'aborts_triggered': self._abort_count,
             'has_genome': self._active_genome is not None,
         }
 

@@ -272,13 +272,12 @@ class TestInternalHelpers:
         assert result > 0
 
     def test_suggest_exit_uses_abort_aggressiveness(self):
-        """suggest_exit triggers close_all when danger exceeds abort_aggressiveness."""
+        """suggest_exit triggers close_all when aggressiveness is high (low threshold)."""
         pilot = IslandPilot()
         strategy = _make_mock_strategy(n_candles=50)
-        # Set abort threshold very low so any danger triggers exit
-        pilot._active_genome = {'abort_aggressiveness': 0.0}
+        # aggressiveness=1.0 → threshold=0.0 → abort at any danger
+        pilot._active_genome = {'abort_aggressiveness': 1.0}
         result = pilot.suggest_exit(strategy)
-        # With abort_aggressiveness=0.0, any non-zero danger should trigger
         assert result == {'action': 'close_all'}
 
     def test_build_sibling_groups_no_tree(self):
@@ -296,13 +295,12 @@ class TestSuggestExit:
         strategy = _make_mock_strategy()
         assert pilot.suggest_exit(strategy) is None
 
-    def test_suggest_exit_low_danger(self):
+    def test_suggest_exit_low_aggressiveness_no_abort(self):
         pilot = IslandPilot()
         strategy = _make_mock_strategy(n_candles=50)
-        # Set genome with high abort threshold so normal vol won't trigger
-        pilot._active_genome = {'abort_aggressiveness': 0.99}
+        # aggressiveness=0.0 → threshold=1.0 → never abort (conservative)
+        pilot._active_genome = {'abort_aggressiveness': 0.0}
         result = pilot.suggest_exit(strategy)
-        # With typical random candles, danger should be below 0.99
         assert result is None
 
     def test_on_cycle_end_increments_count(self):
