@@ -9,10 +9,10 @@ Pipeline ABC.  Six internal layers:
   L3  HPEngine      — contextual bandit HP selection
   L4  RiskShield    — conformal kill + liquidity gate + margin survival
   L5  Observer      — enriched session recording
-  L6  MetaEvaluator — ARIA score + reward loop               (Phase 3)
+  L6  MetaEvaluator — ARIA score + reward loop
 
-Active layers: L1 + L2 + L3 + L4 + L5.
-L2 and L3 have warmup periods — they learn online from cycle outcomes.
+All 6 layers active.  L2 and L3 have warmup periods — they learn
+online from cycle outcomes.  L6 drives exploration boosts on degradation.
 """
 
 import os
@@ -27,6 +27,7 @@ from .cycle_gate import CycleGate
 from .hp_engine import HPEngine
 from .risk_shield import RiskShield
 from .observer import Observer
+from .meta_evaluator import MetaEvaluator
 from .config import default_config
 
 _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
@@ -36,12 +37,13 @@ class ARIAPipeline(Pipeline):
     """
     ARIA — wraps any strategy with 6 intelligence layers.
 
-    Active layers: MarketBrain (L1), CycleGate (L2), HPEngine (L3),
-    RiskShield (L4), Observer (L5).  MetaEvaluator (L6) is Phase 3.
+    All 6 layers active: MarketBrain (L1), CycleGate (L2), HPEngine (L3),
+    RiskShield (L4), Observer (L5), MetaEvaluator (L6).
 
     L2 and L3 have configurable warmup periods — they learn online from
     cycle outcomes.  During warmup, gate allows everything and HPs stay
-    at strategy defaults.
+    at strategy defaults.  L6 detects performance degradation and triggers
+    exploration boosts in L3.
     """
 
     name = 'ARIA'
@@ -86,6 +88,12 @@ class ARIAPipeline(Pipeline):
             'max_sessions': cfg['max_sessions'],
         })
 
+        # L6 — MetaEvaluator
+        self._meta = MetaEvaluator({
+            'window': cfg['meta_window'],
+        })
+        self._meta_enabled = cfg.get('meta_enabled', True)
+
         # Stats tracking (reuses existing PipelineStats)
         self._stats = PipelineStats()
         self._stats.config_snapshot = cfg
@@ -95,6 +103,7 @@ class ARIAPipeline(Pipeline):
         self._cycle_active = False
         self._gate_confidence: float = None
         self._hp_selection: dict = {}
+        self._aria_score: float = 0.0
 
     # ── Observation (every candle) ──
 
@@ -188,7 +197,7 @@ class ARIAPipeline(Pipeline):
             strategy,
             self._market_state,
             gate_confidence=self._gate_confidence,
-            aria_score=None,        # Phase 3: from MetaEvaluator
+            aria_score=self._aria_score if self._meta_enabled else None,
         )
 
         # Stats
@@ -235,7 +244,32 @@ class ARIAPipeline(Pipeline):
         if self._hp_engine_enabled:
             self._hp_engine.update(profitable)
 
-        # TODO Phase 3: MetaEvaluator score + reward
+        # L6: MetaEvaluator — compute ARIA score and check for degradation
+        if self._meta_enabled:
+            initial_capital = self._observer.sessions[0].get('equity_at_entry', 10_000) if self._observer.sessions else 10_000
+            self._aria_score = self._meta.evaluate(
+                self._observer.sessions, initial_capital
+            )
+
+            # Exploration boost: if score degraded, reset HP engine bandits
+            # toward priors to encourage re-exploration
+            if self._meta.should_boost_exploration() and self._hp_engine_enabled:
+                self._boost_exploration()
+
+    # ── Internal Helpers ──
+
+    def _boost_exploration(self):
+        """Decay HPEngine bandit posteriors toward priors to encourage re-exploration.
+
+        Called when MetaEvaluator detects performance degradation.
+        Halves the evidence (alpha, beta) to soften posteriors while
+        keeping the learned direction.
+        """
+        for group_name, regime_map in self._hp_engine._bandits.items():
+            for regime_id, bandit in regime_map.items():
+                # Decay toward prior: new_a = 1 + (a - 1) * 0.5
+                bandit.alpha = 1.0 + (bandit.alpha - 1.0) * 0.5
+                bandit.beta = 1.0 + (bandit.beta - 1.0) * 0.5
 
     # ── Stats & Persistence ──
 
@@ -264,6 +298,13 @@ class ARIAPipeline(Pipeline):
             'enabled': self._hp_engine_enabled,
             'current_selection': self._hp_selection,
         }
+        stats['meta'] = {
+            'aria_score': self._aria_score,
+            'rolling_mean': round(self._meta.rolling_mean, 6),
+            'rolling_std': round(self._meta.rolling_std, 6),
+            'score_history_len': len(self._meta.score_history),
+            'enabled': self._meta_enabled,
+        }
         stats['observer'] = {
             'total_enriched_sessions': len(self._observer.sessions),
         }
@@ -282,6 +323,7 @@ class ARIAPipeline(Pipeline):
             'hp_engine': self._hp_engine.state_dict(),
             'shield': self._shield.state_dict(),
             'observer': self._observer.state_dict(),
+            'meta': self._meta.state_dict(),
         }
         with open(os.path.join(path, 'aria_state.json'), 'w') as f:
             json.dump(state, f)
@@ -303,6 +345,8 @@ class ARIAPipeline(Pipeline):
             self._shield.load_state_dict(state['shield'])
         if 'observer' in state:
             self._observer.load_state_dict(state['observer'])
+        if 'meta' in state:
+            self._meta.load_state_dict(state['meta'])
 
     @classmethod
     def default_config(cls) -> dict:
@@ -324,7 +368,7 @@ class ARIAPipeline(Pipeline):
                  'description': 'Conformal kill + liquidity gate + margin survival'},
                 {'name': 'Observer', 'type': 'data_collection', 'status': 'active',
                  'description': 'Enriched session recording'},
-                {'name': 'MetaEvaluator', 'type': 'evaluation', 'status': 'pending',
+                {'name': 'MetaEvaluator', 'type': 'evaluation', 'status': 'active',
                  'description': 'ARIA score + reward loop'},
             ],
             'composition_rules': {
@@ -337,8 +381,7 @@ class ARIAPipeline(Pipeline):
     def ui_metadata(self) -> dict:
         return {
             'badges': [
-                {'label': 'ARIA v0.2', 'color': 'blue'},
-                {'label': 'Phase 2', 'color': 'green'},
+                {'label': 'ARIA v1.0', 'color': 'blue'},
             ],
             'metric_cards': [
                 {'label': 'Danger', 'key': 'brain.danger', 'format': '.2f',

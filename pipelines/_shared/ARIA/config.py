@@ -30,7 +30,8 @@ def default_config() -> dict:
         # Layer 5 — Observer
         'max_sessions': 10_000,
 
-        # Layer 6 — MetaEvaluator (Phase 3)
-        'meta_enabled': False,         # disabled until Phase 3
+        # Layer 6 — MetaEvaluator
+        'meta_enabled': True,
         'meta_window': 100,
+        'meta_degradation_sigma': 1.0,
     }
