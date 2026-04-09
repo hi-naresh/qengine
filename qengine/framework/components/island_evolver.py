@@ -23,8 +23,8 @@ import numpy as np
 # Strategy-specific genes are added dynamically from strategy.hyperparameters()
 # by the IslandPilot pipeline during training — see _build_gene_bounds().
 GENE_BOUNDS: Dict[str, Tuple[float, float, type]] = {
-    "gate_confidence_min":    (0.0, 1.0, float),   # min regime confidence to allow entry
-    "abort_aggressiveness":   (0.0, 1.0, float),   # danger threshold for mid-cycle abort
+    "gate_confidence_min":    (0.0, 0.8, float),    # min regime confidence to allow entry
+    "abort_aggressiveness":   (0.0, 0.4, float),    # 0=never abort, 0.4=abort at danger>0.6 (conservative)
     "base_size_pct":          (0.5, 5.0, float),    # base position scale as % of equity
     "hysteresis_margin":      (0.05, 0.30, float),  # margin needed to switch regime
     "confidence_sensitivity": (0.5, 2.0, float),    # how aggressively confidence scales size
@@ -88,8 +88,8 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
         elif hp_type == 'categorical' and 'options' in spec:
             # Filter to safe/validated options for known params
             _SAFE = {
-                'signal_mode': {'none', 'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch', 'ema_rsi', 'ema_macd', 'triple'},
-                'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci', 'fixed'},
+                'signal_mode': {'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch', 'ema_rsi', 'ema_macd', 'triple'},
+                'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci'},
                 'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
                 'tp_mode': {'fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward'},
                 'base_size_mode': {'pct_equity', 'capital_aware'},  # only % modes, not fixed units
