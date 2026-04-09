@@ -582,7 +582,7 @@ class IslandPilot(Pipeline):
             'signal_mode': {'none', 'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch', 'ema_rsi', 'ema_macd', 'triple'},
             'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
             'tp_mode': {'fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward'},
-            'base_size_mode': {'fixed', 'pct_equity', 'risk_pips', 'capital_aware'},
+            'base_size_mode': {'pct_equity', 'capital_aware'},
             'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci', 'fixed'},
         }
 

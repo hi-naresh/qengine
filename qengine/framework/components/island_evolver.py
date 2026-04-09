@@ -51,6 +51,19 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
 
     _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit', 'Entry Signal'}
 
+    # Tighter bounds for params that cause margin blowups when extreme.
+    # Strategy declares wide ranges for optimizer flexibility, but the GA
+    # simulator has no margin model — these keep values realistic.
+    _BOUND_OVERRIDES = {
+        'max_levels': (2, 8, int),
+        'sizing_factor': (1.2, 2.5, float),
+        'hedge_value': (5, 50, float),
+        'tp_value': (5, 50, float),
+        'base_size_value': (0.5, 5.0, float),  # as pct_equity this is 0.5-5%
+    }
+    # Skip params that shouldn't be evolved (meta/structural)
+    _SKIP_PARAMS = {'preset', 'sizing_custom_sequence', 'max_bust_dd_pct', 'model_lookback'}
+
     for spec in hp_list:
         if not isinstance(spec, dict) or 'name' not in spec:
             continue
@@ -59,8 +72,13 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
             continue
 
         name = spec['name']
-        if name in bounds:
-            continue  # don't override pipeline genes
+        if name in bounds or name in _SKIP_PARAMS:
+            continue
+
+        # Use override bounds if available
+        if name in _BOUND_OVERRIDES:
+            bounds[name] = _BOUND_OVERRIDES[name]
+            continue
 
         hp_type = spec.get('type')
         if hp_type in (int, 'int') and 'min' in spec and 'max' in spec:
@@ -74,7 +92,7 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
                 'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci', 'fixed'},
                 'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
                 'tp_mode': {'fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward'},
-                'base_size_mode': {'fixed', 'pct_equity', 'risk_pips', 'capital_aware'},
+                'base_size_mode': {'pct_equity', 'capital_aware'},  # only % modes, not fixed units
             }
             opts = spec['options']
             safe = _SAFE.get(name)
