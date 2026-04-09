@@ -164,8 +164,10 @@ class GTSBotPilot(Pipeline):
         self._last_recorded_session = sn
 
         # Determine exit reason
-        if self.basket_manager._baskets_closed > 0 and self.basket_manager._basket_pnl >= self.basket_manager._target_profit:
+        if self.basket_manager._basket_pnl >= self.basket_manager._target_profit and self.basket_manager._target_profit > 0:
             exit_reason = 'basket_tp'
+        elif self.basket_manager._loss_cutoffs > 0 and self.basket_manager._basket_pnl <= -self.basket_manager._max_loss:
+            exit_reason = 'loss_cutoff'
         elif self.basket_manager._emergency_closes > 0:
             exit_reason = 'emergency_dd'
         else:
@@ -278,6 +280,7 @@ class GTSBotPilot(Pipeline):
                     'size_key': 'level',
                     'color_map': {
                         'basket_tp': {'color': '#4ade80', 'label': 'Basket TP'},
+                        'loss_cutoff': {'color': '#fbbf24', 'label': 'Loss Cutoff'},
                         'strategy_exit': {'color': '#818cf8', 'label': 'Strategy Exit'},
                         'emergency_dd': {'color': '#f87171', 'label': 'Emergency DD'},
                         '_default': {'color': '#64748b', 'label': 'Other'},
@@ -349,8 +352,8 @@ class GTSBotPilot(Pipeline):
                     'items': [
                         {'label': 'Basket P&L', 'key': 'basket_manager.basket_pnl', 'format': 'currency'},
                         {'label': 'Target Profit', 'key': 'basket_manager.target_profit', 'format': 'dec4'},
-                        {'label': '% of Target', 'key': 'basket_manager.pnl_pct_of_target', 'format': 'pct'},
-                        {'label': 'Baskets Closed', 'key': 'basket_manager.baskets_closed', 'format': 'int'},
+                        {'label': 'Max Loss Cutoff', 'key': 'basket_manager.max_loss', 'format': 'dec4', 'color': 'red'},
+                        {'label': 'Baskets Closed', 'template': '{basket_manager.baskets_closed} TP / <red>{basket_manager.loss_cutoffs}</red> cutoff / <red>{basket_manager.emergency_closes}</red> emerg'},
                         {'label': 'Max DD Seen', 'key': 'basket_manager.max_drawdown_seen', 'format': 'pct', 'color': 'red'},
                     ],
                 },

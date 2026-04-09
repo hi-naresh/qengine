@@ -18,12 +18,14 @@ from qengine import indicators as ta
 class BasketManager:
     def __init__(self, config: dict):
         self.target_profit_atr_mult: float = config.get('target_profit_atr_mult', 2.0)
+        self.max_loss_atr_mult: float = config.get('max_loss_atr_mult', 10.0)
         self.monitor_drawdown: bool = config.get('monitor_drawdown', True)
         self.emergency_dd_pct: Optional[float] = config.get('emergency_dd_pct', None)
         self.enabled: bool = config.get('enabled', True)
 
         self._current_atr: float = 0.0
         self._target_profit: float = 0.0
+        self._max_loss: float = 0.0
         self._basket_pnl: float = 0.0
         self._peak_equity: float = 0.0
         self._current_drawdown: float = 0.0
@@ -31,6 +33,7 @@ class BasketManager:
         self._baskets_closed: int = 0
         self._max_drawdown_seen: float = 0.0
         self._emergency_closes: int = 0
+        self._loss_cutoffs: int = 0
 
     def update(self, candles: np.ndarray, strategy) -> None:
         """Update basket P&L and drawdown each candle."""
@@ -40,6 +43,7 @@ class BasketManager:
         if candles is not None and len(candles) >= 14:
             self._current_atr = ta.atr(candles, period=14)
             self._target_profit = self._current_atr * self.target_profit_atr_mult
+            self._max_loss = self._current_atr * self.max_loss_atr_mult
 
         self._basket_pnl = self._compute_basket_pnl(strategy)
 
@@ -88,14 +92,22 @@ class BasketManager:
         return float(capital) + self._basket_pnl
 
     def should_close_basket(self) -> Optional[dict]:
-        """Check if basket profit target reached or emergency DD triggered."""
+        """Check if basket profit target reached, max loss exceeded, or emergency DD triggered."""
         if not self.enabled:
             return None
 
+        # Profit target hit → close all
         if self._target_profit > 0 and self._basket_pnl >= self._target_profit:
             self._baskets_closed += 1
             return {'action': 'close_all'}
 
+        # Max loss cutoff — prevent catastrophic busts (ATR-scaled)
+        if self._max_loss > 0 and self._basket_pnl <= -self._max_loss:
+            self._loss_cutoffs += 1
+            self._baskets_closed += 1
+            return {'action': 'close_all'}
+
+        # Emergency account drawdown
         if self.emergency_dd_pct is not None and self._current_drawdown >= self.emergency_dd_pct:
             self._emergency_closes += 1
             self._baskets_closed += 1
@@ -112,6 +124,7 @@ class BasketManager:
         return {
             'basket_pnl': round(self._basket_pnl, 4),
             'target_profit': round(self._target_profit, 6),
+            'max_loss': round(self._max_loss, 6),
             'pnl_pct_of_target': round(
                 self._basket_pnl / self._target_profit, 4
             ) if self._target_profit > 0 else 0.0,
@@ -120,5 +133,6 @@ class BasketManager:
             'current_drawdown': round(self._current_drawdown, 4),
             'max_drawdown_seen': round(self._max_drawdown_seen, 4),
             'baskets_closed': self._baskets_closed,
+            'loss_cutoffs': self._loss_cutoffs,
             'emergency_closes': self._emergency_closes,
         }

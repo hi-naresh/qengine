@@ -27,7 +27,7 @@ TREND_NULL = 'null'
 class TrendFilter:
     def __init__(self, config: dict):
         self.smoothing_period: int = config.get('smoothing_period', 14)
-        self.delta: float = config.get('delta_threshold', 0.00015)
+        self.delta_atr_mult: float = config.get('delta_atr_mult', 0.02)
         self.require_direction_match: bool = config.get('require_direction_match', True)
         self.enabled: bool = config.get('enabled', True)
 
@@ -35,6 +35,7 @@ class TrendFilter:
         self.current_trend: str = TREND_NULL
         self.d1: float = 0.0
         self.d2: float = 0.0
+        self.delta: float = 0.0  # adaptive, computed from ATR
 
         # Stats
         self._entries_blocked: int = 0
@@ -56,6 +57,15 @@ class TrendFilter:
 
         self.d1 = smoothed[-1] - smoothed[-2]
         self.d2 = smoothed[-1] - 2.0 * smoothed[-2] + smoothed[-3]
+
+        # Adaptive delta: scale by ATR so threshold adjusts to volatility
+        if len(candles) >= 14:
+            atr = ta.atr(candles, period=14)
+            self.delta = atr * self.delta_atr_mult
+        # Fallback: use price-based fraction if ATR unavailable
+        if self.delta <= 0:
+            close = candles[-1, 2]
+            self.delta = close * 0.00001  # 1 pip equivalent
 
         if self.d1 > self.delta and self.d2 > 0:
             self.current_trend = TREND_LONG

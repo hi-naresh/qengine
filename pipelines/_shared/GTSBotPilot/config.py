@@ -8,7 +8,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'warmup': 50,
     'trend_filter': {
         'smoothing_period': 14,
-        'delta_threshold': 0.00015,
+        'delta_atr_mult': 0.02,          # delta = ATR * mult (adaptive to volatility)
         'require_direction_match': True,
         'enabled': True,
     },
@@ -21,6 +21,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     'basket_manager': {
         'target_profit_atr_mult': 2.0,
+        'max_loss_atr_mult': 10.0,           # basket loss cutoff = ATR * mult (prevents catastrophic busts)
         'monitor_drawdown': True,
         'emergency_dd_pct': None,
         'enabled': True,
