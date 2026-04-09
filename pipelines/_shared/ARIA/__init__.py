@@ -81,6 +81,8 @@ class ARIAPipeline(Pipeline):
             'conformal_safety': cfg['conformal_safety'],
             'fallback_level': cfg['fallback_level'],
             'max_ruin_prob': cfg['max_ruin_prob'],
+            'max_cycle_bars': cfg.get('max_cycle_bars', 2000),
+            'danger_abort_threshold': cfg.get('danger_abort_threshold', 0.8),
         })
 
         # L5 — Observer

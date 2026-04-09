@@ -12,7 +12,7 @@ def default_config() -> dict:
 
         # Layer 2 — CycleGate
         'gate_enabled': True,
-        'gate_warmup_cycles': 10,
+        'gate_warmup_cycles': 5,
         'gate_learning_rate': 0.01,
         'gate_threshold': 0.0,
 
@@ -26,6 +26,8 @@ def default_config() -> dict:
         'conformal_safety': 0.8,
         'fallback_level': 6,
         'max_ruin_prob': 0.5,
+        'max_cycle_bars': 2000,          # ~7 days at 5m — abort stuck cycles
+        'danger_abort_threshold': 0.8,   # abort at L3+ when danger > 0.8
 
         # Layer 5 — Observer
         'max_sessions': 10_000,

@@ -25,6 +25,7 @@ import numpy as np
 _MAX_CALIBRATION = 500       # max loss samples kept per level
 _MIN_CALIBRATION_CYCLES = 20 # cycles before conformal prediction activates
 _MIN_LEVEL_SAMPLES = 5       # minimum per-level samples for prediction
+_MAX_CYCLE_BARS = 2000       # hard abort after this many bars (≈7 days at 5m)
 
 
 # ===================================================================
@@ -294,10 +295,13 @@ class RiskShield:
             max_ruin_prob=cfg.get('max_ruin_prob', 0.5),
         )
         self.survival = MarginSurvival()
+        self._max_cycle_bars = int(cfg.get('max_cycle_bars', _MAX_CYCLE_BARS))
+        self._danger_abort_threshold = float(cfg.get('danger_abort_threshold', 0.8))
 
         # Per-cycle tracking for the Observer
         self._ruin_probs: list[float] = []
         self._last_reason: str = ''
+        self._cycle_bar_count: int = 0
 
     # ----- main entry point -----
 
@@ -328,7 +332,21 @@ class RiskShield:
         cycle_active = bool(sv.get('cycle_active', False))
 
         if not cycle_active:
+            self._cycle_bar_count = 0
             return None
+
+        self._cycle_bar_count += 1
+
+        # --- Duration abort: kill stuck cycles ---
+        if self._cycle_bar_count > self._max_cycle_bars:
+            self._last_reason = 'duration_abort'
+            return {'action': 'close_all', 'reason': f'duration:{self._cycle_bar_count}_bars'}
+
+        # --- High danger abort: kill at extreme danger when deep in levels ---
+        danger = (market_state or {}).get('danger', 0.5)
+        if level >= 3 and danger > self._danger_abort_threshold:
+            self._last_reason = 'danger_abort'
+            return {'action': 'close_all', 'reason': f'danger:{danger:.3f}_at_L{level}'}
 
         equity = float(getattr(strategy, 'balance', 0.0))
         price = float(getattr(strategy, 'price', 0.0))
@@ -386,6 +404,7 @@ class RiskShield:
         """Called on cycle end to update calibration data and reset per-cycle state."""
         self.conformal.record_cycle(level_reached, pnl)
         self._ruin_probs = []
+        self._cycle_bar_count = 0
 
     @property
     def ruin_probs_this_cycle(self) -> list[float]:

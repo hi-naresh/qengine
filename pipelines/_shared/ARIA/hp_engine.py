@@ -53,6 +53,8 @@ _EXCLUDED_OPTIONS = {
     'day_filter': {'skip_mon_fri'},            # removes 40% of trading days
     'sizing_curve': {'fixed', 'anti_martingale'},  # fixed ignores sizing_factor; anti is inverse
     'sizing_custom_sequence': {'1_2_4_8_16', '1_3_6_12_24'},  # insanely aggressive sequences
+    'abort_mode': {'none'},                    # RiskShield handles abort; strategy must have one too
+    'hedge_mode': {'fibonacci_levels'},        # fibonacci spacing creates stuck cycles
 }
 
 # Safety bounds: min/max overrides applied AFTER bandit selection to
