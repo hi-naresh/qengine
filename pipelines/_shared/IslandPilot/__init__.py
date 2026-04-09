@@ -199,7 +199,21 @@ class IslandPilot(Pipeline):
         return True
 
     def adjust_size(self, strategy, qty: float, side: str) -> float:
-        """Scale position size using AdaptiveSizer."""
+        """Do NOT scale individual entry sizes for martingale/hedge strategies.
+
+        The hedge sizing math (geometric 2×, fibonacci, etc.) requires L0, L1, L2
+        to maintain exact ratios. If the pipeline scales L0 but not L1/L2 (which
+        are placed internally by the strategy), the ratios break and sessions
+        never profit.
+
+        Instead, the pipeline controls entry TIMING (gate_entry) and cycle
+        TERMINATION (suggest_exit), not position sizing.
+        """
+        # Pass through unchanged — sizing is the strategy's domain
+        return qty
+
+    def _adjust_size_disabled(self, strategy, qty: float, side: str) -> float:
+        """Original adaptive sizing — disabled because it breaks hedge ratios."""
         if self._active_genome is None:
             return qty
 
