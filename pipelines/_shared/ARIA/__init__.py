@@ -139,7 +139,7 @@ class ARIAPipeline(Pipeline):
             regime_id = self._market_state.get('regime_id', 0)
             self._hp_selection = self._hp_engine.select(regime_id)
             if self._hp_selection:
-                self._hp_engine.inject_structural(strategy, self._hp_selection)
+                self._hp_engine.inject_hp(strategy, self._hp_selection)
             self._hp_selected_this_cycle = True
 
         # Record danger for time-series charting
@@ -202,9 +202,7 @@ class ARIAPipeline(Pipeline):
     # ── Order Control ──
 
     def filter_order(self, strategy, order_intent: OrderIntent) -> Optional[OrderIntent]:
-        """L3: HPEngine injects TP/hedge values from bandit selection."""
-        if self._hp_engine_enabled and self._hp_selection:
-            return self._hp_engine.inject_order(order_intent, self._hp_selection)
+        """Pass through — all HPs are injected structurally on strategy.hp."""
         return order_intent
 
     # ── Lifecycle Events ──

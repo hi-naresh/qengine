@@ -45,12 +45,11 @@ logger = logging.getLogger(__name__)
 _SKIP_PARAMS = {'preset'}           # meta-param, not tunable
 _N_BINS = 5                         # default discretization bins
 
-# Groups whose HPs are set on strategy.hp between cycles
-_STRUCTURAL_GROUPS = {'General', 'Entry Signal', 'Filters', 'Risk Management',
-                      'Position Management'}
-
-# Groups whose HPs are injected per-order on OrderIntent
-_ORDER_GROUPS = {'Grid / Hedge', 'Take Profit'}
+# All HP groups are injected on strategy.hp between cycles.
+# The strategy reads hp['hedge_value'], hp['tp_value'] etc. directly,
+# so all params must be set structurally — not via OrderIntent.
+_ALL_GROUPS = {'General', 'Entry Signal', 'Grid / Hedge', 'Take Profit',
+               'Filters', 'Risk Management', 'Position Management'}
 
 
 # ---------------------------------------------------------------------------
@@ -381,12 +380,12 @@ class HPEngine:
     # HP injection
     # ------------------------------------------------------------------
 
-    def inject_structural(self, strategy, hp_config: dict) -> None:
-        """Set structural HPs on ``strategy.hp`` between cycles.
+    def inject_hp(self, strategy, hp_config: dict) -> None:
+        """Set ALL selected HPs on ``strategy.hp`` between cycles.
 
-        Only injects params that belong to structural groups (General,
-        Entry Signal, Filters, Risk Management, Position Management) and
-        exist in the strategy's HP schema.
+        The strategy reads all params (hedge_value, tp_value, sizing_factor
+        etc.) directly from ``self.hp``, so every group must be injected
+        structurally — not via OrderIntent.
 
         Parameters
         ----------
@@ -401,55 +400,9 @@ class HPEngine:
             hp_def = self._hp_lookup.get(name)
             if hp_def is None:
                 continue
-            group = hp_def.get('group', '')
-            if group not in _STRUCTURAL_GROUPS:
-                continue
             # Only set if param exists in strategy.hp
             if name in strategy.hp:
                 strategy.hp[name] = value
-
-    def inject_order(self, order_intent, hp_config: dict):
-        """Modify order TP/hedge values based on selected config.
-
-        Only touches params from order-time groups (Grid/Hedge, Take
-        Profit).  Modifies price on the OrderIntent when appropriate.
-
-        Parameters
-        ----------
-        order_intent : OrderIntent
-            The order about to be submitted.
-        hp_config : dict
-            HP config from ``select()``.
-
-        Returns
-        -------
-        OrderIntent (possibly modified).
-        """
-        if not hp_config:
-            return order_intent
-
-        # Collect order-time params
-        order_params = {}
-        for name, value in hp_config.items():
-            hp_def = self._hp_lookup.get(name)
-            if hp_def is None:
-                continue
-            group = hp_def.get('group', '')
-            if group in _ORDER_GROUPS:
-                order_params[name] = value
-
-        if not order_params:
-            return order_intent
-
-        # Attach HP overrides as metadata on the intent for the strategy
-        # to read during order execution.  We do NOT directly modify
-        # price/qty here -- the strategy's order logic handles that
-        # based on the HP values set on strategy.hp.
-        if not hasattr(order_intent, 'hp_overrides'):
-            order_intent.hp_overrides = {}
-        order_intent.hp_overrides.update(order_params)
-
-        return order_intent
 
     # ------------------------------------------------------------------
     # Properties

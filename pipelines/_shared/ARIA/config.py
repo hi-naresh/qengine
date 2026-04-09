@@ -12,14 +12,14 @@ def default_config() -> dict:
 
         # Layer 2 — CycleGate
         'gate_enabled': True,
-        'gate_warmup_cycles': 30,
+        'gate_warmup_cycles': 10,
         'gate_learning_rate': 0.01,
         'gate_threshold': 0.0,
 
         # Layer 3 — HPEngine
         'hp_engine_enabled': True,
-        'hp_warmup_cycles': 20,
-        'hp_max_arms_per_group': 30,
+        'hp_warmup_cycles': 5,
+        'hp_max_arms_per_group': 15,
 
         # Layer 4 — RiskShield
         'conformal_alpha': 0.1,
