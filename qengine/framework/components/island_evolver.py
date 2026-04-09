@@ -68,8 +68,20 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
         elif hp_type in (float, 'float') and 'min' in spec and 'max' in spec:
             bounds[name] = (spec['min'], spec['max'], float)
         elif hp_type == 'categorical' and 'options' in spec:
-            # Encode as int index into options list
-            bounds[name] = (0, len(spec['options']) - 1, int)
+            # Filter to safe/validated options for known params
+            _SAFE = {
+                'signal_mode': {'none', 'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch', 'ema_rsi', 'ema_macd', 'triple'},
+                'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci', 'fixed'},
+                'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
+                'tp_mode': {'fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward'},
+                'base_size_mode': {'fixed', 'pct_equity', 'risk_pips', 'capital_aware'},
+            }
+            opts = spec['options']
+            safe = _SAFE.get(name)
+            if safe:
+                opts = [o for o in opts if o in safe]
+            if opts:
+                bounds[name] = (0, len(opts) - 1, int)
 
     return bounds
 
@@ -373,9 +385,11 @@ class IslandEvolver:
             gene_arrays: Dict[str, list] = {name: [] for name in self.gene_bounds}
             for ind in pop.individuals:
                 for name in self.gene_bounds:
-                    gene_arrays[name].append(ind.genes[name])
+                    val = ind.genes.get(name)
+                    if isinstance(val, (int, float)):
+                        gene_arrays[name].append(val)
             stats[lid] = {
-                name: float(np.std(vals)) if vals else 0.0
+                name: float(np.std(vals)) if len(vals) > 1 else 0.0
                 for name, vals in gene_arrays.items()
             }
         return stats

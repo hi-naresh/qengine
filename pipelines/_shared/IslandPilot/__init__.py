@@ -573,9 +573,18 @@ class IslandPilot(Pipeline):
         if not self._hp_spec:
             return
 
-        # Groups the pipeline is allowed to tune (structural + sizing)
-        # Entry signals, filters, risk mgmt are left to the user
+        # Groups the pipeline is allowed to tune
         _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit', 'Entry Signal'}
+
+        # Validated options for categorical params that may have broken choices.
+        # Only allow signal modes that are known to work in the strategy.
+        _SAFE_OPTIONS = {
+            'signal_mode': {'none', 'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch', 'ema_rsi', 'ema_macd', 'triple'},
+            'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
+            'tp_mode': {'fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward'},
+            'base_size_mode': {'fixed', 'pct_equity', 'risk_pips', 'capital_aware'},
+            'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci', 'fixed'},
+        }
 
         hp = strategy.hp
         for hp_name, spec in self._hp_spec.items():
@@ -592,6 +601,12 @@ class IslandPilot(Pipeline):
             hp_type = spec.get('type')
             if hp_type == 'categorical':
                 options = spec.get('options', [])
+                # Filter to safe options if we have a safelist
+                safe = _SAFE_OPTIONS.get(hp_name)
+                if safe:
+                    options = [o for o in options if o in safe]
+                if not options:
+                    continue
                 # Genome may store int index (from GA) or string value
                 if isinstance(val, (int, float)):
                     idx = int(round(val))
