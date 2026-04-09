@@ -5,14 +5,14 @@ A strategy-agnostic intelligence layer that governs any strategy via the
 Pipeline ABC.  Six internal layers:
 
   L1  MarketBrain   — feature extraction + online regime clustering
-  L2  CycleGate     — online logistic regression entry gate  (Phase 2)
-  L3  HPEngine      — contextual bandit HP selection          (Phase 2)
+  L2  CycleGate     — online logistic regression entry gate
+  L3  HPEngine      — contextual bandit HP selection
   L4  RiskShield    — conformal kill + liquidity gate + margin survival
   L5  Observer      — enriched session recording
   L6  MetaEvaluator — ARIA score + reward loop               (Phase 3)
 
-Phase 1 (this file): L1 + L4 + L5 wired into the Pipeline hooks.
-Gate always allows, HPs stay at strategy defaults.
+Active layers: L1 + L2 + L3 + L4 + L5.
+L2 and L3 have warmup periods — they learn online from cycle outcomes.
 """
 
 import os
@@ -23,6 +23,8 @@ from qengine.framework.base import Pipeline, OrderIntent
 from qengine.framework.stats import PipelineStats
 
 from .market_brain import MarketBrain
+from .cycle_gate import CycleGate
+from .hp_engine import HPEngine
 from .risk_shield import RiskShield
 from .observer import Observer
 from .config import default_config
@@ -34,9 +36,12 @@ class ARIAPipeline(Pipeline):
     """
     ARIA — wraps any strategy with 6 intelligence layers.
 
-    Phase 1 active layers: MarketBrain (L1), RiskShield (L4), Observer (L5).
-    Phase 2/3 layers (CycleGate, HPEngine, MetaEvaluator) are placeholder
-    no-ops until built.
+    Active layers: MarketBrain (L1), CycleGate (L2), HPEngine (L3),
+    RiskShield (L4), Observer (L5).  MetaEvaluator (L6) is Phase 3.
+
+    L2 and L3 have configurable warmup periods — they learn online from
+    cycle outcomes.  During warmup, gate allows everything and HPs stay
+    at strategy defaults.
     """
 
     name = 'ARIA'
@@ -50,6 +55,23 @@ class ARIAPipeline(Pipeline):
             'warmup': cfg['brain_warmup'],
             'k_max': cfg['brain_k_max'],
         })
+
+        # L2 — CycleGate
+        self._gate = CycleGate({
+            'warmup_cycles': cfg['gate_warmup_cycles'],
+            'learning_rate': cfg['gate_learning_rate'],
+            'k_max': cfg['brain_k_max'],
+        })
+        self._gate_enabled = cfg.get('gate_enabled', True)
+
+        # L3 — HPEngine
+        self._hp_engine = HPEngine({
+            'warmup_cycles': cfg['hp_warmup_cycles'],
+            'max_arms': cfg['hp_max_arms_per_group'],
+            'k_max': cfg['brain_k_max'],
+        })
+        self._hp_engine_enabled = cfg.get('hp_engine_enabled', True)
+        self._hp_registered = False
 
         # L4 — RiskShield
         self._shield = RiskShield({
@@ -71,12 +93,28 @@ class ARIAPipeline(Pipeline):
         # Internal state
         self._market_state: dict = {}
         self._cycle_active = False
+        self._gate_confidence: float = None
+        self._hp_selection: dict = {}
 
     # ── Observation (every candle) ──
 
     def on_before(self, strategy) -> None:
-        """L1: update market state from candle data."""
+        """L1: update market state. L3: register HP schema + inject structural HPs."""
         self._market_state = self._brain.update(strategy)
+
+        # Lazy HP schema registration (once)
+        if self._hp_engine_enabled and not self._hp_registered:
+            if hasattr(strategy, 'hyperparameters'):
+                self._hp_engine.register_strategy(strategy)
+                self._hp_registered = True
+
+        # L3: between cycles, select and inject structural HPs
+        sv = getattr(strategy, 'vars', {})
+        if self._hp_engine_enabled and not sv.get('cycle_active', False):
+            regime_id = self._market_state.get('regime_id', 0)
+            self._hp_selection = self._hp_engine.select(regime_id)
+            if self._hp_selection:
+                self._hp_engine.inject_structural(strategy, self._hp_selection)
 
         # Record danger for time-series charting
         ts = strategy.candles[-1][0] if strategy.candles is not None and len(strategy.candles) > 0 else 0
@@ -86,12 +124,21 @@ class ARIAPipeline(Pipeline):
     # ── Entry Control ──
 
     def gate_entry(self, strategy) -> bool:
-        """L2 (Phase 2): always allows in Phase 1."""
-        # TODO Phase 2: CycleGate decision here
+        """L2: CycleGate predicts P(profitable) and blocks low-confidence entries."""
         danger = self._market_state.get('danger', 0.5)
         ts = strategy.candles[-1][0] if strategy.candles is not None and len(strategy.candles) > 0 else 0
-        self._stats.record_gate(ts, danger, allowed=True, threshold=None)
-        return True
+
+        if self._gate_enabled:
+            allowed, confidence = self._gate.gate(self._market_state, strategy)
+            self._gate_confidence = confidence
+            threshold = self._gate.threshold
+        else:
+            allowed = True
+            self._gate_confidence = None
+            threshold = None
+
+        self._stats.record_gate(ts, danger, allowed=allowed, threshold=threshold)
+        return allowed
 
     # ── Position Management ──
 
@@ -125,21 +172,22 @@ class ARIAPipeline(Pipeline):
     # ── Order Control ──
 
     def filter_order(self, strategy, order_intent: OrderIntent) -> Optional[OrderIntent]:
-        """L3 (Phase 2): no HP injection yet — pass through."""
-        # TODO Phase 2: HPEngine injects TP/hedge values here
+        """L3: HPEngine injects TP/hedge values from bandit selection."""
+        if self._hp_engine_enabled and self._hp_selection:
+            return self._hp_engine.inject_order(order_intent, self._hp_selection)
         return order_intent
 
     # ── Lifecycle Events ──
 
     def on_open_position(self, strategy) -> None:
-        """L5: Observer captures entry snapshot."""
+        """L5: Observer captures entry snapshot with gate confidence."""
         self._cycle_active = True
 
         # Observer records entry state
         self._observer.on_cycle_open(
             strategy,
             self._market_state,
-            gate_confidence=None,   # Phase 2: from CycleGate
+            gate_confidence=self._gate_confidence,
             aria_score=None,        # Phase 3: from MetaEvaluator
         )
 
@@ -178,8 +226,15 @@ class ARIAPipeline(Pipeline):
             duration_bars=duration,
         )
 
-        # TODO Phase 2: CycleGate SGD update
-        # TODO Phase 2: HPEngine bandit update
+        # L2: CycleGate SGD update
+        profitable = pnl > 0
+        if self._gate_enabled:
+            self._gate.update(self._market_state, strategy, profitable)
+
+        # L3: HPEngine bandit posterior update
+        if self._hp_engine_enabled:
+            self._hp_engine.update(profitable)
+
         # TODO Phase 3: MetaEvaluator score + reward
 
     # ── Stats & Persistence ──
@@ -196,6 +251,19 @@ class ARIAPipeline(Pipeline):
             'efficiency': self._market_state.get('efficiency', 0.5),
             'num_regimes': self._brain._cluster.k,
         }
+        stats['gate'] = {
+            'n_cycles': self._gate.n_cycles,
+            'warmed_up': self._gate.is_warmed_up,
+            'threshold': round(self._gate.threshold, 4),
+            'enabled': self._gate_enabled,
+        }
+        stats['hp_engine'] = {
+            'n_cycles': self._hp_engine.n_cycles,
+            'warmed_up': self._hp_engine.is_warmed_up,
+            'registered': self._hp_registered,
+            'enabled': self._hp_engine_enabled,
+            'current_selection': self._hp_selection,
+        }
         stats['observer'] = {
             'total_enriched_sessions': len(self._observer.sessions),
         }
@@ -210,6 +278,8 @@ class ARIAPipeline(Pipeline):
         os.makedirs(path, exist_ok=True)
         state = {
             'brain': self._brain.state_dict(),
+            'gate': self._gate.state_dict(),
+            'hp_engine': self._hp_engine.state_dict(),
             'shield': self._shield.state_dict(),
             'observer': self._observer.state_dict(),
         }
@@ -225,6 +295,10 @@ class ARIAPipeline(Pipeline):
             state = json.load(f)
         if 'brain' in state:
             self._brain.load_state_dict(state['brain'])
+        if 'gate' in state:
+            self._gate.load_state_dict(state['gate'])
+        if 'hp_engine' in state:
+            self._hp_engine.load_state_dict(state['hp_engine'])
         if 'shield' in state:
             self._shield.load_state_dict(state['shield'])
         if 'observer' in state:
@@ -242,9 +316,9 @@ class ARIAPipeline(Pipeline):
             'layers': [
                 {'name': 'MarketBrain', 'type': 'feature_extraction', 'status': 'active',
                  'description': 'Online feature extraction + regime clustering'},
-                {'name': 'CycleGate', 'type': 'entry_gate', 'status': 'pending',
+                {'name': 'CycleGate', 'type': 'entry_gate', 'status': 'active',
                  'description': 'Online logistic regression entry gate'},
-                {'name': 'HPEngine', 'type': 'hp_selection', 'status': 'pending',
+                {'name': 'HPEngine', 'type': 'hp_selection', 'status': 'active',
                  'description': 'Contextual bandit HP selection'},
                 {'name': 'RiskShield', 'type': 'risk_management', 'status': 'active',
                  'description': 'Conformal kill + liquidity gate + margin survival'},
@@ -263,8 +337,8 @@ class ARIAPipeline(Pipeline):
     def ui_metadata(self) -> dict:
         return {
             'badges': [
-                {'label': 'ARIA v0.1', 'color': 'blue'},
-                {'label': 'Phase 1', 'color': 'orange'},
+                {'label': 'ARIA v0.2', 'color': 'blue'},
+                {'label': 'Phase 2', 'color': 'green'},
             ],
             'metric_cards': [
                 {'label': 'Danger', 'key': 'brain.danger', 'format': '.2f',
