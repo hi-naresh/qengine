@@ -1197,7 +1197,10 @@ class Martingale(Strategy):
         """Cancel the pending hedge STOP order if it exists."""
         order_id = self.vars.get('hedge_stop_order_id')
         if order_id:
-            self.broker.cancel_order(order_id)
+            try:
+                self.broker.cancel_order(order_id)
+            except (AttributeError, Exception):
+                pass  # order already filled, cancelled, or removed
             self.vars['hedge_stop_order_id'] = None
             self.vars['pending_hedge_level'] = None
             self.vars['pending_hedge_dir'] = None
