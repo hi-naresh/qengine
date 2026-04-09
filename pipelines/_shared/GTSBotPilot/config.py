@@ -28,6 +28,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'emergency_dd_pct': None,
         'enabled': True,
     },
+    'trend_abort': {
+        'enabled': True,
+        'min_level': 3,                      # only abort at level >= N (let grid work at lower levels)
+    },
 }
 
 

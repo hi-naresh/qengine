@@ -46,6 +46,9 @@ class GTSBotPilot(Pipeline):
         self._strategy_original_hp: Optional[dict] = None
         self._strategy_preset: Optional[str] = None
 
+        # Track last exit suggestion for exit_reason detection
+        self._last_exit_action: Optional[str] = None
+
         # Runtime
         self._candle_count: int = 0
         self._last_recorded_session: Optional[int] = None
@@ -136,19 +139,51 @@ class GTSBotPilot(Pipeline):
     # ── Exit Control Phase ────────────────────────────────────────
 
     def suggest_exit(self, strategy) -> Optional[dict]:
-        """Close all when basket profit target reached."""
+        """Close all when basket profit target reached or trend-abort triggers."""
         if self._candle_count < self.cfg['warmup']:
             return None
 
+        candles = getattr(strategy, 'candles', None)
+        ts = candles[-1, 0] if candles is not None and len(candles) > 0 else 0
+
+        # Check 1: Basket profit target or loss cutoff
         result = self.basket_manager.should_close_basket()
         if result is not None:
-            candles = getattr(strategy, 'candles', None)
-            ts = candles[-1, 0] if candles is not None and len(candles) > 0 else 0
+            self._last_exit_action = result['action']
             self._stats.record_exit_suggestion(ts, result['action'], {
                 'basket_pnl': self.basket_manager._basket_pnl,
                 'target': self.basket_manager._target_profit,
             })
-        return result
+            return result
+
+        # Check 2: Trend-abort — if trend reversed against position at high levels, cut early
+        # This prevents L5 busts (-$152 each) by aborting at L3+ when trend turns
+        abort_cfg = self.cfg.get('trend_abort', {})
+        abort_level = abort_cfg.get('min_level', 3)
+        if abort_cfg.get('enabled', True):
+            level = getattr(strategy, 'vars', {}).get('level', 0)
+            if level >= abort_level and self.trend_filter.current_trend != TREND_NULL:
+                # Determine position direction
+                position = getattr(strategy, 'position', None)
+                if position and getattr(position, 'is_open', False):
+                    qty = getattr(position, 'qty', 0.0)
+                    pos_dir = 'long' if qty > 0 else 'short'
+                    # Abort if confirmed trend opposes position direction
+                    trend_opposes = (
+                        (pos_dir == 'long' and self.trend_filter.current_trend == TREND_SHORT) or
+                        (pos_dir == 'short' and self.trend_filter.current_trend == TREND_LONG)
+                    )
+                    if trend_opposes:
+                        self._last_exit_action = 'trend_abort'
+                        self._stats.record_exit_suggestion(ts, 'trend_abort', {
+                            'level': level,
+                            'pos_dir': pos_dir,
+                            'trend': self.trend_filter.current_trend,
+                            'basket_pnl': self.basket_manager._basket_pnl,
+                        })
+                        return {'action': 'close_all'}
+
+        return None
 
     # ── Lifecycle Events ──────────────────────────────────────────
 
@@ -171,15 +206,18 @@ class GTSBotPilot(Pipeline):
             return
         self._last_recorded_session = sn
 
-        # Determine exit reason
-        if self.basket_manager._basket_pnl >= self.basket_manager._target_profit and self.basket_manager._target_profit > 0:
+        # Determine exit reason from the last suggest_exit action
+        if self._last_exit_action == 'trend_abort':
+            exit_reason = 'trend_abort'
+        elif self._last_exit_action == 'close_all' and self.basket_manager._basket_pnl >= self.basket_manager._target_profit > 0:
             exit_reason = 'basket_tp'
-        elif self.basket_manager._loss_cutoffs > 0 and self.basket_manager._basket_pnl <= -self.basket_manager._max_loss:
+        elif self._last_exit_action == 'close_all':
             exit_reason = 'loss_cutoff'
         elif self.basket_manager._emergency_closes > 0:
             exit_reason = 'emergency_dd'
         else:
             exit_reason = 'strategy_exit'
+        self._last_exit_action = None  # reset for next cycle
 
         # Record cycle outcome with full metadata
         level = getattr(strategy, 'vars', {}).get('level', 0)
@@ -383,6 +421,7 @@ class GTSBotPilot(Pipeline):
                     'size_key': 'level',
                     'color_map': {
                         'basket_tp': {'color': '#4ade80', 'label': 'Basket TP'},
+                        'trend_abort': {'color': '#fb923c', 'label': 'Trend Abort'},
                         'loss_cutoff': {'color': '#fbbf24', 'label': 'Loss Cutoff'},
                         'strategy_exit': {'color': '#818cf8', 'label': 'Strategy Exit'},
                         'emergency_dd': {'color': '#f87171', 'label': 'Emergency DD'},
