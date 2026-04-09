@@ -27,6 +27,7 @@ class BasketManager:
         self._target_profit: float = 0.0
         self._max_loss: float = 0.0
         self._basket_pnl: float = 0.0
+        self._total_qty: float = 0.0
         self._peak_equity: float = 0.0
         self._current_drawdown: float = 0.0
 
@@ -42,10 +43,16 @@ class BasketManager:
 
         if candles is not None and len(candles) >= 14:
             self._current_atr = ta.atr(candles, period=14)
-            self._target_profit = self._current_atr * self.target_profit_atr_mult
-            self._max_loss = self._current_atr * self.max_loss_atr_mult
 
         self._basket_pnl = self._compute_basket_pnl(strategy)
+        self._total_qty = self._compute_total_qty(strategy)
+
+        # Scale TP/SL by total position size so they're in dollar terms
+        # target_profit = ATR * mult * qty  (e.g., 0.0003 * 2.0 * 1000 = $0.60)
+        # max_loss      = ATR * mult * qty  (e.g., 0.0003 * 10.0 * 1000 = $3.00)
+        qty_scale = max(self._total_qty, 1.0)
+        self._target_profit = self._current_atr * self.target_profit_atr_mult * qty_scale
+        self._max_loss = self._current_atr * self.max_loss_atr_mult * qty_scale
 
         if self.monitor_drawdown:
             equity = self._get_equity(strategy)
@@ -55,6 +62,18 @@ class BasketManager:
                 self._current_drawdown = (self._peak_equity - equity) / self._peak_equity
                 if self._current_drawdown > self._max_drawdown_seen:
                     self._max_drawdown_seen = self._current_drawdown
+
+    def _compute_total_qty(self, strategy) -> float:
+        """Compute total absolute quantity across all open tickets."""
+        position = getattr(strategy, 'position', None)
+        if position is None or not getattr(position, 'is_open', False):
+            return 0.0
+
+        tickets = getattr(position, 'tickets', None)
+        if tickets and len(tickets) > 0:
+            return sum(abs(getattr(t, 'qty', 0.0)) for t in tickets)
+
+        return abs(getattr(position, 'qty', 0.0))
 
     def _compute_basket_pnl(self, strategy) -> float:
         """Compute total unrealized P&L across all open tickets."""
