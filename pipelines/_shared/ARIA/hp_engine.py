@@ -296,10 +296,13 @@ class HPEngine:
         -------
         dict mapping param_name -> selected value.  Empty dict during
         warmup or if no schema is registered.
-        """
-        self._n_cycles += 1
 
-        if self._hp_schema is None or self._n_cycles <= self._warmup:
+        Note: ``_n_cycles`` counts completed cycles (incremented by
+        ``update()``), not ``select()`` calls.  Warmup is based on
+        completed cycle count so we don't start exploring before we
+        have enough feedback.
+        """
+        if self._hp_schema is None or self._n_cycles < self._warmup:
             self._current_selection = {}
             self._selected_arms = {}
             return {}
@@ -355,6 +358,8 @@ class HPEngine:
         profitable : bool
             True if the cycle was profitable (PnL > 0).
         """
+        self._n_cycles += 1  # count completed cycles, not select() calls
+
         if not self._selected_arms:
             return
 

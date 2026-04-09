@@ -104,12 +104,23 @@ class ARIAPipeline(Pipeline):
         self._gate_confidence: float = None
         self._hp_selection: dict = {}
         self._aria_score: float = 0.0
+        self._candle_count = 0
+        self._candle_warmup = cfg.get('brain_warmup', 50)
+        self._hp_selected_this_cycle = False
+        self._preset_forced = False
 
     # ── Observation (every candle) ──
 
     def on_before(self, strategy) -> None:
         """L1: update market state. L3: register HP schema + inject structural HPs."""
+        self._candle_count += 1
         self._market_state = self._brain.update(strategy)
+
+        # Force preset to 'custom' on first candle so ARIA controls all HPs.
+        # Must happen before strategy's _init_state() applies preset defaults.
+        if not self._preset_forced and hasattr(strategy, 'hp'):
+            strategy.hp['preset'] = 'custom'
+            self._preset_forced = True
 
         # Lazy HP schema registration (once)
         if self._hp_engine_enabled and not self._hp_registered:
@@ -117,13 +128,19 @@ class ARIAPipeline(Pipeline):
                 self._hp_engine.register_strategy(strategy)
                 self._hp_registered = True
 
-        # L3: between cycles, select and inject structural HPs
+        # L3: select HPs ONCE between cycles (not every candle).
+        # Only after candle warmup so brain has market context.
         sv = getattr(strategy, 'vars', {})
-        if self._hp_engine_enabled and not sv.get('cycle_active', False):
+        cycle_active = sv.get('cycle_active', False)
+        if (self._hp_engine_enabled
+                and not cycle_active
+                and not self._hp_selected_this_cycle
+                and self._candle_count > self._candle_warmup):
             regime_id = self._market_state.get('regime_id', 0)
             self._hp_selection = self._hp_engine.select(regime_id)
             if self._hp_selection:
                 self._hp_engine.inject_structural(strategy, self._hp_selection)
+            self._hp_selected_this_cycle = True
 
         # Record danger for time-series charting
         ts = strategy.candles[-1][0] if strategy.candles is not None and len(strategy.candles) > 0 else 0
@@ -134,6 +151,10 @@ class ARIAPipeline(Pipeline):
 
     def gate_entry(self, strategy) -> bool:
         """L2: CycleGate predicts P(profitable) and blocks low-confidence entries."""
+        # During candle warmup, always allow — brain still calibrating
+        if self._candle_count <= self._candle_warmup:
+            return True
+
         danger = self._market_state.get('danger', 0.5)
         ts = strategy.candles[-1][0] if strategy.candles is not None and len(strategy.candles) > 0 else 0
 
@@ -210,6 +231,7 @@ class ARIAPipeline(Pipeline):
         if not self._cycle_active:
             return
         self._cycle_active = False
+        self._hp_selected_this_cycle = False  # allow fresh HP selection for next cycle
 
         # Observer builds enriched record
         enriched = self._observer.on_cycle_end(
