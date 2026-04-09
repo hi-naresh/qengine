@@ -184,31 +184,19 @@ def _arm_key(arm: dict, names: list) -> tuple:
 def _check_dependency(hp_def: dict, full_config: dict) -> bool:
     """Return True if the HP's ``depends_on`` constraint is satisfied.
 
-    If the HP has no dependency, it is always valid.  Otherwise, for each
-    parent param in ``depends_on``, the current config must have one of
-    the allowed values.
+    Only checks dependencies on params present in ``full_config``.
+    Missing parents are assumed satisfied — each group's bandit selects
+    independently, and the parent is already set on strategy.hp.
 
-    Dependencies on ``preset`` are always skipped — ARIA forces
-    preset='custom' and controls all params directly.
-
-    Dependencies on params NOT present in ``full_config`` are also
-    skipped — the strategy already has a valid value for the parent,
-    and the bandit only selected params for its own group.
+    Preset dependencies are stripped at registration time.
     """
     deps = hp_def.get('depends_on')
     if not deps:
         return True
     for parent_name, allowed_values in deps.items():
-        # Skip preset dependency — ARIA overrides it
-        if parent_name == 'preset':
-            continue
-        # Skip dependencies on params not in the selection — the parent
-        # was selected by a different group's bandit and already set
-        # on strategy.hp; we only check intra-selection consistency.
         if parent_name not in full_config:
             continue
-        current = full_config[parent_name]
-        if current not in allowed_values:
+        if full_config[parent_name] not in allowed_values:
             return False
     return True
 
@@ -277,6 +265,14 @@ class HPEngine:
             # Skip meta-params and ungrouped params
             if name in _SKIP_PARAMS or not group:
                 continue
+
+            # Strip preset dependency — ARIA controls all params directly
+            # and forces preset='custom'. The preset-aware depends_on added
+            # by the strategy's schema builder is irrelevant here.
+            deps = hp_def.get('depends_on')
+            if deps and 'preset' in deps:
+                hp_def = dict(hp_def)  # don't mutate original
+                hp_def['depends_on'] = {k: v for k, v in deps.items() if k != 'preset'}
 
             self._hp_lookup[name] = hp_def
             self._groups.setdefault(group, []).append(hp_def)
