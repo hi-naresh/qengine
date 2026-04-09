@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _SKIP_PARAMS = {'preset'}           # meta-param, not tunable
-_N_BINS = 5                         # default discretization bins
+_N_BINS = 3                         # discretization bins (default ± 1 step)
 
 # All HP groups are injected on strategy.hp between cycles.
 # The strategy reads hp['hedge_value'], hp['tp_value'] etc. directly,
@@ -78,46 +78,73 @@ class BanditState:
 # Arm construction helpers
 # ---------------------------------------------------------------------------
 
-def _discretize_float(lo: float, hi: float, n_bins: int = _N_BINS) -> list:
-    """Return n_bins evenly-spaced float values in [lo, hi]."""
-    if n_bins <= 1:
-        return [lo]
-    step = (hi - lo) / (n_bins - 1)
-    return [round(lo + i * step, 8) for i in range(n_bins)]
+def _local_float_values(default: float, lo: float, hi: float) -> list:
+    """Return candidate float values centered around default.
 
-
-def _discretize_int(lo: int, hi: int, n_bins: int = _N_BINS) -> list:
-    """Return up to n_bins integer values in [lo, hi]."""
-    span = hi - lo + 1
-    if span <= n_bins:
-        return list(range(lo, hi + 1))
-    step = (hi - lo) / (n_bins - 1)
-    vals = sorted(set(int(round(lo + i * step)) for i in range(n_bins)))
+    Uses multiplicative spread: [default * 0.5, default, default * 2.0],
+    clipped to [lo, hi].  This keeps exploration proportional to the
+    default magnitude, not the schema range.
+    """
+    if default <= 0 or default <= lo:
+        # Default at or below min — use additive spread from lo
+        delta = max((hi - lo) * 0.1, lo * 0.5) if lo > 0 else (hi - lo) * 0.1
+        return sorted({round(lo, 6), round(min(hi, lo + delta), 6)})
+    vals = sorted({
+        round(max(lo, default * 0.5), 6),
+        round(default, 6),
+        round(min(hi, default * 2.0), 6),
+    })
     return vals
 
 
-def _param_values(hp_def: dict, n_bins: int = _N_BINS) -> list:
-    """Return discrete candidate values for a single HP definition."""
+def _local_int_values(default: int, lo: int, hi: int) -> list:
+    """Return candidate int values centered around default.
+
+    Uses ±50% of default (at least ±1), clipped to [lo, hi].
+    """
+    delta = max(1, default // 2)
+    vals = sorted({
+        max(lo, default - delta),
+        default,
+        min(hi, default + delta),
+    })
+    return vals
+
+
+def _param_values(hp_def: dict) -> list:
+    """Return discrete candidate values for a single HP definition.
+
+    For categoricals: all options.
+    For numerics: 3 values centered around the default (±30% of range).
+    """
     hp_type = hp_def.get('type')
+    default = hp_def.get('default')
+
     if hp_type == 'categorical':
         return list(hp_def.get('options', []))
+
     if hp_type is float or hp_type == float:
-        lo = hp_def.get('min', 0.0)
-        hi = hp_def.get('max', 1.0)
-        return _discretize_float(lo, hi, n_bins)
+        lo = float(hp_def.get('min', 0.0))
+        hi = float(hp_def.get('max', 1.0))
+        d = float(default) if default is not None else (lo + hi) / 2
+        return _local_float_values(d, lo, hi)
+
     if hp_type is int or hp_type == int:
         lo = int(hp_def.get('min', 0))
         hi = int(hp_def.get('max', 10))
-        return _discretize_int(lo, hi, n_bins)
-    return [hp_def.get('default')]
+        d = int(default) if default is not None else (lo + hi) // 2
+        return _local_int_values(d, lo, hi)
+
+    return [default]
 
 
 def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
-    """Build a set of arm configurations for a group of HPs.
+    """Build arm configurations for a group of HPs.
 
-    Always includes the default config as arm 0.  Remaining arms are
-    sampled randomly from the cartesian product of per-param discrete
-    values, capped at ``max_arms``.
+    Arm 0 is always the default config.  Remaining arms are local
+    perturbations — each arm changes ONE param from the default,
+    then additional arms combine multiple changes.  This ensures
+    all arms are reasonable (no insane random combos).
 
     Parameters
     ----------
@@ -125,7 +152,7 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
     max_arms : int
         Maximum number of arms to generate.
     n_bins : int
-        Number of bins for numeric discretization.
+        Ignored (kept for interface compat).  Local spread is fixed.
 
     Returns
     -------
@@ -134,9 +161,8 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
     if not group_hps:
         return []
 
-    # Collect per-param candidate values
     param_names = [hp['name'] for hp in group_hps]
-    param_vals = [_param_values(hp, n_bins) for hp in group_hps]
+    param_vals = [_param_values(hp) for hp in group_hps]
 
     # Arm 0: default configuration
     default_arm = {}
@@ -146,24 +172,30 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
     arms = [default_arm]
     seen = {_arm_key(default_arm, param_names)}
 
-    # Estimate combinatorial size
-    total_combos = 1
-    for vals in param_vals:
-        total_combos *= max(len(vals), 1)
-        if total_combos > max_arms * 100:
-            break  # no point computing further
+    # Phase 1: single-param variations (change ONE param at a time)
+    for i, hp in enumerate(group_hps):
+        for val in param_vals[i]:
+            if val == default_arm[hp['name']]:
+                continue
+            arm = dict(default_arm)
+            arm[hp['name']] = val
+            key = _arm_key(arm, param_names)
+            if key not in seen and len(arms) < max_arms:
+                seen.add(key)
+                arms.append(arm)
 
-    # Sample random arms
+    # Phase 2: multi-param combos (random local perturbations)
     attempts = 0
-    max_attempts = max_arms * 10
-    while len(arms) < max_arms and attempts < max_attempts:
+    while len(arms) < max_arms and attempts < max_arms * 5:
         attempts += 1
-        arm = {}
-        for name, vals in zip(param_names, param_vals):
+        arm = dict(default_arm)
+        # Perturb 1-3 params randomly
+        n_perturb = min(len(group_hps), np.random.randint(1, 4))
+        indices = np.random.choice(len(group_hps), n_perturb, replace=False)
+        for idx in indices:
+            vals = param_vals[idx]
             if vals:
-                arm[name] = vals[np.random.randint(len(vals))]
-            else:
-                arm[name] = None
+                arm[param_names[idx]] = vals[np.random.randint(len(vals))]
         key = _arm_key(arm, param_names)
         if key not in seen:
             seen.add(key)
@@ -432,7 +464,7 @@ class HPEngine:
     @property
     def is_warmed_up(self) -> bool:
         """True if warmup period has elapsed and schema is registered."""
-        return self._hp_schema is not None and self._n_cycles > self._warmup
+        return self._hp_schema is not None and self._n_cycles >= self._warmup
 
     @property
     def history(self) -> list:
