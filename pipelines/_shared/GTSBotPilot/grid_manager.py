@@ -29,18 +29,20 @@ class GridManager:
         self.x_threshold: int = config.get('x_threshold', 15)
         self.y_threshold_atr_mult: float = config.get('y_threshold_atr_mult', 0.5)
         self.max_operations: int = config.get('max_operations', 13)
+        self.cycle_cooldown: int = config.get('cycle_cooldown', 30)
         self.adaptive: bool = config.get('adaptive', True)
         self.enabled: bool = config.get('enabled', True)
 
         self._tickets: List[TrackedTicket] = []
         self._candle_index: int = 0
+        self._last_cycle_end_index: int = -9999
         self._current_atr: float = 0.0
         self._current_y_threshold: float = 0.0
         self._current_x_threshold: int = self.x_threshold
 
         self._entries_blocked: int = 0
         self._entries_allowed: int = 0
-        self._blocked_reasons: dict = {'max_ops': 0, 'x_dist': 0, 'y_dist': 0}
+        self._blocked_reasons: dict = {'max_ops': 0, 'x_dist': 0, 'y_dist': 0, 'cooldown': 0}
 
     def update(self, candles: np.ndarray, strategy) -> None:
         """Update state each candle: increment index, compute ATR, sync tickets."""
@@ -108,6 +110,14 @@ class GridManager:
             self._entries_allowed += 1
             return True
 
+        # Cycle cooldown: after a cycle ends, wait before starting a new one
+        if len(self._tickets) == 0:
+            candles_since_cycle_end = self._candle_index - self._last_cycle_end_index
+            if candles_since_cycle_end < self.cycle_cooldown:
+                self._entries_blocked += 1
+                self._blocked_reasons['cooldown'] += 1
+                return False
+
         if len(self._tickets) >= self.max_operations:
             self._entries_blocked += 1
             self._blocked_reasons['max_ops'] += 1
@@ -152,7 +162,8 @@ class GridManager:
         ))
 
     def on_cycle_end(self) -> None:
-        """Clean up tickets on cycle close."""
+        """Clean up tickets on cycle close. Record timestamp for cooldown."""
+        self._last_cycle_end_index = self._candle_index
         self._tickets.clear()
 
     @property
