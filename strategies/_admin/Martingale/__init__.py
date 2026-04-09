@@ -805,9 +805,8 @@ class Martingale(Strategy):
         if adx_val < self.hp.get('adx_threshold', 25):
             return None  # No trend — don't enter
         # Use +DI / -DI for direction
-        plus_di = ta.plus_di(self.candles, period=self.hp.get('adx_period', 14))
-        minus_di = ta.minus_di(self.candles, period=self.hp.get('adx_period', 14))
-        return 'long' if plus_di > minus_di else 'short'
+        di_result = ta.di(self.candles, period=self.hp.get('adx_period', 14))
+        return 'long' if di_result.plus > di_result.minus else 'short'
 
     def _signal_bollinger(self):
         bb = ta.bollinger_bands(self.candles,
