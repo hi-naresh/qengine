@@ -254,65 +254,164 @@ class GTSBotPilot(Pipeline):
                 {'label': f"Grid: {self.grid_manager.stats['total_open']}/{self.grid_manager.max_operations}", 'color': 'surface'},
             ],
             'metric_cards': [
-                {'label': 'Cycles', 'key': 'cycles_completed', 'format': 'integer'},
-                {'label': 'Win Rate', 'key': 'cycles.win_rate', 'format': 'percent'},
-                {'label': 'Block Rate', 'key': 'block_rate', 'format': 'percent'},
-                {'label': 'Basket P&L', 'key': 'basket_manager.basket_pnl', 'format': 'currency'},
-                {'label': 'Max DD', 'key': 'basket_manager.max_drawdown_seen', 'format': 'percent'},
-                {'label': 'Baskets Closed', 'key': 'basket_manager.baskets_closed', 'format': 'integer'},
+                {'icon': 'chart', 'label': 'Cycles', 'key': 'cycles_completed', 'format': 'int'},
+                {'icon': 'shield', 'label': 'Win Rate', 'key': 'cycles.win_rate', 'format': 'pct',
+                 'threshold': [0.5, 0.7]},
+                {'icon': 'block', 'label': 'Block Rate', 'key': 'block_rate', 'format': 'pct',
+                 'sub_template': '{entries_blocked} blocked / {entries_allowed} allowed'},
+                {'icon': 'danger', 'label': 'Avg Danger', 'key': 'danger.mean', 'format': 'dec3',
+                 'threshold_inv': [0.4, 0.6]},
+                {'icon': 'filter', 'label': 'Baskets Closed', 'key': 'basket_manager.baskets_closed', 'format': 'int'},
+                {'icon': 'layers', 'label': 'Protection', 'key': 'protection.total_protection_value', 'format': 'currency',
+                 'prefix': '+', 'color': 'green'},
             ],
             'sections': [
+                # Cycle scatter: danger at entry vs PnL
                 {
                     'type': 'scatter',
-                    'title': 'Cycle Outcomes — Danger vs P&L',
+                    'title': 'Cycle Scatter: Danger at Entry vs PnL',
+                    'subtitle': 'Each dot = one cycle. Color = exit reason, size = level reached',
                     'data_key': 'cycle_outcomes',
-                    'x_field': 'danger_at_entry',
-                    'y_field': 'pnl',
-                    'color_field': 'exit_reason',
-                    'size_field': 'level',
+                    'x_key': 'danger_at_entry', 'x_label': 'Danger at Entry',
+                    'y_key': 'pnl', 'y_label': 'PnL',
+                    'color_key': 'exit_reason',
+                    'size_key': 'level',
+                    'color_map': {
+                        'basket_tp': {'color': '#4ade80', 'label': 'Basket TP'},
+                        'strategy_exit': {'color': '#818cf8', 'label': 'Strategy Exit'},
+                        'emergency_dd': {'color': '#f87171', 'label': 'Emergency DD'},
+                        '_default': {'color': '#64748b', 'label': 'Other'},
+                    },
+                    'ref_lines': [
+                        {'axis': 'y', 'value': 0, 'style': 'dashed', 'color': '#333'},
+                    ],
+                    'summary_stats': [
+                        {'label': 'Correlation', 'compute': 'correlation', 'x': 'danger_at_entry', 'y': 'pnl'},
+                        {'label': 'High-Danger PnL', 'compute': 'sum_filtered', 'key': 'pnl', 'filter': 'danger_at_entry > 0.7'},
+                        {'label': 'Low-Danger PnL', 'compute': 'sum_filtered', 'key': 'pnl', 'filter': 'danger_at_entry <= 0.3'},
+                    ],
                 },
+                # Danger score time-series
                 {
                     'type': 'line_chart',
-                    'title': 'Trend Danger Score',
+                    'title': 'Trend Danger Score (Choppiness)',
+                    'subtitle': 'Higher = choppier market, entries more likely blocked',
+                    'data_key': 'danger_scores',
+                    'show_if': 'danger_scores',
+                    'empty_message': 'No danger data yet — pipeline still warming up.',
                     'series': [
-                        {'data_key': 'danger_scores', 'label': 'Danger', 'color': '#ef4444'},
+                        {'index': 1, 'label': 'Danger', 'color': '#ef4444', 'width': 1.5, 'axis': 'left'},
+                    ],
+                    'x_label': 'Time',
+                },
+                # Per-level performance
+                {
+                    'type': 'bar_breakdown',
+                    'title': 'Per-Level Performance',
+                    'data_key': 'level_performance',
+                    'empty_message': 'No level data recorded yet.',
+                    'label_prefix': 'L',
+                    'label_colors': {
+                        '0': 'green', '1': 'brand', '2': 'brand',
+                        '3': 'amber', '4': 'amber', '5': 'amber',
+                    },
+                },
+                # Trend filter + Grid manager analysis (half-width pair)
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Trend Filter Analysis',
+                    'grid': 'half',
+                    'items': [
+                        {'label': 'Current Trend', 'key': 'trend_filter.current_trend', 'format': 'text'},
+                        {'label': '1st Derivative (d1)', 'key': 'trend_filter.d1', 'format': 'dec4'},
+                        {'label': '2nd Derivative (d2)', 'key': 'trend_filter.d2', 'format': 'dec4'},
+                        {'label': 'Trend Counts', 'template': '<green>{trend_filter.trend_counts.long}</green> long / <red>{trend_filter.trend_counts.short}</red> short / {trend_filter.trend_counts.null} null'},
+                        {'label': 'Block Rate', 'key': 'trend_filter.block_rate', 'format': 'pct'},
                     ],
                 },
                 {
-                    'type': 'exit_reasons',
-                    'title': 'Exit Reason Breakdown',
-                    'data_key': 'cycles.pnl_by_exit',
-                },
-                {
-                    'type': 'bucket_table',
-                    'title': 'Danger Buckets — Win Rate by Risk Level',
-                    'data_key': 'risk_intel.danger_buckets',
-                },
-                {
-                    'type': 'audit_table',
-                    'title': 'Gate Decisions (last 200)',
-                    'data_key': 'gate_decisions',
-                    'columns': ['ts', 'danger', 'threshold', 'allowed', 'outcome_pnl'],
-                },
-                {
                     'type': 'kv_pairs',
-                    'title': 'Trend Filter',
-                    'data_key': 'trend_filter',
+                    'title': 'Grid Manager Analysis',
+                    'grid': 'half',
+                    'items': [
+                        {'label': 'Open Trades', 'template': '{grid_manager.open_long_count} long / {grid_manager.open_short_count} short'},
+                        {'label': 'Current ATR', 'key': 'grid_manager.current_atr', 'format': 'dec4'},
+                        {'label': 'X-Threshold (candles)', 'key': 'grid_manager.current_x_threshold', 'format': 'int'},
+                        {'label': 'Y-Threshold (price)', 'key': 'grid_manager.current_y_threshold', 'format': 'dec4'},
+                        {'label': 'Blocked', 'template': '{grid_manager.blocked_reasons.max_ops} max-ops / {grid_manager.blocked_reasons.x_dist} x-dist / {grid_manager.blocked_reasons.y_dist} y-dist'},
+                    ],
                 },
-                {
-                    'type': 'kv_pairs',
-                    'title': 'Grid Manager',
-                    'data_key': 'grid_manager',
-                },
+                # Basket + Protection (half-width pair)
                 {
                     'type': 'kv_pairs',
                     'title': 'Basket Manager',
-                    'data_key': 'basket_manager',
+                    'grid': 'half',
+                    'items': [
+                        {'label': 'Basket P&L', 'key': 'basket_manager.basket_pnl', 'format': 'currency'},
+                        {'label': 'Target Profit', 'key': 'basket_manager.target_profit', 'format': 'dec4'},
+                        {'label': '% of Target', 'key': 'basket_manager.pnl_pct_of_target', 'format': 'pct'},
+                        {'label': 'Baskets Closed', 'key': 'basket_manager.baskets_closed', 'format': 'int'},
+                        {'label': 'Max DD Seen', 'key': 'basket_manager.max_drawdown_seen', 'format': 'pct', 'color': 'red'},
+                    ],
                 },
                 {
                     'type': 'kv_pairs',
                     'title': 'Protection Value',
-                    'data_key': 'protection',
+                    'grid': 'half',
+                    'items': [
+                        {'label': 'Est. Saved by Blocks', 'key': 'protection.est_pnl_saved_by_blocks', 'format': 'currency', 'prefix': '+', 'color': 'green'},
+                        {'label': 'Saved by Aborts', 'key': 'protection.pnl_saved_by_aborts', 'format': 'currency', 'prefix': '+', 'color': 'green'},
+                        {'label': 'Total Protection', 'key': 'protection.total_protection_value', 'format': 'currency', 'prefix': '+', 'color': 'green'},
+                        {'label': 'Gate Allow Accuracy', 'key': 'gate.allow_accuracy', 'format': 'pct', 'threshold': [0.5, 0.6]},
+                        {'label': 'PnL of Allowed', 'key': 'gate.pnl_of_allowed', 'format': 'currency'},
+                    ],
+                },
+                # Exit reason breakdown
+                {
+                    'type': 'exit_reasons',
+                    'title': 'Exit Reason Breakdown',
+                    'data_key': 'cycles.pnl_by_exit',
+                    'show_if': 'cycles.pnl_by_exit',
+                },
+                # Danger buckets
+                {
+                    'type': 'bucket_table',
+                    'title': 'Risk Intelligence: Danger Buckets',
+                    'data_key': 'risk_intel.danger_buckets',
+                    'show_if': 'risk_intel.danger_buckets',
+                    'bucket_colors': {
+                        'extreme': 'red', 'high': 'orange', 'medium': 'amber',
+                        'low': 'green', 'very_low': 'green-light',
+                    },
+                },
+                # Gate decision audit table
+                {
+                    'type': 'audit_table',
+                    'title': 'Decision Audit Log',
+                    'subtitle': 'Gate decisions with outcome linkage',
+                    'sources': [
+                        {
+                            'data_key': 'gate_decisions',
+                            'type_label': 'gate',
+                            'type_color': 'blue',
+                            'map': {
+                                'ts': 'ts', 'danger': 'danger', 'threshold': 'threshold',
+                                'decision': {'key': 'allowed', 'true': 'ALLOWED', 'false': 'BLOCKED'},
+                                'outcome_pnl': 'outcome_pnl',
+                            },
+                        },
+                    ],
+                    'columns': [
+                        {'key': 'ts', 'label': 'Time', 'sortable': True, 'format': 'datetime'},
+                        {'key': 'type', 'label': 'Type', 'format': 'badge'},
+                        {'key': 'danger', 'label': 'Danger', 'sortable': True, 'format': 'dec3',
+                         'color_thresholds': {'red': 0.7, 'amber': 0.5, 'green': 0}},
+                        {'key': 'decision', 'label': 'Decision', 'format': 'badge',
+                         'color_map': {'ALLOWED': 'green', 'BLOCKED': 'red'}},
+                        {'key': 'outcome_pnl', 'label': 'Outcome PnL', 'sortable': True, 'format': 'currency_signed',
+                         'color_thresholds': {'green': 0.01, 'red': -999999}},
+                    ],
+                    'max_rows': 200,
                 },
             ],
         }
