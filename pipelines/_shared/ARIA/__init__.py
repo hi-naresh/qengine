@@ -28,6 +28,7 @@ from .hp_engine import HPEngine
 from .risk_shield import RiskShield
 from .observer import Observer
 from .meta_evaluator import MetaEvaluator
+from .shadow_tracker import ShadowTracker
 from .config import default_config
 
 _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
@@ -108,6 +109,12 @@ class ARIAPipeline(Pipeline):
         })
         self._meta_enabled = cfg.get('meta_enabled', True)
 
+        # Shadow tracker — counterfactual analysis
+        self._shadow = ShadowTracker({
+            'track_bars': cfg.get('shadow_track_bars', 500),
+            'max_pending': cfg.get('shadow_max_pending', 20),
+        })
+
         # Stats tracking (reuses existing PipelineStats)
         self._stats = PipelineStats()
         self._stats.config_snapshot = cfg
@@ -156,6 +163,9 @@ class ARIAPipeline(Pipeline):
                 self._hp_engine.inject_hp(strategy, self._hp_selection)
             self._hp_selected_this_cycle = True
 
+        # Update shadow tracker — monitor pending counterfactual sessions
+        self._shadow.update(strategy)
+
         # Record danger for time-series charting
         ts = strategy.candles[-1][0] if strategy.candles is not None and len(strategy.candles) > 0 else 0
         danger = self._market_state.get('danger', 0.5)
@@ -182,6 +192,15 @@ class ARIAPipeline(Pipeline):
             threshold = None
 
         self._stats.record_gate(ts, danger, allowed=allowed, threshold=threshold)
+
+        # Shadow tracking: record blocked entries for counterfactual analysis
+        if not allowed:
+            self._shadow.on_gate_block(
+                strategy, self._market_state,
+                gate_confidence=self._gate_confidence,
+                hp_snapshot=self._hp_selection,
+            )
+
         return allowed
 
     # ── Position Management ──
@@ -193,7 +212,14 @@ class ARIAPipeline(Pipeline):
 
         result = self._shield.check(strategy, self._market_state)
         if result is not None:
-            # Record abort decision
+            # Shadow tracking: record abort for counterfactual analysis
+            self._shadow.on_abort(
+                strategy, self._market_state,
+                abort_reason=result.get('reason', ''),
+                hp_snapshot=self._hp_selection,
+            )
+
+            # Record abort decision in stats
             sv = getattr(strategy, 'vars', {})
             level = int(sv.get('level', 0))
             ts = strategy.candles[-1][0] if strategy.candles is not None and len(strategy.candles) > 0 else 0
@@ -371,6 +397,9 @@ class ARIAPipeline(Pipeline):
             'score_series': [[i, round(s, 4)] for i, s in enumerate(score_history[-500:])],
         }
 
+        # ── Shadow tracker (counterfactual analysis) ──
+        stats['shadows'] = self._shadow.get_shadow_stats()
+
         # ── UI metadata for frontend rendering ──
         stats['_ui'] = self.ui_metadata()
 
@@ -448,6 +477,7 @@ class ARIAPipeline(Pipeline):
                     'score_observations': len(self._meta.score_history),
                 },
             },
+            'shadows': self._shadow.get_shadow_stats(),
             'risk_intel': stats.get('risk_intel', {}),
             'level_performance': stats.get('level_performance', {}),
             'exit_breakdown': stats.get('cycles', {}).get('pnl_by_exit', {}),
@@ -466,6 +496,7 @@ class ARIAPipeline(Pipeline):
             'shield': self._shield.state_dict(),
             'observer': self._observer.state_dict(),
             'meta': self._meta.state_dict(),
+            'shadow': self._shadow.state_dict(),
         }
         with open(os.path.join(path, 'aria_state.json'), 'w') as f:
             json.dump(state, f, default=_json_default)
@@ -489,6 +520,8 @@ class ARIAPipeline(Pipeline):
             self._observer.load_state_dict(state['observer'])
         if 'meta' in state:
             self._meta.load_state_dict(state['meta'])
+        if 'shadow' in state:
+            self._shadow.load_state_dict(state['shadow'])
 
     @classmethod
     def default_config(cls) -> dict:
@@ -767,6 +800,26 @@ class ARIAPipeline(Pipeline):
                          'match': {'type': 'abort', 'decision': 'continue'}},
                     ],
                     'max_rows': 200,
+                },
+                # ── Shadow / Counterfactual Analysis ──
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Shadow Sessions (Counterfactual Analysis)',
+                    'show_if': 'shadows.total_shadows',
+                    'items': [
+                        {'label': 'Total Shadows', 'key': 'shadows.total_shadows', 'format': 'int'},
+                        {'label': 'Gate Blocks Tracked', 'key': 'shadows.gate_block_shadows', 'format': 'int'},
+                        {'label': 'Gate Block Accuracy',
+                         'template': '<green>{shadows.gate_correct_blocks}</green> correct / <red>{shadows.gate_wrong_blocks}</red> wrong'},
+                        {'label': 'Aborts Tracked', 'key': 'shadows.abort_shadows', 'format': 'int'},
+                        {'label': 'Abort Accuracy',
+                         'template': '<green>{shadows.abort_correct}</green> correct / <red>{shadows.abort_wrong}</red> wrong'},
+                        {'label': 'Phantom PnL Saved', 'key': 'shadows.phantom_pnl_saved',
+                         'format': 'currency', 'prefix': '+', 'color': 'green'},
+                        {'label': 'Would TP / Would Bust / Inconclusive',
+                         'template': '<green>{shadows.outcomes.would_tp}</green> / <red>{shadows.outcomes.would_bust}</red> / {shadows.outcomes.inconclusive}'},
+                        {'label': 'Pending Shadows', 'key': 'shadows.pending', 'format': 'int'},
+                    ],
                 },
                 # ── Exit reason breakdown ──
                 {
