@@ -42,6 +42,10 @@ class GTSBotPilot(Pipeline):
         # Stats — per-cycle outcome tracking for Pipeline Intelligence UI
         self._stats = PipelineStats(config_snapshot=self.cfg)
 
+        # A/B comparison: capture strategy's original/default HPs on first call
+        self._strategy_original_hp: Optional[dict] = None
+        self._strategy_preset: Optional[str] = None
+
         # Runtime
         self._candle_count: int = 0
         self._last_recorded_session: Optional[int] = None
@@ -53,6 +57,10 @@ class GTSBotPilot(Pipeline):
     def on_before(self, strategy) -> None:
         """Called every candle. Update all 3 layers."""
         self._candle_count += 1
+
+        # Capture strategy's original HPs once (for A/B comparison)
+        if self._strategy_original_hp is None:
+            self._capture_strategy_hp(strategy)
 
         candles = getattr(strategy, 'candles', None)
         if candles is None or len(candles) < self.cfg['warmup']:
@@ -197,6 +205,67 @@ class GTSBotPilot(Pipeline):
         self.grid_manager.on_cycle_end()
         self.basket_manager.on_cycle_end()
 
+    # ── A/B Comparison ────────────────────────────────────────────
+
+    def _capture_strategy_hp(self, strategy) -> None:
+        """Snapshot strategy's original preset and HPs before pipeline modifies anything."""
+        self._strategy_preset = getattr(strategy, 'preset', None) or getattr(strategy, '_preset', 'unknown')
+
+        # Get HPs from strategy.hp dict (the live HP values)
+        hp = getattr(strategy, 'hp', None)
+        if hp and isinstance(hp, dict):
+            self._strategy_original_hp = {k: v for k, v in hp.items()}
+        else:
+            self._strategy_original_hp = {}
+
+        # Also capture hyperparameters() definition if available
+        hp_defs = getattr(strategy, 'hyperparameters', None)
+        if callable(hp_defs):
+            try:
+                defs = hp_defs()
+                # Extract just the defaults from the definitions
+                for d in defs:
+                    name = d.get('name', '')
+                    if name and name not in self._strategy_original_hp:
+                        self._strategy_original_hp[name] = d.get('default')
+            except Exception:
+                pass
+
+    def _build_ab_comparison(self) -> dict:
+        """Build A/B comparison data: original preset vs pipeline-enhanced run."""
+        outcomes = self._stats.cycle_outcomes
+        if not outcomes:
+            return {}
+
+        wins = [c for c in outcomes if c['pnl'] > 0]
+        losses = [c for c in outcomes if c['pnl'] <= 0]
+        total_pnl = sum(c['pnl'] for c in outcomes)
+        total_wins_pnl = sum(c['pnl'] for c in wins)
+        total_loss_pnl = sum(c['pnl'] for c in losses)
+
+        return {
+            'strategy_preset': self._strategy_preset,
+            'strategy_original_hp': self._strategy_original_hp or {},
+            'pipeline_config': self.cfg,
+            'pipeline_results': {
+                'total_cycles': len(outcomes),
+                'wins': len(wins),
+                'losses': len(losses),
+                'win_rate': round(len(wins) / len(outcomes), 4) if outcomes else 0,
+                'total_pnl': round(total_pnl, 4),
+                'avg_pnl': round(total_pnl / len(outcomes), 4) if outcomes else 0,
+                'avg_win': round(total_wins_pnl / len(wins), 4) if wins else 0,
+                'avg_loss': round(total_loss_pnl / len(losses), 4) if losses else 0,
+                'profit_factor': round(total_wins_pnl / abs(total_loss_pnl), 4) if total_loss_pnl != 0 else float('inf'),
+                'entries_blocked': self._stats.entries_blocked,
+                'entries_allowed': self._stats.entries_allowed,
+                'block_rate': round(self._stats.entries_blocked / max(self._stats.total_gate_checks, 1), 4),
+                'max_drawdown': round(self.basket_manager._max_drawdown_seen, 4),
+                'baskets_closed': self.basket_manager._baskets_closed,
+                'loss_cutoffs': self.basket_manager._loss_cutoffs,
+            },
+        }
+
     # ── Stats & Metadata ─────────────────────────────────────────
 
     def get_stats(self) -> dict:
@@ -208,6 +277,10 @@ class GTSBotPilot(Pipeline):
         stats['trend_filter'] = self.trend_filter.stats
         stats['grid_manager'] = self.grid_manager.stats
         stats['basket_manager'] = self.basket_manager.stats
+
+        # A/B comparison: strategy original vs pipeline-enhanced
+        stats['ab_comparison'] = self._build_ab_comparison()
+
         stats['_ui'] = self.ui_metadata()
         return stats
 
@@ -268,6 +341,36 @@ class GTSBotPilot(Pipeline):
                  'prefix': '+', 'color': 'green'},
             ],
             'sections': [
+                # A/B comparison: strategy original preset vs pipeline
+                {
+                    'type': 'kv_pairs',
+                    'title': 'A/B Comparison — Strategy Original Preset',
+                    'show_if': 'ab_comparison.strategy_preset',
+                    'grid': 'half',
+                    'items': [
+                        {'label': 'Strategy Preset', 'key': 'ab_comparison.strategy_preset', 'format': 'text'},
+                        {'label': 'Hedge Distance', 'key': 'ab_comparison.strategy_original_hp.hedge_distance', 'format': 'dec4'},
+                        {'label': 'TP Distance', 'key': 'ab_comparison.strategy_original_hp.tp_distance', 'format': 'dec4'},
+                        {'label': 'Max Levels', 'key': 'ab_comparison.strategy_original_hp.max_levels', 'format': 'int'},
+                        {'label': 'Sizing Curve', 'key': 'ab_comparison.strategy_original_hp.sizing_curve', 'format': 'text'},
+                        {'label': 'Entry Signal', 'key': 'ab_comparison.strategy_original_hp.signal_mode', 'format': 'text'},
+                    ],
+                },
+                {
+                    'type': 'kv_pairs',
+                    'title': 'A/B Comparison — Pipeline Results',
+                    'show_if': 'ab_comparison.pipeline_results',
+                    'grid': 'half',
+                    'items': [
+                        {'label': 'Win Rate', 'key': 'ab_comparison.pipeline_results.win_rate', 'format': 'pct',
+                         'threshold': [0.5, 0.7]},
+                        {'label': 'Total PnL', 'key': 'ab_comparison.pipeline_results.total_pnl', 'format': 'currency'},
+                        {'label': 'Profit Factor', 'key': 'ab_comparison.pipeline_results.profit_factor', 'format': 'dec3'},
+                        {'label': 'Entries Blocked', 'template': '<red>{ab_comparison.pipeline_results.entries_blocked}</red> / {ab_comparison.pipeline_results.entries_allowed} allowed ({ab_comparison.pipeline_results.block_rate:.1f}%)'},
+                        {'label': 'Max Drawdown', 'key': 'ab_comparison.pipeline_results.max_drawdown', 'format': 'pct', 'color': 'red'},
+                        {'label': 'Loss Cutoffs', 'key': 'ab_comparison.pipeline_results.loss_cutoffs', 'format': 'int', 'color': 'red'},
+                    ],
+                },
                 # Cycle scatter: danger at entry vs PnL
                 {
                     'type': 'scatter',
