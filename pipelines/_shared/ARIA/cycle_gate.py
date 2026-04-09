@@ -36,8 +36,8 @@ import numpy as np
 _N_FEATURES = 17          # 4 market + 5 regime + 3 account + 4 session + 1 bias
 _K_MAX_DEFAULT = 5        # max regime clusters (one-hot width)
 _SESSION_NAMES = ('asian', 'london', 'overlap', 'new_york')
-_MAX_THRESHOLD = 0.4      # ceiling for adaptive threshold
-_THRESHOLD_RAMP = 0.01    # threshold increment per cycle after warmup
+_MAX_THRESHOLD = 0.5      # ceiling for adaptive threshold
+_THRESHOLD_RAMP = 0.02    # threshold increment per cycle after warmup
 
 
 # ---------------------------------------------------------------------------

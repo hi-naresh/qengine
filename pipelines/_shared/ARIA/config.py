@@ -13,7 +13,7 @@ def default_config() -> dict:
         # Layer 2 — CycleGate
         'gate_enabled': True,
         'gate_warmup_cycles': 5,
-        'gate_learning_rate': 0.01,
+        'gate_learning_rate': 0.05,
         'gate_threshold': 0.0,
 
         # Layer 3 — HPEngine

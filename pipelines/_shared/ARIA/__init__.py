@@ -33,6 +33,18 @@ from .config import default_config
 _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 
 
+def _json_default(obj):
+    """Handle numpy types during JSON serialization."""
+    import numpy as np
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+
+
 class ARIAPipeline(Pipeline):
     """
     ARIA — wraps any strategy with 6 intelligence layers.
@@ -456,7 +468,7 @@ class ARIAPipeline(Pipeline):
             'meta': self._meta.state_dict(),
         }
         with open(os.path.join(path, 'aria_state.json'), 'w') as f:
-            json.dump(state, f)
+            json.dump(state, f, default=_json_default)
 
     def load_state(self, path: str) -> None:
         """Restore all layer state from disk."""
