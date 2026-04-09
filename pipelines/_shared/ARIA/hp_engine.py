@@ -187,12 +187,27 @@ def _check_dependency(hp_def: dict, full_config: dict) -> bool:
     If the HP has no dependency, it is always valid.  Otherwise, for each
     parent param in ``depends_on``, the current config must have one of
     the allowed values.
+
+    Dependencies on ``preset`` are always skipped — ARIA forces
+    preset='custom' and controls all params directly.
+
+    Dependencies on params NOT present in ``full_config`` are also
+    skipped — the strategy already has a valid value for the parent,
+    and the bandit only selected params for its own group.
     """
     deps = hp_def.get('depends_on')
     if not deps:
         return True
     for parent_name, allowed_values in deps.items():
-        current = full_config.get(parent_name)
+        # Skip preset dependency — ARIA overrides it
+        if parent_name == 'preset':
+            continue
+        # Skip dependencies on params not in the selection — the parent
+        # was selected by a different group's bandit and already set
+        # on strategy.hp; we only check intra-selection consistency.
+        if parent_name not in full_config:
+            continue
+        current = full_config[parent_name]
         if current not in allowed_values:
             return False
     return True
