@@ -25,7 +25,7 @@ import numba
 import matplotlib.pyplot as plt
 
 from qengine.framework.components.island_evolver import (
-    IslandEvolver, Genome, GENE_BOUNDS,
+    IslandEvolver, Genome, GENE_BOUNDS, build_gene_bounds_from_strategy,
 )
 from qengine.framework.components.regime_tree import RegimeTree
 from qengine.framework.components.feature_selector import (
@@ -34,6 +34,21 @@ from qengine.framework.components.feature_selector import (
 import qengine.indicators as ta
 
 log = get_logger('41_island_evolution')
+
+# Discover strategy HP for expanded genome
+# Import the target strategy to read its hyperparameters()
+def _get_strategy_gene_bounds():
+    """Load strategy class and build expanded gene bounds from its HP spec."""
+    try:
+        from strategies._admin.Martingale import Martingale
+        s = Martingale.__new__(Martingale)
+        s.hp = {}
+        bounds = build_gene_bounds_from_strategy(s)
+        log.info(f"Discovered {len(bounds)} genes ({len(bounds) - len(GENE_BOUNDS)} from strategy)")
+        return bounds
+    except Exception as e:
+        log.info(f"Could not load strategy HP (using pipeline-only genes): {e}")
+        return dict(GENE_BOUNDS)
 
 # ── configuration ────────────────────────────────────────────────────────────
 
@@ -465,8 +480,9 @@ def main():
         if len(active_members) >= 2:
             filtered_siblings[gname] = active_members
 
-    # 8. Create IslandEvolver
-    log.info("Initialising IslandEvolver...")
+    # 8. Create IslandEvolver with expanded gene bounds (pipeline + strategy HP)
+    expanded_bounds = _get_strategy_gene_bounds()
+    log.info(f"Initialising IslandEvolver with {len(expanded_bounds)} genes...")
     evolver = IslandEvolver(
         leaf_ids=active_ids,
         config={
@@ -479,6 +495,7 @@ def main():
             'tournament_k': 3,
         },
         sibling_groups=filtered_siblings,
+        gene_bounds=expanded_bounds,
     )
 
     # 9. Build per-island fitness functions

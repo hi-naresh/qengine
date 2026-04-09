@@ -49,7 +49,7 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
     except Exception:
         return bounds
 
-    _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
+    _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit', 'Entry Signal'}
 
     for spec in hp_list:
         if not isinstance(spec, dict) or 'name' not in spec:
@@ -93,11 +93,12 @@ class Genome:
     # -- factory -----------------------------------------------------------
 
     @classmethod
-    def random(cls, seed: Optional[int] = None) -> "Genome":
+    def random(cls, seed: Optional[int] = None, bounds: Optional[Dict] = None) -> "Genome":
         """Create a genome with uniformly random genes within bounds."""
+        _bounds = bounds or GENE_BOUNDS
         rng = np.random.RandomState(seed)
         genes: Dict[str, Any] = {}
-        for name, (lo, hi, dtype) in GENE_BOUNDS.items():
+        for name, (lo, hi, dtype) in _bounds.items():
             if dtype is int:
                 genes[name] = int(rng.randint(lo, hi + 1))
             else:
@@ -107,23 +108,27 @@ class Genome:
 
     # -- operators ---------------------------------------------------------
 
-    def crossover(self, other: "Genome", seed: Optional[int] = None) -> "Genome":
+    def crossover(self, other: "Genome", seed: Optional[int] = None, bounds: Optional[Dict] = None) -> "Genome":
         """Uniform crossover — each gene picked from self or other with 50% probability."""
+        _bounds = bounds or GENE_BOUNDS
         rng = np.random.RandomState(seed)
         child_genes: Dict[str, Any] = {}
-        for name in GENE_BOUNDS:
-            if rng.rand() < 0.5:
+        for name in _bounds:
+            if name in self.genes and name in other.genes:
+                child_genes[name] = self.genes[name] if rng.rand() < 0.5 else other.genes[name]
+            elif name in self.genes:
                 child_genes[name] = self.genes[name]
-            else:
+            elif name in other.genes:
                 child_genes[name] = other.genes[name]
         return Genome(child_genes)
 
-    def mutate(self, sigma_pct: float = 0.05, seed: Optional[int] = None) -> "Genome":
+    def mutate(self, sigma_pct: float = 0.05, seed: Optional[int] = None, bounds: Optional[Dict] = None) -> "Genome":
         """Gaussian mutation — perturb each gene by sigma_pct of its range, clamped."""
+        _bounds = bounds or GENE_BOUNDS
         rng = np.random.RandomState(seed)
         new_genes: Dict[str, Any] = {}
-        for name, (lo, hi, dtype) in GENE_BOUNDS.items():
-            val = self.genes[name]
+        for name, (lo, hi, dtype) in _bounds.items():
+            val = self.genes.get(name, (lo + hi) / 2)
             spread = (hi - lo) * sigma_pct
             perturbed = val + rng.randn() * spread
             perturbed = max(lo, min(hi, perturbed))
@@ -145,19 +150,18 @@ class Genome:
         return {"id": self.id, "genes": d, "fitness": self.fitness}
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Genome":
-        """Deserialise genome. Handles both old (11-gene) and new (6-gene) formats."""
+    @classmethod
+    def from_dict(cls, d: dict, bounds: Optional[Dict] = None) -> "Genome":
+        """Deserialise genome. Accepts any gene set — missing genes filled from bounds."""
+        _bounds = bounds or GENE_BOUNDS
         raw = d.get("genes", d)
-        if isinstance(raw, dict):
-            genes = dict(raw)
-        else:
-            genes = {}
-        # Only keep genes that are in GENE_BOUNDS (ignore legacy strategy params)
-        filtered = {k: v for k, v in genes.items() if k in GENE_BOUNDS}
+        genes = dict(raw) if isinstance(raw, dict) else {}
+        # Keep all genes that are in bounds
+        filtered = {k: v for k, v in genes.items() if k in _bounds}
         # Fill missing genes with midpoint defaults
-        for name, (lo, hi, dtype) in GENE_BOUNDS.items():
+        for name, (lo, hi, dtype) in _bounds.items():
             if name not in filtered:
-                filtered[name] = (lo + hi) / 2 if dtype == float else (lo + hi) // 2
+                filtered[name] = (lo + hi) / 2 if dtype is float else (lo + hi) // 2
         g = cls(filtered)
         g.id = d.get("id", uuid.uuid4().hex[:8])
         g.fitness = d.get("fitness")
@@ -174,13 +178,15 @@ class Genome:
 class Population:
     """A single island population with tournament selection and elitism."""
 
-    def __init__(self, island_id: str, size: int = 30, seed: Optional[int] = None):
+    def __init__(self, island_id: str, size: int = 30, seed: Optional[int] = None,
+                 gene_bounds: Optional[Dict] = None):
         self.island_id = island_id
         self.size = size
         self._seed = seed
+        self.gene_bounds = gene_bounds or GENE_BOUNDS
         rng = np.random.RandomState(seed)
         self.individuals: List[Genome] = [
-            Genome.random(seed=int(rng.randint(0, 2**31)))
+            Genome.random(seed=int(rng.randint(0, 2**31)), bounds=self.gene_bounds)
             for _ in range(size)
         ]
 
@@ -223,11 +229,11 @@ class Population:
             p1 = _tournament()
             if rng.rand() < crossover_rate:
                 p2 = _tournament()
-                child = p1.crossover(p2, seed=int(rng.randint(0, 2**31)))
+                child = p1.crossover(p2, seed=int(rng.randint(0, 2**31)), bounds=self.gene_bounds)
             else:
                 child = Genome(dict(p1.genes))
             if rng.rand() < mutation_rate:
-                child = child.mutate(sigma_pct=mutation_sigma, seed=int(rng.randint(0, 2**31)))
+                child = child.mutate(sigma_pct=mutation_sigma, seed=int(rng.randint(0, 2**31)), bounds=self.gene_bounds)
             offspring.append(child)
 
         self.individuals = offspring[:n]
@@ -256,6 +262,7 @@ class IslandEvolver:
         leaf_ids: List[str],
         config: Optional[dict] = None,
         sibling_groups: Optional[Dict[str, List[str]]] = None,
+        gene_bounds: Optional[Dict] = None,
     ):
         config = config or {}
         pop_size = config.get("pop_size", 30)
@@ -264,6 +271,7 @@ class IslandEvolver:
         self.leaf_ids = list(leaf_ids)
         self.config = config
         self.sibling_groups = sibling_groups or {}
+        self.gene_bounds = gene_bounds or GENE_BOUNDS
         self.populations: Dict[str, Population] = {}
         self.migration_log: List[dict] = []
         self.outcome_log: List[dict] = []
@@ -273,6 +281,7 @@ class IslandEvolver:
             self.populations[lid] = Population(
                 island_id=lid,
                 size=pop_size,
+                gene_bounds=self.gene_bounds,
                 seed=int(rng.randint(0, 2**31)),
             )
 
@@ -361,9 +370,9 @@ class IslandEvolver:
         """Return gene-diversity stats per island (std of each gene)."""
         stats = {}
         for lid, pop in self.populations.items():
-            gene_arrays: Dict[str, list] = {name: [] for name in GENE_BOUNDS}
+            gene_arrays: Dict[str, list] = {name: [] for name in self.gene_bounds}
             for ind in pop.individuals:
-                for name in GENE_BOUNDS:
+                for name in self.gene_bounds:
                     gene_arrays[name].append(ind.genes[name])
             stats[lid] = {
                 name: float(np.std(vals)) if vals else 0.0
@@ -375,10 +384,16 @@ class IslandEvolver:
 
     def save(self, path: str) -> None:
         """Save evolver state to JSON."""
+        # Serialize gene_bounds for reload
+        serialized_bounds = {
+            name: [lo, hi, dtype.__name__]
+            for name, (lo, hi, dtype) in self.gene_bounds.items()
+        }
         data = {
             "leaf_ids": self.leaf_ids,
             "config": self.config,
             "sibling_groups": self.sibling_groups,
+            "gene_bounds": serialized_bounds,
             "migration_log": self.migration_log,
             "outcome_log": self.outcome_log,
             "populations": {},
@@ -395,12 +410,25 @@ class IslandEvolver:
     @classmethod
     def load(cls, path: str) -> "IslandEvolver":
         """Load evolver state from JSON."""
+        _TYPE_MAP = {"int": int, "float": float}
         with open(path) as f:
             data = json.load(f)
+
+        # Restore gene_bounds
+        raw_bounds = data.get("gene_bounds", {})
+        if raw_bounds:
+            gene_bounds = {
+                name: (vals[0], vals[1], _TYPE_MAP.get(vals[2], float))
+                for name, vals in raw_bounds.items()
+            }
+        else:
+            gene_bounds = dict(GENE_BOUNDS)
+
         evolver = cls.__new__(cls)
         evolver.leaf_ids = data["leaf_ids"]
         evolver.config = data["config"]
         evolver.sibling_groups = data.get("sibling_groups", {})
+        evolver.gene_bounds = gene_bounds
         evolver.migration_log = data.get("migration_log", [])
         evolver.outcome_log = data.get("outcome_log", [])
         evolver.populations = {}
@@ -409,6 +437,7 @@ class IslandEvolver:
             pop.island_id = pdata["island_id"]
             pop.size = pdata["size"]
             pop._seed = None
-            pop.individuals = [Genome.from_dict(gd) for gd in pdata["individuals"]]
+            pop.gene_bounds = gene_bounds
+            pop.individuals = [Genome.from_dict(gd, bounds=gene_bounds) for gd in pdata["individuals"]]
             evolver.populations[lid] = pop
         return evolver

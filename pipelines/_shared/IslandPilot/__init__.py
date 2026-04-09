@@ -575,7 +575,7 @@ class IslandPilot(Pipeline):
 
         # Groups the pipeline is allowed to tune (structural + sizing)
         # Entry signals, filters, risk mgmt are left to the user
-        _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
+        _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit', 'Entry Signal'}
 
         hp = strategy.hp
         for hp_name, spec in self._hp_spec.items():
