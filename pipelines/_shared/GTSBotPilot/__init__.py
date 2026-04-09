@@ -14,9 +14,10 @@ import os
 from typing import Optional
 
 from qengine.framework.base import Pipeline, OrderIntent
+from qengine.framework.stats import PipelineStats
 
 from .config import merge_config, DEFAULT_CONFIG
-from .trend_filter import TrendFilter
+from .trend_filter import TrendFilter, TREND_LONG, TREND_SHORT, TREND_NULL
 from .grid_manager import GridManager
 from .basket_manager import BasketManager
 
@@ -38,9 +39,14 @@ class GTSBotPilot(Pipeline):
         self.grid_manager = GridManager(self.cfg['grid_manager'])
         self.basket_manager = BasketManager(self.cfg['basket_manager'])
 
+        # Stats — per-cycle outcome tracking for Pipeline Intelligence UI
+        self._stats = PipelineStats(config_snapshot=self.cfg)
+
         # Runtime
         self._candle_count: int = 0
         self._last_recorded_session: Optional[int] = None
+        self._trend_at_entry: str = TREND_NULL
+        self._cycle_start_index: int = 0
 
     # ── Observation Phase ─────────────────────────────────────────
 
@@ -64,6 +70,19 @@ class GTSBotPilot(Pipeline):
         # Layer 3: basket P&L update
         self.basket_manager.update(tail, strategy)
 
+        # Record trend strength as danger-like score for charting
+        # Map: null=0.5 (neutral), long/short confirmed=low danger, choppy=high
+        ts = candles[-1, 0] if len(candles) > 0 else 0
+        if self.trend_filter.current_trend == TREND_NULL:
+            danger = 0.7  # choppy = risky
+        else:
+            # Stronger trend = lower danger; scale by delta threshold
+            d1_abs = abs(self.trend_filter.d1)
+            delta = self.trend_filter.delta
+            strength = min(d1_abs / (delta * 5), 1.0) if delta > 0 else 0.5
+            danger = max(0.05, 0.5 - strength * 0.45)
+        self._stats.record_danger(ts, danger)
+
     # ── Entry Control Phase ───────────────────────────────────────
 
     def gate_entry(self, strategy) -> bool:
@@ -72,14 +91,21 @@ class GTSBotPilot(Pipeline):
         if self._candle_count < self.cfg['warmup']:
             return True
 
+        candles = getattr(strategy, 'candles', None)
+        ts = candles[-1, 0] if candles is not None and len(candles) > 0 else 0
+        danger = self._stats.danger_scores[-1][1] if self._stats.danger_scores else 0.5
+
         # Layer 1: trend must be confirmed and match direction
         if not self.trend_filter.should_allow_entry(strategy):
+            self._stats.record_gate(ts, danger, allowed=False, threshold=0.5)
             return False
 
         # Layer 2: grid spacing must be satisfied
         if not self.grid_manager.should_allow_entry(strategy):
+            self._stats.record_gate(ts, danger, allowed=False, threshold=0.5)
             return False
 
+        self._stats.record_gate(ts, danger, allowed=True, threshold=0.5)
         return True
 
     # ── Order Control Phase ───────────────────────────────────────
@@ -106,20 +132,65 @@ class GTSBotPilot(Pipeline):
         if self._candle_count < self.cfg['warmup']:
             return None
 
-        return self.basket_manager.should_close_basket()
+        result = self.basket_manager.should_close_basket()
+        if result is not None:
+            candles = getattr(strategy, 'candles', None)
+            ts = candles[-1, 0] if candles is not None and len(candles) > 0 else 0
+            self._stats.record_exit_suggestion(ts, result['action'], {
+                'basket_pnl': self.basket_manager._basket_pnl,
+                'target': self.basket_manager._target_profit,
+            })
+        return result
 
     # ── Lifecycle Events ──────────────────────────────────────────
 
     def on_open_position(self, strategy) -> None:
-        """Track new position in grid manager."""
+        """Track new position in grid manager. Snapshot entry state for cycle tracking."""
         self.grid_manager.on_open_position(strategy)
 
+        # Snapshot for cycle outcome
+        self._trend_at_entry = self.trend_filter.current_trend
+        self._cycle_start_index = self._candle_count
+        danger = self._stats.danger_scores[-1][1] if self._stats.danger_scores else 0.5
+        candles = getattr(strategy, 'candles', None)
+        ts = candles[-1, 0] if candles is not None and len(candles) > 0 else 0
+        self._stats.start_cycle(ts, danger)
+
     def on_cycle_end(self, pnl: float, strategy) -> None:
-        """Clean up on cycle close. Deduplicate via session_number."""
+        """Record cycle outcome and clean up. Deduplicate via session_number."""
         sn = getattr(strategy, 'vars', {}).get('session_number')
         if sn is not None and sn == self._last_recorded_session:
             return
         self._last_recorded_session = sn
+
+        # Determine exit reason
+        if self.basket_manager._baskets_closed > 0 and self.basket_manager._basket_pnl >= self.basket_manager._target_profit:
+            exit_reason = 'basket_tp'
+        elif self.basket_manager._emergency_closes > 0:
+            exit_reason = 'emergency_dd'
+        else:
+            exit_reason = 'strategy_exit'
+
+        # Record cycle outcome with full metadata
+        level = getattr(strategy, 'vars', {}).get('level', 0)
+        duration = self._candle_count - self._cycle_start_index
+        danger_now = self._stats.danger_scores[-1][1] if self._stats.danger_scores else None
+
+        self._stats.end_cycle(
+            pnl=pnl,
+            exit_reason=exit_reason,
+            level=level,
+            danger_at_exit=danger_now,
+            duration_bars=duration,
+            session_number=sn,
+            hp_snapshot={
+                'trend_at_entry': self._trend_at_entry,
+                'trend_at_exit': self.trend_filter.current_trend,
+                'grid_open_at_exit': len(self.grid_manager._tickets),
+                'basket_pnl': round(self.basket_manager._basket_pnl, 4),
+                'atr': round(self.grid_manager._current_atr, 6),
+            },
+        )
 
         self.grid_manager.on_cycle_end()
         self.basket_manager.on_cycle_end()
@@ -127,13 +198,16 @@ class GTSBotPilot(Pipeline):
     # ── Stats & Metadata ─────────────────────────────────────────
 
     def get_stats(self) -> dict:
-        return {
-            'candle_count': self._candle_count,
-            'trend_filter': self.trend_filter.stats,
-            'grid_manager': self.grid_manager.stats,
-            'basket_manager': self.basket_manager.stats,
-            '_ui': self.ui_metadata(),
-        }
+        # Merge PipelineStats analytics (cycle_outcomes, gate, danger, etc.)
+        stats = self._stats.to_dict()
+
+        # Add layer-specific stats
+        stats['candle_count'] = self._candle_count
+        stats['trend_filter'] = self.trend_filter.stats
+        stats['grid_manager'] = self.grid_manager.stats
+        stats['basket_manager'] = self.basket_manager.stats
+        stats['_ui'] = self.ui_metadata()
+        return stats
 
     @classmethod
     def default_config(cls) -> dict:
@@ -180,14 +254,46 @@ class GTSBotPilot(Pipeline):
                 {'label': f"Grid: {self.grid_manager.stats['total_open']}/{self.grid_manager.max_operations}", 'color': 'surface'},
             ],
             'metric_cards': [
-                {'label': 'Trend', 'key': 'trend_filter.current_trend', 'format': 'text'},
+                {'label': 'Cycles', 'key': 'cycles_completed', 'format': 'integer'},
+                {'label': 'Win Rate', 'key': 'cycles.win_rate', 'format': 'percent'},
+                {'label': 'Block Rate', 'key': 'block_rate', 'format': 'percent'},
                 {'label': 'Basket P&L', 'key': 'basket_manager.basket_pnl', 'format': 'currency'},
-                {'label': 'Target', 'key': 'basket_manager.target_profit', 'format': 'currency'},
-                {'label': 'Open Trades', 'key': 'grid_manager.total_open', 'format': 'integer'},
                 {'label': 'Max DD', 'key': 'basket_manager.max_drawdown_seen', 'format': 'percent'},
                 {'label': 'Baskets Closed', 'key': 'basket_manager.baskets_closed', 'format': 'integer'},
             ],
             'sections': [
+                {
+                    'type': 'scatter',
+                    'title': 'Cycle Outcomes — Danger vs P&L',
+                    'data_key': 'cycle_outcomes',
+                    'x_field': 'danger_at_entry',
+                    'y_field': 'pnl',
+                    'color_field': 'exit_reason',
+                    'size_field': 'level',
+                },
+                {
+                    'type': 'line_chart',
+                    'title': 'Trend Danger Score',
+                    'series': [
+                        {'data_key': 'danger_scores', 'label': 'Danger', 'color': '#ef4444'},
+                    ],
+                },
+                {
+                    'type': 'exit_reasons',
+                    'title': 'Exit Reason Breakdown',
+                    'data_key': 'cycles.pnl_by_exit',
+                },
+                {
+                    'type': 'bucket_table',
+                    'title': 'Danger Buckets — Win Rate by Risk Level',
+                    'data_key': 'risk_intel.danger_buckets',
+                },
+                {
+                    'type': 'audit_table',
+                    'title': 'Gate Decisions (last 200)',
+                    'data_key': 'gate_decisions',
+                    'columns': ['ts', 'danger', 'threshold', 'allowed', 'outcome_pnl'],
+                },
                 {
                     'type': 'kv_pairs',
                     'title': 'Trend Filter',
@@ -202,6 +308,11 @@ class GTSBotPilot(Pipeline):
                     'type': 'kv_pairs',
                     'title': 'Basket Manager',
                     'data_key': 'basket_manager',
+                },
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Protection Value',
+                    'data_key': 'protection',
                 },
             ],
         }
