@@ -312,12 +312,13 @@ class IslandPilot(Pipeline):
         total_gate = self._gate_allow_count + self._gate_block_count
         stats: Dict[str, Any] = {
             'active_regime': self._active_regime,
-            'active_confidence': self._active_confidence,
+            'active_confidence': round(self._active_confidence, 4) if self._active_confidence else 0,
             'candle_count': self._candle_count,
             'cycle_count': self._cycle_count,
             'entries_allowed': self._gate_allow_count,
             'entries_blocked': self._gate_block_count,
-            'block_rate': self._gate_block_count / total_gate if total_gate > 0 else 0,
+            'total_gate_checks': total_gate,
+            'block_rate': round(self._gate_block_count / total_gate, 4) if total_gate > 0 else 0,
             'aborts_triggered': self._abort_count,
             'has_genome': self._active_genome is not None,
         }
@@ -331,13 +332,112 @@ class IslandPilot(Pipeline):
             stats['n_transitions'] = len(self.inferencer.get_transition_log())
 
         if self.evolver is not None:
-            stats['fitness_summary'] = self.evolver.get_fitness_summary()
-            stats['diversity'] = self.evolver.get_diversity_stats()
+            raw_fitness = self.evolver.get_fitness_summary()
+            # Flatten for frontend table: {island_id: {best, mean, n, std}} → list
+            stats['fitness_summary'] = raw_fitness
+
+            # Summarize diversity: per-island average gene std → single value per island
+            raw_div = self.evolver.get_diversity_stats()
+            diversity_summary: Dict[str, Any] = {}
+            total_avg_std = []
+            for lid, gene_stds in raw_div.items():
+                vals = [v for v in gene_stds.values() if isinstance(v, (int, float))]
+                avg = sum(vals) / len(vals) if vals else 0
+                diversity_summary[lid] = round(avg, 6)
+                total_avg_std.append(avg)
+            stats['diversity'] = {
+                'n_islands': len(raw_div),
+                'mean_gene_diversity': round(sum(total_avg_std) / len(total_avg_std), 6) if total_avg_std else 0,
+                'min_diversity_island': min(diversity_summary, key=diversity_summary.get) if diversity_summary else '-',
+                'max_diversity_island': max(diversity_summary, key=diversity_summary.get) if diversity_summary else '-',
+                'min_diversity': round(min(total_avg_std), 6) if total_avg_std else 0,
+                'max_diversity': round(max(total_avg_std), 6) if total_avg_std else 0,
+            }
             stats['n_migrations'] = len(self.evolver.get_migration_log())
 
         stats['sizer'] = self.sizer.get_stats()
+        stats['_ui'] = self.ui_metadata()
 
         return stats
+
+    def ui_metadata(self) -> dict:
+        n_leaves = self.regime_tree.n_leaves if self.regime_tree else 0
+        return {
+            'badges': [
+                {'label': self.name or 'IslandPilot', 'color': 'brand'},
+                {'label': f'Regime: {self._active_regime or "?"}',
+                 'color': 'amber' if self._active_regime else 'surface'},
+                {'label': f'{n_leaves} islands', 'color': 'surface'},
+                {'label': 'Genome active' if self._active_genome else 'No genome',
+                 'color': 'green' if self._active_genome else 'red'},
+            ],
+            'metric_cards': [
+                {'label': 'Active Regime', 'key': 'active_regime', 'format': 'text', 'icon': 'chart',
+                 'tooltip': 'Current detected market regime island'},
+                {'label': 'Confidence', 'key': 'active_confidence', 'format': 'pct', 'threshold': [0.5, 0.7], 'icon': 'shield',
+                 'tooltip': 'Regime classification confidence'},
+                {'label': 'Entries Blocked', 'key': 'block_rate', 'format': 'pct', 'color': 'amber',
+                 'sub_template': '{entries_blocked} / {total_gate_checks}', 'icon': 'block',
+                 'tooltip': '% of entries blocked by low-confidence gate'},
+                {'label': 'Islands', 'key': 'n_leaves', 'format': 'int', 'icon': 'chart',
+                 'tooltip': 'Total regime islands discovered'},
+                {'label': 'Migrations', 'key': 'n_migrations', 'format': 'int', 'icon': 'chart',
+                 'tooltip': 'Cross-island genome migrations'},
+                {'label': 'Cycles', 'key': 'cycle_count', 'format': 'int', 'icon': 'chart',
+                 'tooltip': 'Total completed trading cycles'},
+            ],
+            'sections': [
+                # Regime distribution (top 20 by count, collapsed)
+                {
+                    'type': 'bar_breakdown',
+                    'title': 'Regime Distribution',
+                    'data_key': 'regime_counts',
+                    'empty_message': 'No regime data yet. Inferencer is still warming up.',
+                    'label_prefix': 'R',
+                    'mode': 'count_only',
+                    'max_items': 20,
+                    'sort_by_value': True,
+                },
+                # Fitness summary per island
+                {
+                    'type': 'kv_table',
+                    'title': 'Fitness Summary by Island',
+                    'data_key': 'fitness_summary',
+                    'show_if': 'fitness_summary',
+                    'empty_message': 'No fitness data. Evolver needs more cycles.',
+                    'columns': [
+                        {'key': 'island', 'label': 'Island'},
+                        {'key': 'best', 'label': 'Best Fitness', 'format': 'dec4'},
+                        {'key': 'mean', 'label': 'Mean Fitness', 'format': 'dec4'},
+                        {'key': 'std', 'label': 'Std', 'format': 'dec4'},
+                        {'key': 'n', 'label': 'Samples', 'format': 'int'},
+                    ],
+                    'max_items': 20,
+                    'sort_key': 'best',
+                    'sort_desc': True,
+                    'hide_empty': True,
+                },
+                # Diversity stats (summarized)
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Genetic Diversity',
+                    'data_key': 'diversity',
+                    'show_if': 'diversity',
+                    'empty_message': 'No diversity data yet.',
+                    'auto_items': True,
+                    'grid': 'full',
+                },
+                # Sizer stats
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Adaptive Sizer',
+                    'data_key': 'sizer',
+                    'show_if': 'sizer',
+                    'auto_items': True,
+                    'grid': 'full',
+                },
+            ],
+        }
 
     def save_state(self, path: str) -> None:
         """Persist all components to disk."""
@@ -561,6 +661,11 @@ class IslandPilot(Pipeline):
         """
         if not hasattr(strategy, 'hp') or not hasattr(strategy, 'hyperparameters'):
             return
+
+        # Force 'custom' preset so pipeline has full control over all params.
+        # Named presets lock certain values — 'custom' unlocks everything.
+        if strategy.hp.get('preset') and strategy.hp['preset'] != 'custom':
+            strategy.hp['preset'] = 'custom'
 
         # Build lookup from strategy's declared HP
         if not hasattr(self, '_hp_spec'):
