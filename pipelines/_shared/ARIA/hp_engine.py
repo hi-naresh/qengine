@@ -45,6 +45,25 @@ logger = logging.getLogger(__name__)
 _SKIP_PARAMS = {'preset'}           # meta-param, not tunable
 _N_BINS = 3                         # discretization bins (default ± 1 step)
 
+# Categorical options that produce degenerate behaviour (too few entries,
+# no signal, crash-prone, or require external model).  The bandit must
+# never explore these.
+_EXCLUDED_OPTIONS = {
+    'signal_mode': {'model', 'none'},          # model needs external ML; none enters every bar
+    'day_filter': {'skip_mon_fri'},            # removes 40% of trading days
+    'sizing_curve': {'fixed', 'anti_martingale'},  # fixed ignores sizing_factor; anti is inverse
+    'sizing_custom_sequence': {'1_2_4_8_16', '1_3_6_12_24'},  # insanely aggressive sequences
+}
+
+# Safety bounds: min/max overrides applied AFTER bandit selection to
+# prevent configurations that blow up the account.
+_SAFETY_BOUNDS = {
+    'max_levels': (2, 10),          # never 0 (no hedging) or >10 (guaranteed bust)
+    'base_size_value': (0.1, 3.0),  # 0.1% to 3% equity max
+    'max_daily_loss_pct': (0, 5.0), # cap daily loss
+    'max_exposure_pct': (0, 80),    # never above 80% margin
+}
+
 # All HP groups are injected on strategy.hp between cycles.
 # The strategy reads hp['hedge_value'], hp['tp_value'] etc. directly,
 # so all params must be set structurally — not via OrderIntent.
@@ -114,14 +133,17 @@ def _local_int_values(default: int, lo: int, hi: int) -> list:
 def _param_values(hp_def: dict) -> list:
     """Return discrete candidate values for a single HP definition.
 
-    For categoricals: all options.
-    For numerics: 3 values centered around the default (±30% of range).
+    For categoricals: all options minus excluded ones.
+    For numerics: 3 values centered around the default (×0.5 to ×2.0).
     """
     hp_type = hp_def.get('type')
     default = hp_def.get('default')
+    name = hp_def.get('name', '')
 
     if hp_type == 'categorical':
-        return list(hp_def.get('options', []))
+        excluded = _EXCLUDED_OPTIONS.get(name, set())
+        options = [o for o in hp_def.get('options', []) if o not in excluded]
+        return options if options else [default]
 
     if hp_type is float or hp_type == float:
         lo = float(hp_def.get('min', 0.0))
@@ -164,10 +186,15 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
     param_names = [hp['name'] for hp in group_hps]
     param_vals = [_param_values(hp) for hp in group_hps]
 
-    # Arm 0: default configuration
+    # Arm 0: default configuration (with excluded options replaced)
     default_arm = {}
-    for hp in group_hps:
-        default_arm[hp['name']] = hp.get('default')
+    for i, hp in enumerate(group_hps):
+        d = hp.get('default')
+        # If default is an excluded option, use first allowed value
+        excluded = _EXCLUDED_OPTIONS.get(hp['name'], set())
+        if d in excluded and param_vals[i]:
+            d = param_vals[i][0]
+        default_arm[hp['name']] = d
 
     arms = [default_arm]
     seen = {_arm_key(default_arm, param_names)}
@@ -366,6 +393,13 @@ class HPEngine:
 
         # Filter out params whose dependencies are not satisfied
         filtered = self._filter_dependencies(merged)
+
+        # Apply safety bounds to prevent account-blowing configs
+        for param_name, (safe_lo, safe_hi) in _SAFETY_BOUNDS.items():
+            if param_name in filtered:
+                v = filtered[param_name]
+                if isinstance(v, (int, float)):
+                    filtered[param_name] = type(v)(max(safe_lo, min(safe_hi, v)))
 
         self._current_selection = filtered
         self._selected_arms = arms_chosen
