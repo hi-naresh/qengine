@@ -771,19 +771,85 @@ def trades(trades_list: List[ClosedTrade], daily_balance: list, final: bool = Tr
     periods = _get_annualization_periods()
 
     max_dd = np.nan if len(daily_return) < 2 else max_drawdown(daily_return).iloc[0] * 100
-    max_underwater_period = np.nan if len(daily_balance) < 2 else calculate_max_underwater_period(daily_balance)
     annual_return = np.nan if len(daily_return) < 2 else cagr(daily_return, periods=periods).iloc[0] * 100
-    sharpe = np.nan if len(daily_return) < 2 else sharpe_ratio(daily_return, periods=periods).iloc[0]
-    calmar = np.nan if len(daily_return) < 2 else calmar_ratio(daily_return).iloc[0]
-    sortino = np.nan if len(daily_return) < 2 else sortino_ratio(daily_return, periods=periods).iloc[0]
-    omega = np.nan if len(daily_return) < 2 else omega_ratio(daily_return, periods=periods).iloc[0]
-    serenity = np.nan if len(daily_return) < 2 else serenity_index(daily_return).iloc[0]
 
     # Forex-specific metrics
     forex_metrics = _calculate_forex_metrics(trades_list)
 
     # Profit factor
     profit_factor = abs(gross_profit / gross_loss) if gross_loss != 0 else float('inf')
+
+    # Peak/risk metrics from simulation tracking
+    worst_floating_pnl = store.app.worst_floating_pnl
+    peak_margin_used = store.app.peak_margin_used
+    peak_equity_usage_pct = store.app.peak_equity_usage_pct
+    margin_closeouts = store.app.total_liquidations
+    account_blown = bool(current_balance <= 0 or (starting_balance > 0 and current_balance / starting_balance < 0.02))
+
+    # Detect martingale mode early — skip expensive ratio computations
+    has_sessions = any(hasattr(t, 'meta') and getattr(t, 'meta', {}).get('session') is not None for t in trades_list)
+
+    if has_sessions:
+        parsed_sessions = _parse_sessions(trades_list)
+        hedge_metrics = _calculate_hedge_session_metrics(trades_list)
+        martingale = _calculate_martingale_metrics(
+            parsed_sessions,
+            starting_balance=starting_balance,
+            total_fees=safe_convert(fee),
+            total_spread=safe_convert(forex_metrics.get('total_spread_cost', 0)),
+            total_swap=safe_convert(forex_metrics.get('total_swap_cost', 0)),
+            gross_profit=safe_convert(gross_profit),
+        )
+        return {
+            'is_martingale': True,
+            **hedge_metrics,
+            **martingale,
+            # Account-level kept
+            'net_profit': safe_convert(net_profit),
+            'net_profit_percentage': safe_convert(net_profit_percentage),
+            'annual_return': safe_convert(annual_return),
+            'starting_balance': safe_convert(starting_balance),
+            'finishing_balance': safe_convert(current_balance),
+            'gross_pnl': safe_convert(gross_pnl),
+            'gross_profit': safe_convert(gross_profit),
+            'gross_loss': safe_convert(gross_loss),
+            'max_drawdown': safe_convert(max_dd),
+            'margin_closeouts': safe_convert(margin_closeouts, int),
+            'account_blown': account_blown,
+            'max_consecutive_session_losses': hedge_metrics.get('max_consecutive_session_losses', 0),
+            'worst_floating_pnl': safe_convert(worst_floating_pnl),
+            'peak_margin_used': safe_convert(peak_margin_used),
+            'peak_equity_usage_pct': safe_convert(peak_equity_usage_pct),
+            'fee': safe_convert(fee),
+            'profit_factor': safe_convert(profit_factor),
+            **forex_metrics,
+            'raw_trade_stats': {
+                'total': safe_convert(total_completed, int),
+                'total_winning_trades': safe_convert(total_winning_trades, int),
+                'total_losing_trades': safe_convert(total_losing_trades, int),
+                'win_rate': safe_convert(win_rate),
+                'longs_count': safe_convert(longs_count, int),
+                'shorts_count': safe_convert(shorts_count, int),
+                'largest_winning_trade': safe_convert(largest_winning_trade),
+                'largest_losing_trade': safe_convert(largest_losing_trade),
+                'winning_streak': safe_convert(winning_streak, int),
+                'losing_streak': safe_convert(losing_streak, int),
+                'average_win': safe_convert(average_win),
+                'average_loss': safe_convert(average_loss),
+                'average_holding_period': safe_convert(average_holding_period),
+            },
+            'total_open_trades': safe_convert(total_open_trades, int),
+            'open_pl': safe_convert(open_pl),
+            'total': safe_convert(total_completed, int),
+        }
+
+    # --- Non-martingale path: compute expensive ratios ---
+    max_underwater_period = np.nan if len(daily_balance) < 2 else calculate_max_underwater_period(daily_balance)
+    sharpe = np.nan if len(daily_return) < 2 else sharpe_ratio(daily_return, periods=periods).iloc[0]
+    calmar = np.nan if len(daily_return) < 2 else calmar_ratio(daily_return).iloc[0]
+    sortino = np.nan if len(daily_return) < 2 else sortino_ratio(daily_return, periods=periods).iloc[0]
+    omega = np.nan if len(daily_return) < 2 else omega_ratio(daily_return, periods=periods).iloc[0]
+    serenity = np.nan if len(daily_return) < 2 else serenity_index(daily_return).iloc[0]
 
     # Kelly Criterion: W - (1-W)/R where W=win_rate, R=avg_win/avg_loss ratio
     if ratio_avg_win_loss != 0 and not np.isinf(ratio_avg_win_loss):
@@ -810,17 +876,6 @@ def trades(trades_list: List[ClosedTrade], daily_balance: list, final: bool = Tr
         cvar_99 = sorted_returns[:idx_99].mean() * starting_balance if idx_99 > 0 else np.nan
     else:
         var_95, var_99, cvar_95, cvar_99 = np.nan, np.nan, np.nan, np.nan
-
-    # Peak/risk metrics from simulation tracking
-    worst_floating_pnl = store.app.worst_floating_pnl
-    peak_margin_used = store.app.peak_margin_used
-    peak_equity_usage_pct = store.app.peak_equity_usage_pct
-    margin_closeouts = store.app.total_liquidations
-    account_blown = bool(current_balance <= 0 or (starting_balance > 0 and current_balance / starting_balance < 0.02))
-
-    # Hedge session metrics (only if trades have session metadata)
-    has_sessions = any(hasattr(t, 'meta') and getattr(t, 'meta', {}).get('session') is not None for t in trades_list)
-    hedge_metrics = _calculate_hedge_session_metrics(trades_list) if has_sessions else {}
 
     return {
         'total': safe_convert(total_completed, int),
@@ -878,7 +933,6 @@ def trades(trades_list: List[ClosedTrade], daily_balance: list, final: bool = Tr
         'margin_closeouts': safe_convert(margin_closeouts, int),
         'account_blown': account_blown,
         **forex_metrics,
-        **hedge_metrics,
     }
 
 
