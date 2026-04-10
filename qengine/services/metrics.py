@@ -380,7 +380,7 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
         if session_num not in sessions_map:
             sessions_map[session_num] = {
                 'pnl': 0.0, 'legs': 0, 'max_level': 0,
-                'exit_reason': 'tp', 'leg_levels': [], 'leg_holdings': [],
+                'exit_reason': None, 'leg_levels': [], 'leg_holdings': [],
             }
             session_order.append(session_num)
 
@@ -556,7 +556,8 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
     log_returns = []
     for s in sessions:
         if running_balance > 0:
-            lr = math.log(1 + s['pnl'] / running_balance)
+            ratio = 1 + s['pnl'] / running_balance
+            lr = math.log(ratio) if ratio > 0 else float('-inf')
         else:
             lr = float('-inf')
         log_returns.append(lr)
