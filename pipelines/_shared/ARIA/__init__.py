@@ -29,6 +29,7 @@ from .risk_shield import RiskShield
 from .observer import Observer
 from .meta_evaluator import MetaEvaluator
 from .shadow_tracker import ShadowTracker
+from .structural_stress import StructuralStress
 from .config import default_config
 
 _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
@@ -103,6 +104,9 @@ class ARIAPipeline(Pipeline):
             'max_sessions': cfg['max_sessions'],
         })
 
+        # StructuralStress — R(t) accumulator (Chen 2026)
+        self._stress = StructuralStress()
+
         # L6 — MetaEvaluator
         self._meta = MetaEvaluator({
             'window': cfg['meta_window'],
@@ -129,6 +133,8 @@ class ARIAPipeline(Pipeline):
         self._candle_warmup = cfg.get('brain_warmup', 50)
         self._hp_selected_this_cycle = False
         self._preset_forced = False
+        self._last_cycle_end_bar: int = 0
+        self._last_observed_level: int = 0
 
     # ── Observation (every candle) ──
 
@@ -250,6 +256,10 @@ class ARIAPipeline(Pipeline):
     def on_open_position(self, strategy) -> None:
         """L5: Observer captures entry snapshot with gate confidence."""
         self._cycle_active = True
+        self._last_observed_level = 0
+
+        sv = getattr(strategy, 'vars', {})
+        start_bar = int(sv.get('session_start_bar', getattr(strategy, 'index', 0)))
 
         # Observer records entry state
         self._observer.on_cycle_open(
@@ -257,7 +267,9 @@ class ARIAPipeline(Pipeline):
             self._market_state,
             gate_confidence=self._gate_confidence,
             aria_score=self._aria_score if self._meta_enabled else None,
+            start_bar=start_bar,
         )
+        self._observer.record_level_timestamp(start_bar)
 
         # Stats
         danger = self._market_state.get('danger', 0.5)
@@ -277,6 +289,41 @@ class ARIAPipeline(Pipeline):
             self._market_state,
             conformal_bound=None,  # TODO: expose from RiskShield
         )
+
+        # StructuralStress: compute R(t) components
+        if enriched:
+            hp = getattr(strategy, 'hp', {})
+            sv = getattr(strategy, 'vars', {})
+
+            gap_bars = enriched.get('start_bar', 0) - self._last_cycle_end_bar if self._last_cycle_end_bar > 0 else -1
+
+            # Estimate expected TP
+            levels = enriched.get('levels', 0)
+            base_size = float(hp.get('base_size_value', 1.0))
+            multiplier = float(hp.get('sizing_factor', 1.4142))
+            total_size = sum(base_size * multiplier ** k for k in range(levels + 1))
+            atr = self._shield._estimate_atr(strategy)
+            tp_mult = float(hp.get('tp_value', 1.0))
+            expected_tp = total_size * atr * tp_mult
+
+            stress_input = {
+                'levels': enriched.get('levels', 0),
+                'bars': enriched.get('bars', 0),
+                'pnl': pnl,
+                'reason': enriched.get('reason', ''),
+                'max_levels': int(hp.get('max_levels', 12)),
+                'multiplier': multiplier,
+                'expected_tp': expected_tp,
+                'level_timestamps': enriched.get('level_timestamps', []),
+                'gap_bars': gap_bars,
+            }
+            stress_result = self._stress.record_cycle(stress_input)
+            enriched['stress_components'] = stress_result
+            enriched['r_t'] = self._stress.r_t
+
+            self._last_cycle_end_bar = getattr(strategy, 'index', 0)
+
+        self._last_observed_level = 0
 
         # RiskShield updates conformal calibration
         level = enriched.get('levels', 0) if enriched else 0

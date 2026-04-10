@@ -214,3 +214,31 @@ class TestDerivedSignals:
     def test_inter_cycle_gap_ratio_non_negative(self):
         ss = self._make_ss_with_cycles(10)
         assert ss.inter_cycle_gap_ratio(50) >= 0.0
+
+
+class TestObserverEnrichment:
+    def _mock_strategy(self):
+        class S:
+            balance = 10000.0
+            hp = {'max_levels': 12, 'sizing_factor': 1.4142, 'tp_value': 1.0}
+            vars = {'sessions': [{'levels': 2, 'pnl': 50.0, 'reason': 'tp_hit', 'bars': 100}]}
+            candles = None
+        return S()
+
+    def test_record_level_timestamp(self):
+        from pipelines._shared.ARIA.observer import Observer
+        obs = Observer()
+        obs.on_cycle_open(self._mock_strategy(), {'danger': 0.3, 'regime_id': 0}, start_bar=500)
+        obs.record_level_timestamp(500)
+        obs.record_level_timestamp(560)
+        enriched = obs.on_cycle_end(self._mock_strategy(), {'danger': 0.4})
+        assert enriched.get('level_timestamps') == [500, 560]
+        assert enriched.get('start_bar') == 500
+
+    def test_start_bar_in_enriched(self):
+        from pipelines._shared.ARIA.observer import Observer
+        obs = Observer()
+        obs.on_cycle_open(self._mock_strategy(), {'danger': 0.3}, start_bar=100)
+        enriched = obs.on_cycle_end(self._mock_strategy(), {'danger': 0.4})
+        assert 'start_bar' in enriched
+        assert 'level_timestamps' in enriched
