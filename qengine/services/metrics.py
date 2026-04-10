@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 from typing import List
 
@@ -361,39 +362,72 @@ def _calculate_forex_metrics(trades_list: List[ClosedTrade]) -> dict:
     }
 
 
-def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
-    """Calculate hedge session-level metrics from trade metadata."""
-    sessions_map = {}
-    session_outcomes = {}  # session_num -> exit_reason
-    session_max_level = {}  # session_num -> max level reached
+def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
+    """Extract session structures from a list of ClosedTrade objects.
+
+    Returns list of dicts with keys:
+        pnl, legs, max_level, exit_reason, holding_seconds, leg_levels, leg_holdings
+    """
+    sessions_map = {}   # session_num -> accumulated data
+    session_order = []  # preserve insertion order for stable output
 
     for t in trades_list:
-        meta = getattr(t, 'meta', {})
+        meta = getattr(t, 'meta', {}) or {}
         session_num = meta.get('session')
         if session_num is None:
             session_num = f'standalone-{id(t)}'
+
         if session_num not in sessions_map:
-            sessions_map[session_num] = {'pnl': 0.0, 'legs': 0}
-            session_max_level[session_num] = 0
-        sessions_map[session_num]['pnl'] += t.pnl
-        sessions_map[session_num]['legs'] += 1
+            sessions_map[session_num] = {
+                'pnl': 0.0, 'legs': 0, 'max_level': 0,
+                'exit_reason': 'tp', 'leg_levels': [], 'leg_holdings': [],
+            }
+            session_order.append(session_num)
 
-        # Track max level (depth) reached
+        s = sessions_map[session_num]
+        s['pnl'] += t.pnl
+        s['legs'] += 1
+
         level = meta.get('level', 0)
-        if isinstance(level, (int, float)) and level > session_max_level[session_num]:
-            session_max_level[session_num] = int(level)
+        if isinstance(level, (int, float)):
+            level = int(level)
+            if level > s['max_level']:
+                s['max_level'] = level
+            s['leg_levels'].append(level)
+        else:
+            s['leg_levels'].append(0)
 
-        # Track outcome (last trade's reason wins)
+        hp = getattr(t, 'holding_period', None)
+        s['leg_holdings'].append(hp if hp is not None else 0)
+
         reason = meta.get('session_exit_reason', meta.get('exit_reason'))
         if reason:
-            session_outcomes[session_num] = reason
+            s['exit_reason'] = reason
 
-    if not sessions_map:
+    result = []
+    for sn in session_order:
+        s = sessions_map[sn]
+        result.append({
+            'pnl': s['pnl'],
+            'legs': s['legs'],
+            'max_level': s['max_level'],
+            'exit_reason': s['exit_reason'],
+            'holding_seconds': sum(s['leg_holdings']),
+            'leg_levels': s['leg_levels'],
+            'leg_holdings': s['leg_holdings'],
+        })
+    return result
+
+
+def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
+    """Calculate hedge session-level metrics from trade metadata."""
+    sessions = _parse_sessions(trades_list)
+    if not sessions:
         return {}
 
-    total_sessions = len(sessions_map)
-    session_pnls = [s['pnl'] for s in sessions_map.values()]
-    session_legs = [s['legs'] for s in sessions_map.values()]
+    total_sessions = len(sessions)
+    session_pnls = [s['pnl'] for s in sessions]
+    session_legs = [s['legs'] for s in sessions]
 
     winning_sessions = [p for p in session_pnls if p > 0]
     losing_sessions = [p for p in session_pnls if p <= 0]
@@ -416,8 +450,7 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
 
     # Bust metrics — sessions ending in bust/max_levels/margin_call
     bust_outcomes = {'bust', 'max_levels', 'margin_call', 'liquidation'}
-    bust_sessions = {sn for sn, reason in session_outcomes.items() if reason in bust_outcomes}
-    bust_pnls = [sessions_map[sn]['pnl'] for sn in bust_sessions if sn in sessions_map]
+    bust_pnls = [s['pnl'] for s in sessions if s['exit_reason'] in bust_outcomes]
     total_busts = len(bust_pnls)
     worst_bust_pnl = round(min(bust_pnls), 2) if bust_pnls else 0.0
 
@@ -426,8 +459,8 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
 
     # Depth analysis — how many sessions reached each max level, and win/loss at each
     depth_stats = {}
-    for sn, s in sessions_map.items():
-        depth = session_max_level.get(sn, 0)
+    for s in sessions:
+        depth = s['max_level']
         if depth not in depth_stats:
             depth_stats[depth] = {'count': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0}
         depth_stats[depth]['count'] += 1
@@ -464,6 +497,168 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
         'worst_bust_pnl': worst_bust_pnl,
         'total_losing_sessions': total_losing_sessions,
         'depth_breakdown': depth_breakdown,
+    }
+
+
+def _calculate_martingale_metrics(sessions: list, starting_balance: float,
+                                  total_fees: float = 0.0, total_spread: float = 0.0,
+                                  total_swap: float = 0.0, gross_profit: float = 0.0) -> dict:
+    """Calculate martingale/surefire-specific metrics from parsed sessions.
+
+    Args:
+        sessions: list of session dicts (from _parse_sessions or test helpers) with keys:
+            pnl, legs, max_level, exit_reason, holding_seconds, leg_levels, leg_holdings
+        starting_balance: account balance before first session
+        total_fees: total trading fees across all trades
+        total_spread: total spread cost across all trades
+        total_swap: total overnight swap charges
+        gross_profit: sum of winning trade PnLs (before costs)
+    """
+    if not sessions:
+        return {}
+
+    total_sessions = len(sessions)
+    session_pnls = [s['pnl'] for s in sessions]
+
+    # --- Session Performance ---
+    winning_pnls = [p for p in session_pnls if p > 0]
+    losing_pnls = [p for p in session_pnls if p <= 0]
+
+    sum_wins = sum(winning_pnls)
+    sum_losses_abs = abs(sum(losing_pnls))
+
+    if sum_losses_abs == 0:
+        session_profit_factor = float('inf') if sum_wins > 0 else 0.0
+    else:
+        session_profit_factor = sum_wins / sum_losses_abs
+
+    median_session_pnl = float(np.median(session_pnls))
+
+    # --- Survival & Ruin ---
+    bust_outcomes = {'bust', 'max_levels', 'margin_call', 'liquidation'}
+    bust_sessions = [s for s in sessions if s['exit_reason'] in bust_outcomes]
+    bust_count = len(bust_sessions)
+    bust_rate = bust_count / total_sessions
+
+    bust_pnls = [s['pnl'] for s in bust_sessions]
+    avg_bust_loss = float(np.mean(bust_pnls)) if bust_pnls else 0.0
+
+    if len(bust_pnls) >= 2:
+        bust_severity_std = float(np.std(bust_pnls, ddof=1))
+    else:
+        bust_severity_std = 0.0
+
+    avg_session_win = float(np.mean(winning_pnls)) if winning_pnls else 0.0
+    wins_to_recover = abs(avg_bust_loss) / avg_session_win if avg_session_win > 0 and bust_pnls else 0.0
+
+    # Geometric growth rate — track running balance
+    running_balance = starting_balance
+    log_returns = []
+    for s in sessions:
+        if running_balance > 0:
+            lr = math.log(1 + s['pnl'] / running_balance)
+        else:
+            lr = float('-inf')
+        log_returns.append(lr)
+        running_balance += s['pnl']
+
+    geometric_growth_rate = float(np.mean(log_returns)) if log_returns else 0.0
+
+    # Survival
+    if bust_rate == 0:
+        survival_100 = 1.0
+        survival_500 = 1.0
+        survival_half_life = float('inf')
+    elif bust_rate >= 1.0:
+        survival_100 = 0.0
+        survival_500 = 0.0
+        survival_half_life = 0.0
+    else:
+        survival_100 = (1 - bust_rate) ** 100
+        survival_500 = (1 - bust_rate) ** 500
+        survival_half_life = math.log(0.5) / math.log(1 - bust_rate)
+
+    # --- Structural Diagnostics ---
+
+    # Level transitions
+    level_data = {}  # level -> {entries, wins, escalations}
+    for s in sessions:
+        max_lv = s['max_level']
+        for lv in range(max_lv + 1):
+            if lv not in level_data:
+                level_data[lv] = {'entries': 0, 'wins': 0, 'escalations': 0}
+            level_data[lv]['entries'] += 1
+            if lv < max_lv:
+                level_data[lv]['escalations'] += 1
+            elif lv == max_lv and s['pnl'] > 0:
+                level_data[lv]['wins'] += 1
+
+    level_transitions = []
+    for lv in sorted(level_data.keys()):
+        d = level_data[lv]
+        entries = d['entries']
+        level_transitions.append({
+            'level': lv,
+            'entries': entries,
+            'wins': d['wins'],
+            'escalations': d['escalations'],
+            'p_win': d['wins'] / entries if entries > 0 else 0.0,
+            'p_escalate': d['escalations'] / entries if entries > 0 else 0.0,
+        })
+
+    # EV by depth (keyed by max_level)
+    ev_by_depth = {}
+    for s in sessions:
+        ml = s['max_level']
+        if ml not in ev_by_depth:
+            ev_by_depth[ml] = {'count': 0, 'total_pnl': 0.0, 'wins': 0}
+        ev_by_depth[ml]['count'] += 1
+        ev_by_depth[ml]['total_pnl'] += s['pnl']
+        if s['pnl'] > 0:
+            ev_by_depth[ml]['wins'] += 1
+
+    for ml in ev_by_depth:
+        d = ev_by_depth[ml]
+        d['avg_pnl'] = d['total_pnl'] / d['count']
+        d['win_rate'] = d['wins'] / d['count']
+
+    # Time at depth
+    time_at_depth = {}
+    for s in sessions:
+        for lv, holding in zip(s['leg_levels'], s['leg_holdings']):
+            time_at_depth[lv] = time_at_depth.get(lv, 0.0) + holding
+
+    # L0 win rate
+    l0_wins = sum(1 for s in sessions if s['max_level'] == 0 and s['pnl'] > 0)
+    l0_win_rate = l0_wins / total_sessions
+
+    # --- Capital & Costs ---
+    if gross_profit > 0:
+        cost_drag_pct = (total_fees + total_spread + total_swap) / gross_profit * 100
+    else:
+        cost_drag_pct = 0.0
+
+    return {
+        # Session Performance
+        'session_profit_factor': session_profit_factor,
+        'median_session_pnl': median_session_pnl,
+        # Survival & Ruin
+        'bust_rate': bust_rate,
+        'bust_count': bust_count,
+        'wins_to_recover': wins_to_recover,
+        'geometric_growth_rate': geometric_growth_rate,
+        'survival_100': survival_100,
+        'survival_500': survival_500,
+        'survival_half_life': survival_half_life,
+        'avg_bust_loss': avg_bust_loss,
+        'bust_severity_std': bust_severity_std,
+        # Structural Diagnostics
+        'level_transitions': level_transitions,
+        'ev_by_depth': ev_by_depth,
+        'time_at_depth': time_at_depth,
+        'l0_win_rate': l0_win_rate,
+        # Capital & Costs
+        'cost_drag_pct': cost_drag_pct,
     }
 
 
