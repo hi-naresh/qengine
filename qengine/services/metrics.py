@@ -728,6 +728,21 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         except np.linalg.LinAlgError:
             depth_stationary = None
 
+    # --- P8: Protective Sell / Profitable Buy Accuracy (Wilson & Banzhaf 2010) ---
+    # Separates win rate into entry quality vs exit quality
+    profitable_buy_pct = 0.0
+    protective_sell_pct = 0.0
+    abort_outcomes = {'abort', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
+    if total_sessions > 0:
+        profitable_buys = sum(1 for s in sessions if s['pnl'] > 0)
+        profitable_buy_pct = profitable_buys / total_sessions
+        # Protective sell: among aborted cycles, % that aborted before max observed depth
+        aborted_sessions = [s for s in sessions if s['exit_reason'] in abort_outcomes]
+        if aborted_sessions:
+            max_possible = max((s['max_level'] for s in sessions), default=0)
+            protected = sum(1 for s in aborted_sessions if s['max_level'] < max_possible)
+            protective_sell_pct = protected / len(aborted_sessions)
+
     # --- P7: Triangular Loss Growth Validation (Taranto & Khan 2020) ---
     # Compare empirical cumulative loss at each level against:
     #   T(n) = n(n+1)/2 (triangular), 2^n (exponential), actual multiplier^n
@@ -942,6 +957,9 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         'depth_barrier_details': depth_barrier_details,
         # P7: Triangular Loss Growth (Taranto & Khan 2020)
         'loss_growth_validation': loss_growth_validation,
+        # P8: Protective Sell / Profitable Buy (Wilson & Banzhaf 2010)
+        'profitable_buy_pct': round(profitable_buy_pct, 4),
+        'protective_sell_pct': round(protective_sell_pct, 4),
         # P9: Analytical Ruin Probability (Karathanasopoulos et al. 2021)
         'analytical_ruin_prob': round(analytical_ruin_prob, 6),
         'analytical_survival_prob': round(analytical_survival_prob, 6),
