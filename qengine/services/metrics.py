@@ -728,6 +728,72 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         except np.linalg.LinAlgError:
             depth_stationary = None
 
+    # --- P7: Triangular Loss Growth Validation (Taranto & Khan 2020) ---
+    # Compare empirical cumulative loss at each level against:
+    #   T(n) = n(n+1)/2 (triangular), 2^n (exponential), actual multiplier^n
+    # Lower R² for exponential vs triangular validates sub-exponential sizing
+    loss_growth_validation = None
+    # Use sessions that reached deep levels (>= 3) and lost money
+    deep_loss_sessions = [s for s in sessions if s['max_level'] >= 3 and s['pnl'] < 0]
+    if len(deep_loss_sessions) >= 5:
+        # Build mean cumulative loss by level from losing sessions
+        max_lv = max(s['max_level'] for s in deep_loss_sessions)
+        level_loss = {}  # level -> list of cumulative abs(pnl) up to that level
+        for s in deep_loss_sessions:
+            # Approximate: distribute loss proportional to legs at each level
+            total_legs = s['legs']
+            if total_legs == 0:
+                continue
+            loss_per_leg = abs(s['pnl']) / total_legs
+            cumulative = 0.0
+            for lv in range(s['max_level'] + 1):
+                legs_at_lv = sum(1 for l in s['leg_levels'] if l == lv)
+                cumulative += loss_per_leg * legs_at_lv
+                level_loss.setdefault(lv, []).append(cumulative)
+
+        levels_with_data = sorted(lv for lv, vals in level_loss.items() if len(vals) >= 3)
+        if len(levels_with_data) >= 3:
+            x = np.array(levels_with_data, dtype=float)
+            y = np.array([np.mean(level_loss[lv]) for lv in levels_with_data], dtype=float)
+
+            # Fit triangular: T(n) = a * n(n+1)/2 + b
+            t_vals = x * (x + 1) / 2
+            if np.std(t_vals) > 0:
+                tri_coeffs = np.polyfit(t_vals, y, 1)
+                tri_pred = np.polyval(tri_coeffs, t_vals)
+                tri_ss_res = np.sum((y - tri_pred) ** 2)
+                tri_ss_tot = np.sum((y - np.mean(y)) ** 2)
+                tri_r2 = float(1 - tri_ss_res / tri_ss_tot) if tri_ss_tot > 0 else 0.0
+            else:
+                tri_r2 = 0.0
+
+            # Fit exponential: log(y) = a*n + b -> y = e^(a*n + b)
+            y_pos = np.maximum(y, 1e-12)
+            exp_coeffs = np.polyfit(x, np.log(y_pos), 1)
+            exp_pred = np.exp(np.polyval(exp_coeffs, x))
+            exp_ss_res = np.sum((y - exp_pred) ** 2)
+            exp_ss_tot = np.sum((y - np.mean(y)) ** 2)
+            exp_r2 = float(1 - exp_ss_res / exp_ss_tot) if exp_ss_tot > 0 else 0.0
+
+            # Fit quadratic (our actual multiplier pattern)
+            quad_coeffs = np.polyfit(x, y, 2)
+            quad_pred = np.polyval(quad_coeffs, x)
+            quad_ss_res = np.sum((y - quad_pred) ** 2)
+            quad_ss_tot = np.sum((y - np.mean(y)) ** 2)
+            quad_r2 = float(1 - quad_ss_res / quad_ss_tot) if quad_ss_tot > 0 else 0.0
+
+            best_fit = 'triangular' if tri_r2 >= exp_r2 and tri_r2 >= quad_r2 else \
+                       'quadratic' if quad_r2 >= exp_r2 else 'exponential'
+
+            loss_growth_validation = {
+                'triangular_r2': round(tri_r2, 4),
+                'exponential_r2': round(exp_r2, 4),
+                'quadratic_r2': round(quad_r2, 4),
+                'best_fit': best_fit,
+                'n_sessions_used': len(deep_loss_sessions),
+                'max_level_observed': int(max_lv),
+            }
+
     return {
         # Session Performance
         'session_profit_factor': session_profit_factor,
@@ -761,6 +827,8 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         # P6: Depth Barrier (Chen 2026)
         'depth_barrier': depth_barrier,
         'depth_barrier_details': depth_barrier_details,
+        # P7: Triangular Loss Growth (Taranto & Khan 2020)
+        'loss_growth_validation': loss_growth_validation,
     }
 
 
