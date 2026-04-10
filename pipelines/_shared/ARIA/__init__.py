@@ -177,6 +177,16 @@ class ARIAPipeline(Pipeline):
         danger = self._market_state.get('danger', 0.5)
         self._stats.record_danger(ts, danger)
 
+        # Track level changes for Observer level_timestamps
+        if self._cycle_active:
+            sv = getattr(strategy, 'vars', {})
+            current_level = int(sv.get('level', 0))
+            if current_level > self._last_observed_level:
+                bar_index = getattr(strategy, 'index', 0)
+                for lvl in range(self._last_observed_level + 1, current_level + 1):
+                    self._observer.record_level_timestamp(bar_index)
+                self._last_observed_level = current_level
+
     # ── Entry Control ──
 
     def gate_entry(self, strategy) -> bool:
@@ -455,6 +465,16 @@ class ARIAPipeline(Pipeline):
             'ruin_probs_this_cycle': self._shield.ruin_probs_this_cycle[-5:],
         }
 
+        # ── Structural Stress (R(t)) ──
+        stats['structural_stress'] = {
+            'r_t': round(self._stress.r_t, 4),
+            'normalised_rt': round(self._stress.normalised_rt, 4),
+            'recent_stress_rate': round(self._stress.recent_stress_rate, 4),
+            'stress_velocity': round(self._stress.stress_velocity, 4),
+            'n_cycles': len(self._stress._cycle_stresses),
+            'last_cycle_stress': self._stress._cycle_stresses[-1] if self._stress._cycle_stresses else None,
+        }
+
         # ── Observer (L5) ──
         stats['observer'] = {
             'total_enriched_sessions': len(self._observer.sessions),
@@ -572,6 +592,7 @@ class ARIAPipeline(Pipeline):
             'observer': self._observer.state_dict(),
             'meta': self._meta.state_dict(),
             'shadow': self._shadow.state_dict(),
+            'stress': self._stress.state_dict(),
         }
         with open(os.path.join(path, 'aria_state.json'), 'w') as f:
             json.dump(state, f, default=_json_default)
@@ -597,6 +618,8 @@ class ARIAPipeline(Pipeline):
             self._meta.load_state_dict(state['meta'])
         if 'shadow' in state:
             self._shadow.load_state_dict(state['shadow'])
+        if 'stress' in state:
+            self._stress.load_state_dict(state['stress'])
 
     @classmethod
     def default_config(cls) -> dict:

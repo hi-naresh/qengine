@@ -2,6 +2,7 @@
 import numpy as np
 import pytest
 
+from pipelines._shared.ARIA import ARIAPipeline
 from pipelines._shared.ARIA.risk_shield import RiskShield
 from pipelines._shared.ARIA.cycle_gate import CycleGate, _build_features
 from pipelines._shared.ARIA.meta_evaluator import MetaEvaluator
@@ -93,3 +94,26 @@ class TestMetaStressPenalty:
         score_low = meta.evaluate(sessions, stress_rate=0.01, baseline_stress_rate=0.01)
         score_high = meta.evaluate(sessions, stress_rate=0.8, baseline_stress_rate=0.01)
         assert score_high < score_low
+
+
+class TestPipelineStressStats:
+    def test_stress_in_stats(self):
+        pipe = ARIAPipeline()
+        stats = pipe.get_stats()
+        assert 'structural_stress' in stats
+        assert stats['structural_stress']['r_t'] == 0.0
+        assert stats['structural_stress']['n_cycles'] == 0
+
+    def test_persistence_roundtrip(self):
+        pipe = ARIAPipeline()
+        pipe._stress.record_cycle({
+            'levels': 5, 'bars': 300, 'pnl': -50.0, 'reason': 'abort',
+            'max_levels': 12, 'multiplier': 1.4142, 'expected_tp': 100.0,
+            'level_timestamps': [0, 20, 40, 60, 80, 100], 'gap_bars': 50,
+        })
+        state = pipe._stress.state_dict()
+        assert state['r_t'] > 0
+
+        pipe2 = ARIAPipeline()
+        pipe2._stress.load_state_dict(state)
+        assert pipe2._stress.r_t == pipe._stress.r_t
