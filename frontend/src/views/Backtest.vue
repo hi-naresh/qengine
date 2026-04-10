@@ -2869,10 +2869,17 @@
           <div v-else class="text-surface-500 text-sm py-8 text-center">No cost data available for this session.</div>
         </div>
 
-        <!-- Pipeline tab (history) -->
+        <!-- Pipeline tab (history) — loaded on demand via API -->
         <div v-if="historyTab === 'pipeline'">
-          <PipelineIntelligence v-if="selectedSession.pipeline_stats && Object.keys(selectedSession.pipeline_stats).length" :stats="selectedSession.pipeline_stats" :session-id="selectedSession.id" />
-          <div v-else class="text-surface-500 text-sm py-8 text-center">Pipeline data not available. Re-run this backtest with a pipeline to capture stats.</div>
+          <div v-if="loadingHistoryPipeline" class="text-center py-8 text-surface-500 text-sm">
+            <span class="inline-block w-4 h-4 border-2 border-brand-500 border-t-transparent rounded-full animate-spin mr-2"></span>
+            Loading pipeline data...
+          </div>
+          <PipelineIntelligence v-else-if="historyPipelineStats" :stats="historyPipelineStats" :session-id="selectedSession.id" :key="'pipe-' + selectedSession.id" />
+          <div v-else class="text-center py-8">
+            <button @click="loadHistoryPipelineStats" class="btn-primary btn-sm">Load Pipeline Data</button>
+            <p class="text-[10px] text-surface-600 mt-2">Pipeline stats are loaded separately to keep the UI responsive</p>
+          </div>
         </div>
 
         <!-- Logs tab -->
@@ -2924,7 +2931,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, markRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, defaultBrokerId, isAdmin, isImpersonating } from '../api'
 import { useWebSocket } from '../useWebSocket'
@@ -3095,6 +3102,8 @@ const historyTab = ref('summary')
 const historyTradesPage = ref(1)
 const historyLogs = ref(null)
 const loadingHistoryLogs = ref(false)
+const historyPipelineStatsData = ref(null)
+const loadingHistoryPipeline = ref(false)
 const historyStratCodes = ref(null)
 const historyStratCodeKey = ref('')
 const loadingHistoryStratCode = ref(false)
@@ -3844,6 +3853,10 @@ const historyEquityData = computed(() => {
   if (ec.equity) return { equity: ec.equity, floatingPnl: ec.floating_pnl || null, marginUsage: ec.margin_usage || null }
   // Raw array format
   return { equity: ec, floatingPnl: null, marginUsage: null }
+})
+
+const historyPipelineStats = computed(() => {
+  return historyPipelineStatsData.value || null
 })
 
 const historyCostTotal = computed(() => {
@@ -5474,7 +5487,9 @@ async function viewSession(s) {
   } else {
     try {
       const res = await api.getBacktestSession(s.id)
-      selectedSession.value = res.session || s
+      const session = res.session || s
+      if (session.pipeline_stats) session.pipeline_stats = markRaw(session.pipeline_stats)
+      selectedSession.value = session
       tabCache.value[s.id] = selectedSession.value
     } catch {
       selectedSession.value = s
@@ -5634,6 +5649,7 @@ async function viewSessionFromHistory(s) {
   historyLogs.value = null
   historyStratCodes.value = null
   historyStratCodeKey.value = ''
+  historyPipelineStatsData.value = null
   destroyHistoryCharts()
   if (tabCache.value[s.id]) {
     selectedSession.value = tabCache.value[s.id]
@@ -5662,6 +5678,23 @@ function loadSessionAsFormFromHistory(s) {
   if (!s?.state) return
   restoreFormFromState(s.state)
   pageTab.value = 'run'
+}
+
+async function loadHistoryPipelineStats() {
+  if (!selectedSession.value?.id || loadingHistoryPipeline.value) return
+  loadingHistoryPipeline.value = true
+  try {
+    const res = await api.getBacktestPipelineStatsFull(selectedSession.value.id)
+    const ps = res?.pipeline_stats
+    if (ps && Object.keys(ps).length) {
+      // markRaw prevents Vue from deep-proxying large arrays (danger_scores can have thousands of entries)
+      historyPipelineStatsData.value = markRaw(ps)
+    }
+  } catch (e) {
+    console.error('Failed to load pipeline stats:', e)
+  } finally {
+    loadingHistoryPipeline.value = false
+  }
 }
 
 async function loadHistoryLogs() {
@@ -6092,6 +6125,10 @@ watch(historyTab, async (tab) => {
       hTradeChartRef.value.renderEquity()
     }
     renderHistoryCharts()
+  }
+  // Auto-load pipeline stats when Pipeline tab is clicked
+  if (tab === 'pipeline' && selectedSession.value?.has_pipeline && !historyPipelineStatsData.value && !loadingHistoryPipeline.value) {
+    loadHistoryPipelineStats()
   }
 })
 

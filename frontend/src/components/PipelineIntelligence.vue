@@ -6,6 +6,21 @@
         <h3 class="text-sm font-semibold text-surface-300">Pipeline Intelligence</h3>
         <span class="text-surface-600 text-[10px] font-mono">{{ route }}</span>
         <div class="flex gap-1 ml-auto items-center">
+          <!-- Load Full Report button (for lazy-loaded heavy data) -->
+          <button v-if="ps._has_heavy && !heavyLoaded[route]"
+                  @click="loadHeavyData(route)"
+                  :disabled="heavyLoading[route]"
+                  class="px-2 py-0.5 text-[9px] rounded font-mono bg-brand-600 hover:bg-brand-500 text-white border border-brand-500/50 transition-colors flex items-center gap-1 disabled:opacity-50"
+                  title="Load charts, audit tables, and detailed analytics">
+            <svg v-if="heavyLoading[route]" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+            </svg>
+            <svg v-else class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+            </svg>
+            {{ heavyLoading[route] ? 'Loading...' : 'Load Full Report' }}
+          </button>
+          <span v-if="heavyLoaded[route]" class="px-1.5 py-0.5 text-[9px] rounded font-mono bg-green-500/10 text-green-400">Full Report Loaded</span>
           <button @click="exportReport(ps, route)"
                   class="px-2 py-0.5 text-[9px] rounded font-mono bg-surface-700 hover:bg-surface-600 text-surface-300 border border-surface-600/50 transition-colors flex items-center gap-1"
                   title="Export pipeline report as JSON">
@@ -385,12 +400,68 @@ import { ref, watch, nextTick, onUnmounted, reactive, computed } from 'vue'
 
 const props = defineProps({
   stats: { type: Object, default: null },
+  sessionId: { type: String, default: null },
 })
+
+// ── Lazy loading for heavy data ──
+const heavyLoading = reactive({})
+const heavyLoaded = reactive({})
+
+async function loadHeavyData(route) {
+  if (heavyLoading[route] || heavyLoaded[route]) return
+  heavyLoading[route] = true
+  try {
+    const id = props.sessionId
+    if (!id) { heavyLoading[route] = false; return }
+    const { default: api } = await import('../api.js')
+    const res = await api.getBacktestPipelineStatsFull(id)
+    const fullStats = res?.pipeline_stats || res?.data?.pipeline_stats
+    if (fullStats && fullStats[route]) {
+      // Merge heavy data into current stats — use Object.freeze to prevent Vue deep reactivity
+      const heavy = fullStats[route]
+      const ps = props.stats[route]
+      if (ps) {
+        // Freeze arrays before merging to prevent deep watcher from walking them
+        const keysToMerge = [
+          'danger_scores', 'cycle_outcomes', 'gate_decisions', 'abort_decisions',
+          'gate_threshold_series', 'consultation_log', 'confidence_series',
+          'size_adjustments', 'exit_suggestions', 'q_value_progression'
+        ]
+        for (const key of keysToMerge) {
+          if (heavy[key] && Array.isArray(heavy[key])) {
+            ps[key] = Object.freeze(heavy[key])
+          }
+        }
+        // Also merge any _ui override from heavy data
+        if (heavy._ui_full) {
+          ps._ui = heavy._ui_full
+        }
+      }
+    }
+    heavyLoaded[route] = true
+    await nextTick()
+    drawAllCharts(props.stats)
+  } catch (e) {
+    console.error('Failed to load full pipeline stats:', e)
+  }
+  heavyLoading[route] = false
+}
 
 // ── Chart refs ──
 const chartEls = reactive({})
+let _pendingDraw = null
 function registerChartEl(key, el) {
-  if (el) chartEls[key] = Array.isArray(el) ? el[0] : el
+  if (el) {
+    chartEls[key] = Array.isArray(el) ? el[0] : el
+    // Canvas just appeared in DOM — schedule a redraw so charts render
+    // (covers the case where component mounted while hidden in a v-if tab)
+    if (!_pendingDraw) {
+      _pendingDraw = setTimeout(() => {
+        _pendingDraw = null
+        drawAllCharts(props.stats)
+      }, 50)
+    }
+  }
 }
 
 // ── Audit state ──
@@ -433,6 +504,12 @@ function exportReport(ps, route) {
 // ── Core helpers ──
 
 function ui(ps) {
+  if (ps && ps._ui) {
+    console.log('[PipelineIntelligence] ui sections:', ps._ui.sections?.length, 'keys in ps:', Object.keys(ps).slice(0, 15))
+    console.log('[PipelineIntelligence] signal_distribution:', ps.signal_distribution)
+    console.log('[PipelineIntelligence] level_performance:', ps.level_performance)
+    console.log('[PipelineIntelligence] cycles:', ps.cycles)
+  }
   return ps?._ui || null
 }
 
@@ -1184,5 +1261,6 @@ watch(chartEls, () => {
 
 onUnmounted(() => {
   if (resizeObserver) resizeObserver.disconnect()
+  if (_pendingDraw) { clearTimeout(_pendingDraw); _pendingDraw = null }
 })
 </script>

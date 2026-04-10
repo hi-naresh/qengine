@@ -332,8 +332,8 @@ def _execute_backtest(
         if 'sessions' in result:
             sync_publish('sessions', result['sessions'], compression=True)
         # Publish pipeline stats (if any pipelines were active)
+        # Sent once at completion with compression — include all data except bulky cycle_hp_log
         if result.get('pipeline_stats'):
-            # Strip bulky per-cycle HP log from WebSocket publish (only needed for session enrichment)
             ps_for_ws = {}
             for rk, ps in result['pipeline_stats'].items():
                 ps_for_ws[rk] = {k: v for k, v in ps.items() if k != 'cycle_hp_log'}

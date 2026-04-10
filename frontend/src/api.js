@@ -141,6 +141,7 @@ export const api = {
   getBacktestChartData: (id) => request('POST', `/backtest/sessions/${id}/chart-data`),
   getBacktestStrategyCode: (id) => request('POST', `/backtest/sessions/${id}/strategy-code`),
   getBacktestSessionLogs: (id) => request('POST', `/backtest/sessions/${id}/logs`),
+  getBacktestPipelineStatsFull: (id) => request('POST', `/backtest/sessions/${id}/pipeline-stats-full`),
   getBacktestLogs: (sessionId) => {
     const token = getToken()
     return request('GET', `/backtest/logs/${sessionId}?token=${token}`)

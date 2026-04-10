@@ -265,20 +265,23 @@ class AgentPilot(Pipeline):
     # ── Stats & Persistence ──
 
     def get_stats(self) -> dict:
-        # Get standard PipelineStats analytics (gate, abort, cycles, danger, risk_intel, etc.)
-        base = self._stats.to_dict()
+        # Get standard PipelineStats analytics
+        full = self._stats.to_dict()
 
-        # Downsample large arrays to prevent WebSocket/frontend freeze
-        # danger_scores: keep max 500 points (every Nth)
-        if base.get('danger_scores') and len(base['danger_scores']) > 500:
-            step = len(base['danger_scores']) // 500
-            base['danger_scores'] = base['danger_scores'][::step][:500]
-        # cycle_outcomes: cap at last 200
-        if base.get('cycle_outcomes') and len(base['cycle_outcomes']) > 200:
-            base['cycle_outcomes'] = base['cycle_outcomes'][-200:]
-        # gate_decisions: cap at last 100
-        if base.get('gate_decisions') and len(base['gate_decisions']) > 100:
-            base['gate_decisions'] = base['gate_decisions'][-100:]
+        # IMPORTANT: Only include what the UI actually renders.
+        # The deep watcher on stats freezes Vue if the object is too large/nested.
+        # Strip all large arrays and keep only summary analytics + small chart data.
+        base = {}
+
+        # Copy only summary/scalar analytics (no large arrays)
+        for key in ('total_gate_checks', 'entries_blocked', 'entries_allowed', 'block_rate',
+                     'abort_checks', 'aborts_triggered', 'abort_rate', 'cycles_completed',
+                     'gate', 'abort', 'cycles', 'danger', 'risk_intel', 'protection',
+                     'level_performance', 'config'):
+            if key in full:
+                base[key] = full[key]
+
+        # No large arrays in WebSocket payload — all chart/table data available via Export JSON
 
         # Brain stats
         brain_stats = self._brain.state_dict()
@@ -332,14 +335,15 @@ class AgentPilot(Pipeline):
         decision = self._executor.current_decision
         base['current_decision'] = decision.to_dict() if decision else None
 
-        # Consultation log for audit table — SLIM version (no request/response text)
+        # Consultation log for audit table — SLIM + FLAT version
+        # Flatten decision fields so audit_table can use flat column keys
         # Full log with request/response is saved to disk via save_state()
         slim_log = []
         signal_counts = {}
         trigger_counts = {}
         conf_series = []
         for entry in self._consultation_log:
-            # Slim entry: strip bulky request/response, keep decision metadata
+            dec = entry.get('decision', {})
             slim_log.append({
                 'bar': entry.get('bar'),
                 'trigger': entry.get('trigger'),
@@ -347,7 +351,15 @@ class AgentPilot(Pipeline):
                 'danger': entry.get('danger'),
                 'elapsed_s': entry.get('elapsed_s'),
                 'cached': entry.get('cached'),
-                'decision': entry.get('decision', {}),
+                # Flatten decision fields
+                'signal': dec.get('signal', ''),
+                'confidence': dec.get('confidence', 0),
+                'sizing_pct': dec.get('sizing_pct', 0),
+                'reasoning': (dec.get('reasoning', '') or '')[:120],  # truncate for table
+                'tp_pips': dec.get('tp_pips'),
+                'sl_pips': dec.get('sl_pips'),
+                'ttl_bars': dec.get('ttl_bars', 0),
+                'hp_overrides': json.dumps(dec.get('hp_overrides', {})) if dec.get('hp_overrides') else '',
                 'position_open': entry.get('position_open'),
                 'level': entry.get('level'),
                 'balance': entry.get('balance'),
@@ -372,12 +384,39 @@ class AgentPilot(Pipeline):
                 entry.get('danger', 0.5),
             ])
 
-        base['consultation_log'] = slim_log
+        # Lightweight summary dicts for bar_breakdown sections (instant render)
         base['signal_distribution'] = signal_counts
         base['trigger_distribution'] = trigger_counts
-        base['confidence_series'] = conf_series
 
-        base['_ui'] = self.ui_metadata()
+        # Flag for frontend: heavy data available via API
+        base['_has_heavy'] = True
+
+        # Heavy data: stored in DB, loaded on demand via "Load Full Report" button.
+        # The WebSocket publish in backtest_mode.py strips keys starting with '_heavy'.
+        # Downsample arrays to keep DB size reasonable.
+        ds = full.get('danger_scores', [])
+        if len(ds) > 300:
+            step = max(1, len(ds) // 300)
+            ds = ds[::step][:300]
+
+        co = full.get('cycle_outcomes', [])
+        if len(co) > 200:
+            co = co[-200:]
+
+        gd = full.get('gate_decisions', [])
+        if len(gd) > 200:
+            gd = gd[-200:]
+
+        base['danger_scores'] = ds
+        base['cycle_outcomes'] = co
+        base['gate_decisions'] = gd
+        base['consultation_log'] = slim_log[-200:]
+        base['confidence_series'] = conf_series[-200:]
+
+        # Full UI metadata with all sections (charts + tables render after Load)
+        base['_ui'] = self._ui_metadata_lightweight()
+        # Full UI for after loading (includes charts, audit tables)
+        base['_ui_full'] = self._ui_metadata_full()
         return base
 
     def save_state(self, path: str) -> None:
@@ -449,271 +488,119 @@ class AgentPilot(Pipeline):
         }
 
     def ui_metadata(self) -> dict:
+        return self._ui_metadata_lightweight()
+
+    # ── Shared UI building blocks ──
+
+    _BADGES = [
+        {'label': 'AgentPilot', 'color': 'brand'},
+    ]
+
+    _METRIC_CARDS = [
+        {'icon': 'chart', 'label': 'Consultations', 'key': 'journal.total_consultations', 'format': 'int'},
+        {'icon': 'shield', 'label': 'Win Rate', 'key': 'cycles.win_rate', 'format': 'pct', 'threshold': [0.5, 0.7]},
+        {'icon': 'block', 'label': 'Block Rate', 'key': 'executor.block_rate', 'format': 'pct', 'threshold_inv': [0.3, 0.8]},
+        {'icon': 'danger', 'label': 'Avg Danger', 'key': 'danger.mean', 'format': 'dec3', 'threshold_inv': [0.3, 0.6]},
+        {'icon': 'filter', 'label': 'Cache Hit Rate', 'key': 'brain.hit_rate', 'format': 'pct', 'threshold': [0.3, 0.6]},
+        {'icon': 'layers', 'label': 'HP Changes', 'key': 'executor.hp_changes', 'format': 'int'},
+    ]
+
+    _KV_SECTIONS = [
+        {'type': 'kv_pairs', 'title': 'Current Decision', 'grid': 'half', 'empty_message': 'No decision yet', 'items': [
+            {'label': 'Signal', 'key': 'current_decision.signal', 'format': 'text'},
+            {'label': 'Confidence', 'key': 'current_decision.confidence', 'format': 'dec3'},
+            {'label': 'Sizing', 'key': 'current_decision.sizing_pct', 'format': 'pct'},
+            {'label': 'TP/SL', 'key': 'current_decision.tp_pips', 'format': 'text'},
+            {'label': 'TTL (bars)', 'key': 'current_decision.ttl_bars', 'format': 'int'},
+            {'label': 'Reasoning', 'key': 'current_decision.reasoning', 'format': 'text'},
+        ]},
+        {'type': 'kv_pairs', 'title': 'Trading Journal', 'grid': 'half', 'items': [
+            {'label': 'Thesis', 'key': 'journal.thesis', 'format': 'text'},
+            {'label': 'Regime', 'key': 'journal.regime', 'format': 'text'},
+            {'label': 'Win Streak', 'key': 'journal.consecutive_wins', 'format': 'int'},
+            {'label': 'Loss Streak', 'key': 'journal.consecutive_losses', 'format': 'int'},
+            {'label': 'Total Entries', 'key': 'journal.entries', 'format': 'int'},
+        ]},
+        {'type': 'kv_pairs', 'title': 'LLM Brain', 'grid': 'half', 'items': [
+            {'label': 'Provider', 'key': 'brain.provider', 'format': 'text'},
+            {'label': 'Model', 'key': 'brain.model', 'format': 'text'},
+            {'label': 'API Calls', 'key': 'brain.api_calls', 'format': 'int'},
+            {'label': 'Cache Hits', 'key': 'brain.cache_hits', 'format': 'int'},
+            {'label': 'Errors', 'key': 'brain.errors', 'format': 'int', 'color': 'red'},
+        ]},
+        {'type': 'kv_pairs', 'title': 'Decision Executor', 'grid': 'half', 'items': [
+            {'label': 'Decisions Applied', 'key': 'executor.decisions_applied', 'format': 'int'},
+            {'label': 'Entries Allowed', 'key': 'executor.entries_allowed', 'format': 'int', 'color': 'green'},
+            {'label': 'Entries Blocked', 'key': 'executor.entries_blocked', 'format': 'int', 'color': 'red'},
+            {'label': 'HP Changes', 'key': 'executor.hp_changes', 'format': 'int'},
+        ]},
+    ]
+
+    _BAR_SECTIONS = [
+        {'type': 'bar_breakdown', 'title': 'Signal Distribution', 'data_key': 'signal_distribution', 'show_if': 'signal_distribution', 'mode': 'count_only',
+         'label_colors': {'long': 'green', 'short': 'red', 'hold': 'surface', 'close_all': 'amber', 'no_action': 'surface'}},
+        {'type': 'bar_breakdown', 'title': 'Trigger Distribution', 'data_key': 'trigger_distribution', 'show_if': 'trigger_distribution', 'mode': 'count_only',
+         'label_colors': {'warmup_complete': 'brand', 'position_opened': 'green', 'cycle_end': 'amber', 'level_up': 'red', 'ema_crossover': 'blue', 'atr_spike': 'red', 'scheduled_checkin': 'surface'}},
+        {'type': 'bar_breakdown', 'title': 'Per-Level Performance', 'data_key': 'level_performance', 'show_if': 'level_performance', 'label_prefix': 'L',
+         'label_colors': {'0': 'green', '1': 'brand', '2': 'brand', '3': 'amber', '4': 'amber', '5': 'red'}, 'mode': 'win_loss', 'show_danger': True},
+        {'type': 'exit_reasons', 'title': 'Exit Reason Breakdown', 'data_key': 'cycles.pnl_by_exit', 'show_if': 'cycles.pnl_by_exit'},
+        {'type': 'bucket_table', 'title': 'Risk Intelligence: Danger Buckets', 'data_key': 'risk_intel.danger_buckets', 'show_if': 'risk_intel.danger_buckets',
+         'bucket_colors': {'extreme': 'red', 'high': 'orange', 'medium': 'amber', 'low': 'green', 'very_low': 'green'}},
+    ]
+
+    _HEAVY_SECTIONS = [
+        {'type': 'line_chart', 'title': 'Confidence & Danger Over Time', 'data_key': 'confidence_series', 'show_if': 'confidence_series',
+         'series': [{'index': 1, 'label': 'Confidence', 'color': '#3b82f6', 'width': 2}, {'index': 2, 'label': 'Danger', 'color': '#ef4444', 'width': 1.5, 'dashed': True}],
+         'x_label': 'Bar', 'summary_stats': [{'label': 'Current Danger', 'key': 'danger.current', 'format': 'dec3'}, {'label': 'Mean Danger', 'key': 'danger.mean', 'format': 'dec3'}]},
+        {'type': 'line_chart', 'title': 'Danger Score Over Time', 'data_key': 'danger_scores', 'show_if': 'danger_scores',
+         'series': [{'index': 1, 'label': 'Danger', 'color': '#ef4444', 'width': 1.5}],
+         'summary_stats': [{'label': 'Current', 'key': 'danger.current', 'format': 'dec3'}, {'label': 'High Danger %', 'key': 'danger.high_danger_pct', 'format': 'pct'}]},
+        {'type': 'scatter', 'title': 'Cycle Scatter: Danger at Entry vs PnL', 'data_key': 'cycle_outcomes', 'show_if': 'cycle_outcomes',
+         'x_key': 'danger_at_entry', 'x_label': 'Danger at Entry', 'y_key': 'pnl', 'y_label': 'PnL', 'color_key': 'exit_reason', 'size_key': 'level',
+         'color_map': {'agent_close': {'color': '#8b5cf6', 'label': 'Agent Close'}, 'strategy_exit': {'color': '#3b82f6', 'label': 'Strategy Exit'}, '_default': {'color': '#64748b', 'label': 'Other'}},
+         'ref_lines': [{'axis': 'y', 'value': 0, 'style': 'dashed', 'color': '#475569'}]},
+        {'type': 'audit_table', 'title': 'LLM Consultation Log', 'subtitle': 'Full audit trail', 'max_rows': 200,
+         'sources': [{'data_key': 'consultation_log', 'type_label': 'consult', 'type_color': 'purple',
+                       'map': {'ts': 'bar', 'danger': 'danger', 'decision': 'signal', 'outcome_pnl': None}}],
+         'columns': [
+             {'key': 'bar', 'label': 'Bar', 'sortable': True, 'format': 'int'},
+             {'key': 'trigger', 'label': 'Trigger', 'format': 'text'},
+             {'key': 'signal', 'label': 'Signal', 'format': 'text'},
+             {'key': 'confidence', 'label': 'Conf', 'sortable': True, 'format': 'dec3'},
+             {'key': 'reasoning', 'label': 'Reasoning', 'format': 'text'},
+             {'key': 'elapsed_s', 'label': 'Time(s)', 'format': 'text'},
+         ],
+         'filters': [{'value': 'all', 'label': 'All'}, {'value': 'long', 'label': 'Long', 'match': {'signal': 'long'}}, {'value': 'short', 'label': 'Short', 'match': {'signal': 'short'}}]},
+        {'type': 'audit_table', 'title': 'Gate Decision Audit', 'subtitle': 'Entry gate decisions with outcome linkage', 'max_rows': 200,
+         'sources': [{'data_key': 'gate_decisions', 'type_label': 'gate', 'type_color': 'blue',
+                       'map': {'ts': 'ts', 'danger': 'danger', 'decision': {'key': 'allowed', 'true': 'ALLOWED', 'false': 'BLOCKED'}, 'outcome_pnl': 'outcome_pnl'}}],
+         'columns': [
+             {'key': 'ts', 'label': 'Time', 'sortable': True, 'format': 'datetime'},
+             {'key': 'danger', 'label': 'Danger', 'sortable': True, 'format': 'dec3', 'color_thresholds': {'red': 0.7, 'amber': 0.5}},
+             {'key': 'decision', 'label': 'Decision', 'format': 'decision_badge', 'color_map': {'ALLOWED': 'green', 'BLOCKED': 'red'}},
+             {'key': 'outcome_pnl', 'label': 'Outcome PnL', 'sortable': True, 'format': 'currency_signed'},
+         ],
+         'filters': [{'value': 'all', 'label': 'All'}, {'value': 'blocked', 'label': 'Blocked', 'match': {'decision': 'BLOCKED'}}, {'value': 'allowed', 'label': 'Allowed', 'match': {'decision': 'ALLOWED'}}]},
+    ]
+
+    def _ui_metadata_lightweight(self) -> dict:
+        """Lightweight UI: kv_pairs + bar charts only. Renders instantly."""
+        badges = list(self._BADGES) + [
+            {'label': f'{self._brain.provider or "none"}:{self._brain.model or "default"}', 'color': 'surface'},
+        ]
         return {
-            'badges': [
-                {'label': 'AgentPilot', 'color': 'brand'},
-                {'label': f'{self._brain.provider or "none"}:{self._brain.model or "default"}', 'color': 'surface'},
-            ],
-            'metric_cards': [
-                {'icon': 'chart', 'label': 'Consultations', 'key': 'journal.total_consultations', 'format': 'int', 'tooltip': 'Total LLM API consultations'},
-                {'icon': 'shield', 'label': 'Win Rate', 'key': 'cycles.win_rate', 'format': 'pct', 'threshold': [0.5, 0.7]},
-                {'icon': 'block', 'label': 'Block Rate', 'key': 'executor.block_rate', 'format': 'pct', 'threshold_inv': [0.3, 0.8]},
-                {'icon': 'danger', 'label': 'Avg Danger', 'key': 'danger.mean', 'format': 'dec3', 'threshold_inv': [0.3, 0.6]},
-                {'icon': 'filter', 'label': 'Cache Hit Rate', 'key': 'brain.hit_rate', 'format': 'pct', 'threshold': [0.3, 0.6]},
-                {'icon': 'layers', 'label': 'HP Changes', 'key': 'executor.hp_changes', 'format': 'int'},
-            ],
-            'sections': [
-                # ── Current Decision (half) ──
-                {
-                    'type': 'kv_pairs',
-                    'title': 'Current Decision',
-                    'grid': 'half',
-                    'data_key': 'current_decision',
-                    'auto_items': True,
-                    'empty_message': 'No decision yet',
-                },
-                # ── Journal Summary (half) ──
-                {
-                    'type': 'kv_pairs',
-                    'title': 'Trading Journal',
-                    'grid': 'half',
-                    'items': [
-                        {'label': 'Thesis', 'key': 'journal.thesis', 'format': 'text'},
-                        {'label': 'Regime', 'key': 'journal.regime', 'format': 'text'},
-                        {'label': 'Win Streak', 'key': 'journal.consecutive_wins', 'format': 'int'},
-                        {'label': 'Loss Streak', 'key': 'journal.consecutive_losses', 'format': 'int'},
-                        {'label': 'Total Entries', 'key': 'journal.entries', 'format': 'int'},
-                    ],
-                },
-                # ── Brain / LLM stats (half) ──
-                {
-                    'type': 'kv_pairs',
-                    'title': 'LLM Brain',
-                    'grid': 'half',
-                    'items': [
-                        {'label': 'Provider', 'key': 'brain.provider', 'format': 'text'},
-                        {'label': 'Model', 'key': 'brain.model', 'format': 'text'},
-                        {'label': 'API Calls', 'key': 'brain.api_calls', 'format': 'int'},
-                        {'label': 'Cache Hits', 'key': 'brain.cache_hits', 'format': 'int'},
-                        {'label': 'Cache Size', 'key': 'brain.cache_size', 'format': 'int'},
-                        {'label': 'Errors', 'key': 'brain.errors', 'format': 'int', 'color': 'red'},
-                    ],
-                },
-                # ── Executor (half) ──
-                {
-                    'type': 'kv_pairs',
-                    'title': 'Decision Executor',
-                    'grid': 'half',
-                    'items': [
-                        {'label': 'Decisions Applied', 'key': 'executor.decisions_applied', 'format': 'int'},
-                        {'label': 'Entries Allowed', 'key': 'executor.entries_allowed', 'format': 'int', 'color': 'green'},
-                        {'label': 'Entries Blocked', 'key': 'executor.entries_blocked', 'format': 'int', 'color': 'red'},
-                        {'label': 'HP Changes', 'key': 'executor.hp_changes', 'format': 'int'},
-                    ],
-                },
-                # ── Confidence + Danger time-series ──
-                {
-                    'type': 'line_chart',
-                    'title': 'Confidence & Danger Over Time',
-                    'data_key': 'confidence_series',
-                    'show_if': 'confidence_series',
-                    'series': [
-                        {'index': 1, 'label': 'Confidence', 'color': '#3b82f6', 'width': 2},
-                        {'index': 2, 'label': 'Danger', 'color': '#ef4444', 'width': 1.5, 'dashed': True},
-                    ],
-                    'x_label': 'Bar',
-                    'summary_stats': [
-                        {'label': 'Current Danger', 'key': 'danger.current', 'format': 'dec3'},
-                        {'label': 'Mean Danger', 'key': 'danger.mean', 'format': 'dec3'},
-                    ],
-                },
-                # ── Danger Score time-series ──
-                {
-                    'type': 'line_chart',
-                    'title': 'Danger Score Over Time',
-                    'data_key': 'danger_scores',
-                    'show_if': 'danger_scores',
-                    'series': [
-                        {'index': 1, 'label': 'Danger', 'color': '#ef4444', 'width': 1.5},
-                    ],
-                    'summary_stats': [
-                        {'label': 'Current', 'key': 'danger.current', 'format': 'dec3'},
-                        {'label': 'High Danger %', 'key': 'danger.high_danger_pct', 'format': 'pct'},
-                    ],
-                },
-                # ── Cycle scatter: Danger vs PnL ──
-                {
-                    'type': 'scatter',
-                    'title': 'Cycle Scatter: Danger at Entry vs PnL',
-                    'data_key': 'cycle_outcomes',
-                    'show_if': 'cycle_outcomes',
-                    'x_key': 'danger_at_entry',
-                    'x_label': 'Danger at Entry',
-                    'y_key': 'pnl',
-                    'y_label': 'PnL',
-                    'color_key': 'exit_reason',
-                    'size_key': 'level',
-                    'color_map': {
-                        'agent_close': {'color': '#8b5cf6', 'label': 'Agent Close'},
-                        'strategy_exit': {'color': '#3b82f6', 'label': 'Strategy Exit'},
-                        'pipeline_abort': {'color': '#f59e0b', 'label': 'Abort'},
-                        '_default': {'color': '#64748b', 'label': 'Other'},
-                    },
-                    'ref_lines': [
-                        {'axis': 'y', 'value': 0, 'style': 'dashed', 'color': '#475569'},
-                    ],
-                    'summary_stats': [
-                        {'label': 'Correlation', 'compute': 'correlation', 'x': 'danger_at_entry', 'y': 'pnl'},
-                    ],
-                },
-                # ── Signal Distribution ──
-                {
-                    'type': 'bar_breakdown',
-                    'title': 'Signal Distribution',
-                    'data_key': 'signal_distribution',
-                    'show_if': 'signal_distribution',
-                    'mode': 'count_only',
-                    'label_colors': {
-                        'long': 'green',
-                        'short': 'red',
-                        'hold': 'surface',
-                        'close_all': 'amber',
-                        'no_action': 'surface',
-                    },
-                },
-                # ── Trigger Distribution ──
-                {
-                    'type': 'bar_breakdown',
-                    'title': 'Trigger Distribution',
-                    'data_key': 'trigger_distribution',
-                    'show_if': 'trigger_distribution',
-                    'mode': 'count_only',
-                    'label_colors': {
-                        'warmup_complete': 'brand',
-                        'position_opened': 'green',
-                        'cycle_end': 'amber',
-                        'level_up': 'red',
-                        'ema_crossover': 'blue',
-                        'atr_spike': 'red',
-                        'scheduled_checkin': 'surface',
-                    },
-                },
-                # ── Per-Level Performance ──
-                {
-                    'type': 'bar_breakdown',
-                    'title': 'Per-Level Performance',
-                    'data_key': 'level_performance',
-                    'show_if': 'level_performance',
-                    'label_prefix': 'L',
-                    'label_colors': {
-                        '0': 'green', '1': 'brand', '2': 'brand',
-                        '3': 'amber', '4': 'amber', '5': 'red',
-                    },
-                    'mode': 'win_loss',
-                    'show_danger': True,
-                },
-                # ── Risk Intelligence: Danger Buckets ──
-                {
-                    'type': 'bucket_table',
-                    'title': 'Risk Intelligence: Danger Buckets',
-                    'data_key': 'risk_intel.danger_buckets',
-                    'show_if': 'risk_intel.danger_buckets',
-                    'bucket_colors': {
-                        'extreme': 'red',
-                        'high': 'orange',
-                        'medium': 'amber',
-                        'low': 'green',
-                        'very_low': 'green',
-                    },
-                },
-                # ── Exit Reason Breakdown ──
-                {
-                    'type': 'exit_reasons',
-                    'title': 'Exit Reason Breakdown',
-                    'data_key': 'cycles.pnl_by_exit',
-                    'show_if': 'cycles.pnl_by_exit',
-                },
-                # ── Lessons Learned ──
-                {
-                    'type': 'kv_pairs',
-                    'title': 'Lessons Learned (from LLM)',
-                    'show_if': 'journal.lessons',
-                    'items': [
-                        {'label': f'Lesson', 'key': 'journal.lessons', 'format': 'text'},
-                    ],
-                },
-                # ── Full Consultation Audit Log ──
-                {
-                    'type': 'audit_table',
-                    'title': 'LLM Consultation Log',
-                    'subtitle': 'Full request/response audit trail — check for data leakage',
-                    'sources': [
-                        {
-                            'data_key': 'consultation_log',
-                            'type_label': 'consult',
-                            'type_color': 'purple',
-                            'map': {
-                                'ts': 'bar',
-                                'danger': 'danger',
-                                'decision': {'key': 'decision.signal'},
-                                'outcome_pnl': None,
-                            },
-                        },
-                    ],
-                    'columns': [
-                        {'key': 'bar', 'label': 'Bar', 'sortable': True, 'format': 'int'},
-                        {'key': 'trigger', 'label': 'Trigger', 'sortable': True, 'format': 'text'},
-                        {'key': 'price', 'label': 'Price', 'format': 'dec4'},
-                        {'key': 'danger', 'label': 'Danger', 'sortable': True, 'format': 'dec3',
-                         'color_thresholds': {'red': 0.7, 'amber': 0.5}},
-                        {'key': 'decision.signal', 'label': 'Signal', 'format': 'text',
-                         'color_map': {'long': 'green', 'short': 'red', 'hold': 'surface', 'close_all': 'amber'}},
-                        {'key': 'decision.confidence', 'label': 'Conf', 'sortable': True, 'format': 'dec2'},
-                        {'key': 'decision.reasoning', 'label': 'Reasoning', 'format': 'text'},
-                        {'key': 'elapsed_s', 'label': 'Time(s)', 'sortable': True, 'format': 'dec1'},
-                        {'key': 'cached', 'label': 'Cached', 'format': 'text'},
-                        {'key': 'balance', 'label': 'Balance', 'format': 'currency'},
-                    ],
-                    'filters': [
-                        {'value': 'all', 'label': 'All Consultations'},
-                        {'value': 'long', 'label': 'Long Signals', 'match': {'decision.signal': 'long'}},
-                        {'value': 'short', 'label': 'Short Signals', 'match': {'decision.signal': 'short'}},
-                        {'value': 'close', 'label': 'Close All', 'match': {'decision.signal': 'close_all'}},
-                    ],
-                    'max_rows': 500,
-                },
-                # ── Gate Decision Audit ──
-                {
-                    'type': 'audit_table',
-                    'title': 'Gate Decision Audit',
-                    'subtitle': 'Entry gate decisions with outcome linkage',
-                    'sources': [
-                        {
-                            'data_key': 'gate_decisions',
-                            'type_label': 'gate',
-                            'type_color': 'blue',
-                            'map': {
-                                'ts': 'ts',
-                                'danger': 'danger',
-                                'decision': {'key': 'allowed', 'true': 'ALLOWED', 'false': 'BLOCKED'},
-                                'outcome_pnl': 'outcome_pnl',
-                            },
-                        },
-                    ],
-                    'columns': [
-                        {'key': 'ts', 'label': 'Time', 'sortable': True, 'format': 'datetime'},
-                        {'key': 'danger', 'label': 'Danger', 'sortable': True, 'format': 'dec3',
-                         'color_thresholds': {'red': 0.7, 'amber': 0.5}},
-                        {'key': 'decision', 'label': 'Decision', 'format': 'decision_badge',
-                         'color_map': {'ALLOWED': 'green', 'BLOCKED': 'red'}},
-                        {'key': 'outcome_pnl', 'label': 'Outcome PnL', 'sortable': True, 'format': 'currency_signed'},
-                    ],
-                    'filters': [
-                        {'value': 'all', 'label': 'All Decisions'},
-                        {'value': 'blocked', 'label': 'Blocked Only', 'match': {'decision': 'BLOCKED'}},
-                        {'value': 'allowed', 'label': 'Allowed Only', 'match': {'decision': 'ALLOWED'}},
-                    ],
-                    'max_rows': 200,
-                },
-            ],
+            'badges': badges,
+            'metric_cards': self._METRIC_CARDS,
+            'sections': self._KV_SECTIONS + self._BAR_SECTIONS,
+        }
+
+    def _ui_metadata_full(self) -> dict:
+        """Full UI: adds charts, audit tables. Used after 'Load Full Report'."""
+        badges = list(self._BADGES) + [
+            {'label': f'{self._brain.provider or "none"}:{self._brain.model or "default"}', 'color': 'surface'},
+        ]
+        return {
+            'badges': badges,
+            'metric_cards': self._METRIC_CARDS,
+            'sections': self._KV_SECTIONS + self._BAR_SECTIONS + self._HEAVY_SECTIONS,
         }

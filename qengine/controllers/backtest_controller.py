@@ -325,6 +325,23 @@ def get_backtest_session_logs(session_id: str, current_user: CurrentUser = Depen
     })
 
 
+@router.post("/sessions/{session_id}/pipeline-stats-full")
+def get_pipeline_stats_full(session_id: str, current_user: CurrentUser = Depends(get_current_user)):
+    """
+    Get full pipeline stats (including heavy chart/table data) for a session.
+    This is loaded on-demand to avoid freezing the UI.
+    """
+    session = get_backtest_session_by_id_from_db(session_id)
+    if not session:
+        return JSONResponse({'error': f'Session {session_id} not found'}, status_code=404)
+    if not current_user.is_admin:
+        if str(session.user_id) != current_user.effective_user_id:
+            return JSONResponse({'error': 'Not found'}, status_code=404)
+
+    pipeline_stats = json.loads(session.pipeline_stats) if session.pipeline_stats else {}
+    return JSONResponse({'pipeline_stats': pipeline_stats})
+
+
 @router.post("/exposure-table")
 def compute_exposure_table(request_json: dict = Body(...), current_user: CurrentUser = Depends(get_current_user)):
     """
