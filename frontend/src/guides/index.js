@@ -3,6 +3,7 @@ import tradesRaw from './trades.md?raw'
 import riskRaw from './risk.md?raw'
 import forexRaw from './forex.md?raw'
 import hedgeRaw from './hedge.md?raw'
+import martingaleRaw from './martingale.md?raw'
 import monteCarloRaw from './monte-carlo.md?raw'
 import stratQuickstartRaw from './strategy-quickstart.md?raw'
 import stratMethodsRaw from './strategy-methods.md?raw'
@@ -27,6 +28,7 @@ export const guides = {
   risk: parseMdGuide(riskRaw),
   forex: parseMdGuide(forexRaw),
   hedge: parseMdGuide(hedgeRaw),
+  martingale: parseMdGuide(martingaleRaw),
   'monte-carlo': parseMdGuide(monteCarloRaw),
   'strategy-quickstart': parseMdGuide(stratQuickstartRaw),
   'strategy-methods': parseMdGuide(stratMethodsRaw),
@@ -44,5 +46,6 @@ export const allGuides = Object.assign(
   guides.risk,
   guides.forex,
   guides.hedge,
+  guides.martingale,
   guides['monte-carlo'],
 )
