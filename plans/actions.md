@@ -120,7 +120,179 @@ Updated: 2026-04-10
 
 ---
 
-## Priority 8: Live Trade Strategy Drift Detector (Future)
+## Priority 8: Protective Sell Accuracy Metric ✅ DONE
+**Source**: 1830483.1830694.pdf (Wilson & Banzhaf, GECCO 2010)
+**Effort**: Low | **Impact**: Medium
+
+**What**: Separate backtest trade accuracy into "profitable buys" (entries that led to profitable cycles) and "protective sells" (exits/close-all that prevented further drawdown).
+
+**Why**: Win rate conflates entry quality with exit quality. A high protective sell % means our TP/close-all logic is good at timing exits. A high profitable buy % means our EMA crossover picks good entry points. Separating them reveals which component needs improvement.
+
+**Implementation**:
+- For each cycle: was the entry direction correct? (profitable buy = cycle resolved in profit)
+- For each close-all/abort: did price continue against us after exit? (protective sell = price moved further adverse within N bars after exit)
+- Report both metrics alongside win rate in backtest summary
+- Wilson achieved 85-100% profitable buys and 90-97% protective sells with LGP
+
+**Files to modify**: Backtest report generation, pipeline metrics
+
+---
+
+## Priority 9: Analytical Ruin Probability (Gamma Distribution Formula) ✅ DONE
+**Source**: ruin_prob.pdf (Karathanasopoulos et al., 2021) — Proposition 1
+**Effort**: Low | **Impact**: High
+
+**What**: Compute closed-form survival probability from backtest cycle statistics using the Gamma distribution formula:
+```
+P_survive = ∫(1/w to ∞) f(x; α, β) dx
+
+where α = 2μ/σ² - 1,  β = 2k₀/σ²
+```
+Special case when μ/σ² = 1: `P_survive = exp(-2k₀ / μw)`
+
+**Calibration from backtest**:
+- `μ` = mean return per cycle (after spread/costs) = cost-adjusted expected return
+- `σ` = std dev of per-cycle returns
+- `k₀` = fixed cost per cycle (spread cost in $ terms)
+- `w` = current equity / initial equity (normalized wealth)
+
+**Why**: Gives an **analytical** ruin probability to complement our empirical bust-rate. If the analytical P(ruin) diverges significantly from empirical, it flags model assumptions that don't hold (e.g., non-IID cycles, fat tails). Also provides the critical condition `μ/σ² > 1/2` as a quick parameter health check.
+
+**Implementation**:
+- Add `_calculate_ruin_probability()` to `qengine/services/metrics.py`
+- Inputs: cycle PnL array, spread cost, equity
+- Returns: `analytical_ruin_prob`, `survival_condition_ratio` (μ/σ²), `survival_condition_met` (bool)
+- Add "Ruin Probability" card to Pipeline Intelligence tab
+- Show: analytical P(survive), empirical P(survive) from bust rate, and whether they agree
+- Color-code: green if μ/σ² > 1, yellow if 0.5 < μ/σ² < 1, red if μ/σ² ≤ 0.5
+
+**Files to modify**: `qengine/services/metrics.py`, frontend Pipeline Intelligence tab
+
+---
+
+## Priority 10: Survival Condition Validator (μ/σ² > 1/2 Check) ✅ DONE
+**Source**: ruin_prob.pdf — Lemma 1
+**Effort**: Low | **Impact**: High
+
+**What**: Before running a full backtest, compute `μ/σ²` from a quick sample or from config parameters and flag configurations that fail the survival condition.
+
+**Why**: The paper proves that when `μ/σ² ≤ 1/2`, the fund **cannot** survive permanently — ruin probability is exactly 1.0 regardless of initial wealth. This is a hard mathematical boundary. Any parameter set that falls below it is guaranteed to bust eventually. This should be a pre-flight check in the pipeline.
+
+**Implementation**:
+- Add to pipeline config validation step
+- Estimate μ and σ from first N cycles of backtest (warm-up phase)
+- If μ/σ² ≤ 0.5: show red warning "Configuration mathematically guaranteed to ruin"
+- If 0.5 < μ/σ² < 1.0: show yellow warning "Marginal survival — sensitive to parameter changes"
+- If μ/σ² ≥ 1.0: show green "Survival condition comfortably met"
+- Display in Pipeline Intelligence as a gauge or traffic light
+
+**Files to modify**: Pipeline scan/validation, frontend
+
+---
+
+## Priority 11: Minimum Account Size Calculator ✅ DONE
+**Source**: ruin_prob.pdf — Eq (9), Fig 1
+**Effort**: Low | **Impact**: Medium
+
+**What**: Given strategy parameters (μ, σ, k₀), compute minimum initial wealth `w_min` needed to achieve a target survival probability (e.g., 95%).
+
+From the special case: `P_survive = exp(-2k₀/μw)` → solving for w:
+```
+w_min = -2k₀ / (μ · ln(P_target))
+```
+For the general case, invert the Gamma CDF numerically.
+
+**Why**: Users ask "how much capital do I need?" This gives a mathematically grounded answer, not a guess. The paper's Fig 1 shows survival probability is near-zero below a wealth threshold, then jumps rapidly — finding that threshold is the answer.
+
+**Implementation**:
+- Add `calculate_min_account_size(target_survival, spread_cost, mu, sigma)` utility
+- Display in backtest summary: "Minimum recommended account: $X for 95% survival"
+- Incorporate into session comparison view
+
+**Files to modify**: `qengine/services/metrics.py`, backtest report
+
+---
+
+## Priority 12: Fixed Cost Sensitivity Chart ✅ DONE
+**Source**: ruin_prob.pdf — Fig 1 (right panel), Fig 10 (tornado diagram)
+**Effort**: Low | **Impact**: Medium
+
+**What**: Plot survival probability as a function of spread/fixed cost, showing how sensitive the strategy is to execution costs.
+
+**Why**: The paper shows survival probability decreases exponentially with fixed cost (Eq 9). For FX, the "fixed cost" is spread + swap. This chart answers: "If my broker widens spreads by 0.5 pips, how much does my survival probability drop?" The tornado diagram (Fig 10) shows Δ (expected return) and σ₀ (additional volatility) are the most sensitive parameters.
+
+**Implementation**:
+- Sweep k₀ from 0 to 2x current spread, compute P_survive at each point
+- Plot as curve in Pipeline Intelligence tab
+- Mark current operating point
+- Add vertical line at "break-even spread" where P_survive drops below 50%
+
+**Files to modify**: Frontend Pipeline Intelligence tab
+
+---
+
+## Priority 13: Multi-Instrument Survival Improvement (Theoretical Bound)
+**Source**: ruin_prob.pdf — Proposition 2, Section 3
+**Effort**: Medium | **Impact**: Medium
+
+**What**: Use Proposition 2's two-asset model to compute the theoretical survival improvement from adding a second instrument. The condition becomes `(a + μ̄)/2b > 1` which is **easier to satisfy** than the single-asset condition.
+
+**Why**: Our Phase 2 identified multi-instrument diversification as the next step. This gives the theoretical framework: adding a second pair with different volatility characteristics provably improves survival probability. The paper shows that even a **short position** in a low-return asset can help (by hedging). This maps to our CFD hedging model.
+
+**Implementation**:
+- When comparing multi-pair backtest configs, compute both single-asset and two-asset survival conditions
+- Show improvement: "Adding GBP-USD improves survival condition from 0.8 to 1.2"
+- Use to rank which second instrument gives the best survival improvement
+- Feed into the market scanner as a selection criterion
+
+**Files to modify**: Multi-pair pipeline comparison, market scanner
+
+---
+
+## Priority 14: Dynamic Grid Repositioning (Micro-Martingale Concept)
+**Source**: 2.pdf (Chen, 2025) — Section 2.4
+**Effort**: High | **Impact**: Medium
+
+**What**: During a drawdown, cancel unfilled orders at higher levels and reallocate to lower price zones. Total order count stays constant, but grid density increases at structurally lower prices.
+
+**Why**: This is the one actionable concept from the crypto paper. Instead of waiting for price to hit pre-set hedge levels, dynamically shift unactivated levels downward when the market enters consolidation after a displacement. This accelerates cost-basis improvement without increasing total exposure.
+
+**Constraints for our system**:
+- Only reposition during displacement→consolidation transitions (not during active selloff)
+- Total notional exposure must not increase
+- Only applies to unactivated levels (can't move already-filled tickets)
+- Requires ATR-based detection of "consolidation after displacement"
+
+**Implementation**:
+- Add `should_reposition_grid()` check in `update_position()` 
+- Detect: price has fallen >N ATR but ATR itself is now contracting
+- Shift unfilled hedge levels closer to current price (tighter spacing)
+- Track original vs repositioned levels for reporting
+
+**Files to modify**: SurefireHedgeV3 strategy, pipeline reporting
+
+---
+
+## Priority 15: Integral Take-Profit (Weighted Cost-Basis Exit)
+**Source**: 2.pdf (Chen, 2025) — Section 2.3
+**Effort**: Medium | **Impact**: Low-Medium
+
+**What**: Instead of a fixed TP% from weighted average entry, continuously track a "cumulative gain integral" that accounts for micro-position density and local entry spacing. Trigger TP when the integral exceeds ~1% of adjusted cost basis.
+
+**Why**: Our current TP is a fixed % from the weighted average entry price. The integral approach would trigger TP sooner during bounces from heavily-weighted lower entries, and later during bounces from lightly-weighted upper entries. In practice, this may improve holding time without sacrificing profit per cycle.
+
+**Assessment**: The difference from our current weighted-average TP may be marginal. Our TP already weights by position size. The integral formulation is more general but may not materially change results for our 12-level grid. **Test empirically before committing.**
+
+**Implementation**:
+- Add alternative TP calculation mode to SurefireHedgeV3
+- Compare holding time and profit distributions vs current TP
+- If improvement > 5% in either metric, adopt; otherwise discard
+
+**Files to modify**: SurefireHedgeV3 strategy
+
+---
+
+## Priority 16: Live Trade Strategy Drift Detector (Future)
 **Source**: ForexAgent.pdf (Shu et al., 2026)
 **Effort**: High | **Impact**: Low (until multi-user)
 
@@ -137,9 +309,16 @@ Updated: 2026-04-10
 - martingale_index.pdf — Martingale Index metric definition
 - bi_ruin_problem.pdf — GTP theorem, triangular loss proof
 - drawdown.pdf — DDE/SDE for grid equity, σ sensitivity validation
+- **ruin_prob.pdf** — Closed-form ruin probability, survival condition, minimum wealth formula
 
 ### Move to `checked/` (limited use):
 - heavy_tailed.pdf — Finite-sequence expectation theory, academic interest only
 - ForexAgent.pdf — LLM strategy classifier, future reference
 - dynamic_grid.pdf, hedge_seq.pdf — Not relevant
-- GTSBot.pdf, BiLSTM-Attention_Model.pdf, multi-pair.pdf, ruin_prob.pdf — Previously reviewed
+- GTSBot.pdf, BiLSTM-Attention_Model.pdf, multi-pair.pdf — Previously reviewed
+- **2.pdf** — Crypto micro-martingale. Grid repositioning concept extracted (P14). Rest is crypto-specific, not applicable to FX/CFD
+- 1830483.1830694.pdf — LGP forex (Wilson & Banzhaf), drawdown-penalized fitness idea saved
+- ZABCIC-MATIC-SENIORTHESIS-2019.pdf — Martingale-like options sizing, too simple for us
+- quantum_fuzzy_agent.pdf — QPL + fuzzy RL sizing, not applicable
+- Quantum-Inspired_AI.pdf — QIAI optimizer for LSTM prediction, not applicable
+- PHD_THESIS_SALMAN.pdf — DC paradigm for entries, idea saved to ideas.md
