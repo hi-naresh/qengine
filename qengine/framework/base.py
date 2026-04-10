@@ -153,6 +153,28 @@ class Pipeline(ABC):
         """
         return {}
 
+    def ui_metadata(self) -> dict:
+        """Return UI rendering hints for the Pipeline Intelligence tab.
+
+        The frontend uses this to dynamically render the correct widgets
+        for any pipeline — no hardcoded assumptions about layers.
+
+        Structure:
+            badges: [{label, color}] — header badges
+            metric_cards: [{label, key, format, color?, threshold?, sub?}]
+            sections: [{type, title, key?, ...}] — ordered list of UI widgets
+
+        Section types:
+            scatter      — X vs Y scatter chart (needs x_key, y_key, color_key, size_key)
+            line_chart   — time-series line(s) with optional bands (needs series[])
+            bar_breakdown — horizontal win/loss bars (needs key to dict of {count, wins, pnl})
+            bucket_table — table with distribution bars (needs key to dict of buckets)
+            kv_pairs     — key-value detail rows (needs key or items[])
+            audit_table  — sortable/filterable log (needs columns[], data_key)
+            exit_reasons — outcome breakdown by exit reason (needs key)
+        """
+        return {'badges': [], 'metric_cards': [], 'sections': []}
+
 
 class PipelineStack:
     """
@@ -168,6 +190,8 @@ class PipelineStack:
 
     def __init__(self, pipelines: list):
         self.pipelines: list[Pipeline] = pipelines
+        self._cycle_hp_log: list = []       # [{cycle, hp}, ...] — HP snapshot per session
+        self._last_recorded_session = None  # double-fire guard
 
     def on_before(self, strategy) -> None:
         for p in self.pipelines:
@@ -224,6 +248,17 @@ class PipelineStack:
         return order_intent
 
     def on_cycle_end(self, pnl: float, strategy) -> None:
+        # Snapshot strategy HP per session (works for ANY pipeline)
+        sn = getattr(strategy, 'vars', {}).get('session_number') if strategy else None
+        if sn is not None and sn != self._last_recorded_session:
+            self._last_recorded_session = sn
+            hp = getattr(strategy, 'hp', None)
+            if hp:
+                snap = {k: (round(v, 4) if isinstance(v, float) else v)
+                        for k, v in hp.items()
+                        if isinstance(v, (int, float, str, bool))}
+                self._cycle_hp_log.append({'cycle': sn, 'hp': snap})
+
         for p in self.pipelines:
             p.on_cycle_end(pnl, strategy)
 

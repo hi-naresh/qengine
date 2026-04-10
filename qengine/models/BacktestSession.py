@@ -35,6 +35,12 @@ class BacktestSession(peewee.Model):
     # Backtest logs (JSON array of {timestamp, message, type})
     logs = peewee.TextField(null=True)
 
+    # Pipeline stats (JSON dict keyed by route, with danger scores, gate/abort decisions, etc.)
+    pipeline_stats = peewee.TextField(null=True)
+
+    # Export file paths (JSON dict: {tradingview, csv, json, full_report})
+    export_paths = peewee.TextField(null=True)
+
     # Error tracking
     exception = peewee.TextField(null=True)
     traceback = peewee.TextField(null=True)
@@ -230,6 +236,10 @@ if database.is_open():
             pw_migrate(migrator.add_column('backtestsession', 'logs', peewee.TextField(null=True)))
         if 'sessions' not in cols:
             pw_migrate(migrator.add_column('backtestsession', 'sessions', peewee.TextField(null=True)))
+        if 'pipeline_stats' not in cols:
+            pw_migrate(migrator.add_column('backtestsession', 'pipeline_stats', peewee.TextField(null=True)))
+        if 'export_paths' not in cols:
+            pw_migrate(migrator.add_column('backtestsession', 'export_paths', peewee.TextField(null=True)))
     except Exception:
         pass
 
@@ -266,6 +276,8 @@ def store_backtest_session(
             'exception': None,
             'traceback': None,
             'execution_duration': None,
+            'pipeline_stats': None,
+            'export_paths': None,
             'updated_at': jh.now_to_timestamp(True)
         }
         if user_id:
@@ -313,7 +325,9 @@ def update_backtest_session_results(
     execution_duration: float = None,
     strategy_codes: dict = None,
     logs: list = None,
-    sessions: list = None
+    sessions: list = None,
+    pipeline_stats: dict = None,
+    export_paths: dict = None,
 ) -> None:
     d = {
         'updated_at': jh.now_to_timestamp(True)
@@ -344,14 +358,13 @@ def update_backtest_session_results(
         d['logs'] = json.dumps(logs)
 
     if sessions is not None:
-        # Strip individual trade objects from sessions to save space
-        # (trades are already stored separately)
-        stripped = []
-        for s in sessions:
-            sc = {k: v for k, v in s.items() if k != 'trades'}
-            sc['trade_count'] = s.get('trade_count', len(s.get('trades', [])))
-            stripped.append(sc)
-        d['sessions'] = json.dumps(stripped)
+        d['sessions'] = json.dumps(sessions)
+
+    if pipeline_stats is not None:
+        d['pipeline_stats'] = json.dumps(pipeline_stats)
+
+    if export_paths is not None:
+        d['export_paths'] = json.dumps(export_paths)
 
     BacktestSession.update(**d).where(BacktestSession.id == id).execute()
 

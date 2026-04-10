@@ -1,8 +1,8 @@
 variant,component_removed,pf_full,pf_variant,pf_delta,pf_pct_change,wr_delta,bust_delta,pnl_delta,helps
-no_pipeline,pipeline,2.763,1.074,1.689,157.2,-0.0249,0.0249,15149154126.9,True
-single_global,single global,2.763,1.311,1.452,110.7,-0.0523,0.0523,15149149758.2,True
-uniform_sizing,uniform sizing,2.763,1.859,0.904,48.6,0.0,0.0,-21467176049.9,True
-no_migration,migration,2.763,2.763,0.0,0.0,0.0,0.0,0.0,False
-flat_clustering,flat clustering,2.763,2.763,0.0,0.0,0.0,0.0,0.0,False
-no_hysteresis,hysteresis,2.763,2.763,0.0,0.0,0.0,0.0,0.0,False
-random_configs,random configs,2.763,13.747,-10.984,-79.9,0.4123,-0.4123,15148676567.0,False
+random_configs,random configs,1.148,1.069,0.079,7.4,-0.0082,0.0082,1599.8,True
+no_pipeline,pipeline,1.148,1.074,0.074,6.9,-0.0082,0.0082,1525.7,True
+single_global,single global,1.148,1.096,0.052,4.8,-0.0082,0.0082,-1434.7,True
+no_migration,migration,1.148,1.148,0.0,0.0,0.0,0.0,0.0,False
+flat_clustering,flat clustering,1.148,1.148,0.0,0.0,0.0,0.0,0.0,False
+no_hysteresis,hysteresis,1.148,1.148,0.0,0.0,0.0,0.0,0.0,False
+uniform_sizing,uniform sizing,1.148,1.268,-0.12,-9.4,0.0,0.0,-11026.4,False

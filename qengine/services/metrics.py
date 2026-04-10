@@ -364,16 +364,29 @@ def _calculate_forex_metrics(trades_list: List[ClosedTrade]) -> dict:
 def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
     """Calculate hedge session-level metrics from trade metadata."""
     sessions_map = {}
+    session_outcomes = {}  # session_num -> exit_reason
+    session_max_level = {}  # session_num -> max level reached
+
     for t in trades_list:
         meta = getattr(t, 'meta', {})
         session_num = meta.get('session')
         if session_num is None:
-            # Each non-session trade is its own "session"
             session_num = f'standalone-{id(t)}'
         if session_num not in sessions_map:
             sessions_map[session_num] = {'pnl': 0.0, 'legs': 0}
+            session_max_level[session_num] = 0
         sessions_map[session_num]['pnl'] += t.pnl
         sessions_map[session_num]['legs'] += 1
+
+        # Track max level (depth) reached
+        level = meta.get('level', 0)
+        if isinstance(level, (int, float)) and level > session_max_level[session_num]:
+            session_max_level[session_num] = int(level)
+
+        # Track outcome (last trade's reason wins)
+        reason = meta.get('session_exit_reason', meta.get('exit_reason'))
+        if reason:
+            session_outcomes[session_num] = reason
 
     if not sessions_map:
         return {}
@@ -401,6 +414,41 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
     max_consec_wins = _max_consecutive(wins, 1)
     max_consec_losses = _max_consecutive(wins, 0)
 
+    # Bust metrics — sessions ending in bust/max_levels/margin_call
+    bust_outcomes = {'bust', 'max_levels', 'margin_call', 'liquidation'}
+    bust_sessions = {sn for sn, reason in session_outcomes.items() if reason in bust_outcomes}
+    bust_pnls = [sessions_map[sn]['pnl'] for sn in bust_sessions if sn in sessions_map]
+    total_busts = len(bust_pnls)
+    worst_bust_pnl = round(min(bust_pnls), 2) if bust_pnls else 0.0
+
+    # Loss sessions — any session that ended with PnL <= 0 (includes busts, aborts, etc.)
+    total_losing_sessions = len(losing_sessions)
+
+    # Depth analysis — how many sessions reached each max level, and win/loss at each
+    depth_stats = {}
+    for sn, s in sessions_map.items():
+        depth = session_max_level.get(sn, 0)
+        if depth not in depth_stats:
+            depth_stats[depth] = {'count': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0}
+        depth_stats[depth]['count'] += 1
+        depth_stats[depth]['pnl'] += s['pnl']
+        if s['pnl'] > 0:
+            depth_stats[depth]['wins'] += 1
+        else:
+            depth_stats[depth]['losses'] += 1
+
+    # Convert to sorted list for frontend
+    depth_breakdown = []
+    for depth in sorted(depth_stats.keys()):
+        d = depth_stats[depth]
+        depth_breakdown.append({
+            'depth': depth,
+            'count': d['count'],
+            'wins': d['wins'],
+            'losses': d['losses'],
+            'pnl': round(d['pnl'], 2),
+        })
+
     return {
         'total_sessions': total_sessions,
         'session_win_rate': round(session_win_rate, 4),
@@ -412,6 +460,10 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
         'sessions_with_1_leg': sessions_1_leg,
         'max_consecutive_session_wins': max_consec_wins,
         'max_consecutive_session_losses': max_consec_losses,
+        'total_busts': total_busts,
+        'worst_bust_pnl': worst_bust_pnl,
+        'total_losing_sessions': total_losing_sessions,
+        'depth_breakdown': depth_breakdown,
     }
 
 

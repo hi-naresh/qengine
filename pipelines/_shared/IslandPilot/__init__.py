@@ -88,6 +88,8 @@ class IslandPilot(Pipeline):
         self._abort_count: int = 0
         self._gate_block_count: int = 0
         self._gate_allow_count: int = 0
+        self._cycle_hp_log: List[dict] = []
+        self._last_recorded_session: Optional[int] = None
         self._sibling_groups: Dict[str, List[str]] = {}
 
         # Auto-load pre-trained models if available
@@ -292,14 +294,37 @@ class IslandPilot(Pipeline):
         return None
 
     def on_cycle_end(self, pnl: float, strategy) -> None:
-        """Record outcome for the evolver."""
+        """Record outcome for the evolver and log active HP per cycle.
+
+        Guards against double-fire: in CFD mode, close_all_tickets() and
+        Martingale._reset_cycle() both call on_cycle_end. We use the strategy's
+        session_number as the canonical cycle ID to deduplicate.
+        """
+        # Use strategy's session_number as canonical cycle ID (avoids double-count)
+        sn = getattr(strategy, 'vars', {}).get('session_number') if strategy else None
+        if sn is not None and sn == self._last_recorded_session:
+            return  # already recorded this session
+        self._last_recorded_session = sn
+
         self._cycle_count += 1
+        cycle_id = sn if sn is not None else self._cycle_count
+
+        # Track active HP per cycle for session display
+        cycle_hp: Dict[str, Any] = {
+            'cycle': cycle_id,
+            'regime': self._active_regime,
+            'confidence': round(self._active_confidence, 4) if self._active_confidence else None,
+        }
+        if self._active_genome is not None:
+            genes = self._active_genome if isinstance(self._active_genome, dict) else getattr(self._active_genome, 'genes', {})
+            cycle_hp['genes'] = {k: round(v, 4) if isinstance(v, float) else v for k, v in genes.items()}
+        self._cycle_hp_log.append(cycle_hp)
 
         if self.evolver is not None and self._active_regime is not None:
             self.evolver.record_outcome(
                 regime_id=str(self._active_regime),
                 pnl=pnl,
-                cycle=self._cycle_count,
+                cycle=cycle_id,
                 genome=self._active_genome,
             )
 
@@ -356,6 +381,7 @@ class IslandPilot(Pipeline):
             stats['n_migrations'] = len(self.evolver.get_migration_log())
 
         stats['sizer'] = self.sizer.get_stats()
+        stats['cycle_hp_log'] = self._cycle_hp_log
         stats['_ui'] = self.ui_metadata()
 
         return stats

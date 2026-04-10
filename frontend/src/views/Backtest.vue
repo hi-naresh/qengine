@@ -45,11 +45,19 @@
     </div>
 
     <!-- ═══ NEW RUN TAB ═══ -->
-    <div v-show="pageTab === 'run'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-show="pageTab === 'run'" class="gap-6" :class="configCollapsed ? 'block' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3'">
       <!-- Config Panel (Left) -->
-      <div class="md:col-span-1 lg:col-span-1 space-y-4">
+      <div v-show="!configCollapsed" class="md:col-span-1 lg:col-span-1 space-y-4">
         <div class="card">
-          <h2 class="text-sm font-semibold mb-1 text-surface-300">Configuration</h2>
+          <div class="flex items-center justify-between mb-1">
+            <h2 class="text-sm font-semibold text-surface-300">Configuration</h2>
+            <button @click="configCollapsed = true"
+              class="text-[10px] text-surface-500 hover:text-surface-300 flex items-center gap-1 transition-colors"
+              title="Hide config panel">
+              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg>
+              Hide
+            </button>
+          </div>
           <p class="text-[11px] text-surface-500 mb-4">Select a broker, symbol, timeframe, strategy, and date range to simulate</p>
 
           <div class="space-y-3">
@@ -328,7 +336,16 @@
       </div>
 
       <!-- Results Panel (Right) -->
-      <div class="md:col-span-1 lg:col-span-2 space-y-4 relative">
+      <div :class="configCollapsed ? 'w-full' : 'md:col-span-1 lg:col-span-2'" class="space-y-4 relative">
+        <!-- Show Config toggle -->
+        <div v-if="configCollapsed" class="flex items-center justify-end mb-2">
+          <button @click="configCollapsed = false"
+            class="btn-sm bg-surface-800 hover:bg-surface-700 text-surface-400 text-xs flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Show Config
+          </button>
+        </div>
+
         <!-- Rich Progress Card -->
         <div v-if="running || (progress.current === 100 && message)" class="card p-5 space-y-4">
           <div class="flex items-center gap-5">
@@ -402,10 +419,10 @@
                 {{ progress.floatingPnl >= 0 ? '+' : '' }}${{ progress.floatingPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </div>
             </div>
-            <div v-if="progress.marginUsed !== null" class="bg-surface-800/60 rounded-lg px-3 py-2">
-              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Margin Used</div>
-              <div class="text-sm font-semibold text-surface-200 tabular-nums">
-                ${{ progress.marginUsed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+            <div v-if="progress.marginUsed !== null && progress.equity" class="bg-surface-800/60 rounded-lg px-3 py-2">
+              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Margin Free</div>
+              <div class="text-sm font-semibold tabular-nums" :class="marginFreePercent > 50 ? 'text-green-400' : marginFreePercent > 20 ? 'text-amber-400' : 'text-red-400'">
+                {{ marginFreePercent.toFixed(1) }}%
               </div>
             </div>
             <div class="bg-surface-800/60 rounded-lg px-3 py-2">
@@ -488,6 +505,26 @@
               <span :class="d.danger > 0.7 ? 'text-red-400' : d.danger > 0.5 ? 'text-amber-400' : 'text-surface-300'">{{ d.danger?.toFixed(3) }}</span>
               <span v-if="d.threshold" class="text-surface-600">thr {{ d.threshold.toFixed(3) }}</span>
               <span v-if="d.level != null" class="text-surface-500">L{{ d.level }}</span>
+            </div>
+          </div>
+
+          <!-- Live Logs (collapsible, during execution) -->
+          <div v-if="running && backtestLogs.length > 0">
+            <button @click="liveLogsExpanded = !liveLogsExpanded"
+                    class="flex items-center gap-1.5 text-[10px] text-surface-500 hover:text-surface-300 transition-colors w-full py-1">
+              <svg class="w-3 h-3 transition-transform" :class="liveLogsExpanded ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+              <span class="uppercase tracking-wider font-semibold">Logs</span>
+              <span class="text-surface-600">({{ backtestLogs.length }})</span>
+              <span v-if="!liveLogsExpanded" class="ml-auto font-mono text-surface-600 truncate max-w-[60%]">{{ backtestLogs[backtestLogs.length - 1]?.message || '' }}</span>
+            </button>
+            <div v-if="liveLogsExpanded" class="bg-surface-900/80 rounded p-2 max-h-[200px] overflow-y-auto mt-1" ref="liveLogsEl">
+              <div v-for="(log, i) in backtestLogs.slice(-100)" :key="i"
+                   class="flex gap-2 py-0.5 text-[10px] font-mono leading-tight">
+                <span class="text-surface-600 shrink-0 w-[140px]">{{ log.timestamp || '' }}</span>
+                <span class="shrink-0 w-[52px]"
+                      :class="log.type === 'error' ? 'text-red-400' : log.type === 'order' ? 'text-amber-400' : log.type === 'position' ? 'text-blue-400' : log.type === 'market' ? 'text-purple-400' : 'text-surface-500'">{{ log.type || '' }}</span>
+                <span class="text-surface-300 break-all">{{ log.message }}</span>
+              </div>
             </div>
           </div>
 
@@ -1022,13 +1059,22 @@
 
             <!-- Hyperparameters -->
             <div v-if="hyperparameters && hyperparameters.length" class="mt-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-2">Hyperparameters</h3>
-              <div class="flex flex-wrap gap-2">
+              <button @click="showResultHP = !showResultHP" class="flex items-center gap-2 mb-2 text-left w-full">
+                <h3 class="text-xs font-semibold text-surface-500">
+                  {{ pipelineStats ? 'Pipeline-Controlled Hyperparameters' : 'Hyperparameters' }}
+                </h3>
+                <span class="text-[10px] text-surface-600 font-mono">{{ hyperparameters.length }} params</span>
+                <svg class="w-3 h-3 text-surface-500 transition-transform ml-auto" :class="{ 'rotate-180': showResultHP }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div v-if="showResultHP" class="flex flex-wrap gap-2">
                 <div v-for="(hp, idx) in hyperparameters" :key="idx" class="px-3 py-1.5 bg-surface-800 rounded-lg text-xs">
                   <span class="text-surface-500">{{ Array.isArray(hp) ? hp[0] : hp.name }}:</span>
                   <span class="text-surface-200 font-mono ml-1">{{ Array.isArray(hp) ? hp[1] : hp.value }}</span>
                 </div>
               </div>
+              <p v-if="pipelineStats && !showResultHP" class="text-[10px] text-surface-600">
+                HP values managed by pipeline — expand sessions to see per-session HP
+              </p>
             </div>
 
             <!-- Downloads -->
@@ -1110,12 +1156,26 @@
               <div class="flex items-center justify-between mb-4">
                 <div>
                   <h3 class="text-sm font-semibold text-surface-300">A/B Comparison</h3>
-                  <p class="text-[10px] text-surface-500">Run the same backtest without pipelines to measure impact</p>
+                  <p class="text-[10px] text-surface-500">Compare current run against <span class="text-brand-400 font-semibold">preset=original</span> without pipelines</p>
                 </div>
                 <div class="flex items-center gap-2">
                   <span v-if="comparisonRunning" class="flex items-center gap-1.5 text-xs text-amber-400"><span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> Running baseline... {{ comparisonProgress }}%</span>
                   <button v-if="!comparisonRunning && !baselineMetrics" @click="runBaselineComparison" :disabled="running" class="btn-sm bg-surface-700 hover:bg-surface-600 text-surface-200 flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg> Compare without Pipeline</button>
                   <button v-if="baselineMetrics && !comparisonRunning" @click="runBaselineComparison" class="btn-sm bg-surface-800 hover:bg-surface-700 text-surface-400 text-[10px]">Re-run</button>
+                </div>
+              </div>
+              <!-- Baseline config preview -->
+              <div v-if="baselineHPsPreview.length" class="mb-4 p-3 bg-surface-800/50 border border-surface-700/30 rounded-lg">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-[10px] font-semibold text-surface-400 uppercase tracking-wider">Baseline Config</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-400 font-mono">preset=original</span>
+                  <span class="text-[10px] text-surface-600">no pipeline</span>
+                </div>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <span v-for="hp in baselineHPsPreview" :key="hp.name" class="text-[10px] font-mono">
+                    <span :class="hp.isPreset ? 'text-surface-400' : 'text-surface-600'">{{ hp.name }}:</span>
+                    <span :class="hp.isPreset ? 'text-surface-200' : 'text-surface-500'" class="ml-0.5">{{ hp.value }}</span>
+                  </span>
                 </div>
               </div>
               <!-- Comparison progress bar -->
@@ -1127,12 +1187,57 @@
               <!-- Comparison error -->
               <div v-if="comparisonError" class="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-xs text-red-400">{{ comparisonError }}</div>
               <div v-if="baselineMetrics && metrics" class="space-y-4">
+                <!-- Legend -->
+                <div class="flex items-center gap-4 text-[10px]">
+                  <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-brand-400"></span> <span class="text-surface-400 font-semibold">Your Run</span> <span class="text-surface-600">(with pipeline)</span></span>
+                  <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-surface-500"></span> <span class="text-surface-400 font-semibold">Baseline</span> <span class="text-surface-600">(preset=original, no pipeline)</span></span>
+                </div>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                   <div v-for="m in comparisonDeltas" :key="m.key" class="p-3 bg-surface-800 rounded-lg border border-surface-700/50">
                     <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-1">{{ m.label }}</div>
-                    <div class="flex items-end gap-2"><span class="font-mono text-sm" :class="m.pipeline >= m.baseline ? 'text-green-400' : 'text-red-400'">{{ m.pipelineFormatted }}</span><span class="font-mono text-[10px] text-surface-600">vs {{ m.baselineFormatted }}</span></div>
+                    <div class="flex items-end gap-2">
+                      <span class="font-mono text-sm" :class="m.pipeline >= m.baseline ? 'text-green-400' : 'text-red-400'">{{ m.pipelineFormatted }}</span>
+                      <span class="font-mono text-[10px] text-surface-600">vs {{ m.baselineFormatted }}</span>
+                    </div>
                     <div class="mt-1"><span class="font-mono text-xs px-1.5 py-0.5 rounded" :class="m.deltaPositive ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'">{{ m.deltaPositive ? '+' : '' }}{{ m.deltaFormatted }}</span></div>
                   </div>
+                </div>
+                <!-- Depth Comparison Table -->
+                <div v-if="depthComparison.length" class="bg-surface-800/50 rounded-lg border border-surface-700/30 p-4">
+                  <h4 class="text-xs font-semibold text-surface-400 mb-3 uppercase tracking-wider">Depth Breakdown</h4>
+                  <table class="w-full text-xs">
+                    <thead>
+                      <tr class="text-surface-500 border-b border-surface-700/50">
+                        <th class="py-1.5 px-2 text-left">Depth</th>
+                        <th class="py-1.5 px-2 text-center" colspan="3">Your Run</th>
+                        <th class="py-1.5 px-2 text-center" colspan="3">Baseline</th>
+                      </tr>
+                      <tr class="text-[10px] text-surface-600">
+                        <th class="py-1 px-2 text-left">Level</th>
+                        <th class="py-1 px-2 text-center">Count</th>
+                        <th class="py-1 px-2 text-center">W/L</th>
+                        <th class="py-1 px-2 text-right">PnL</th>
+                        <th class="py-1 px-2 text-center">Count</th>
+                        <th class="py-1 px-2 text-center">W/L</th>
+                        <th class="py-1 px-2 text-right">PnL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="d in depthComparison" :key="d.depth" class="border-b border-surface-800/50">
+                        <td class="py-1.5 px-2 font-mono font-semibold text-surface-300">L{{ d.depth }}</td>
+                        <td class="py-1.5 px-2 text-center font-mono text-surface-300">{{ d.pipeline.count }}</td>
+                        <td class="py-1.5 px-2 text-center font-mono">
+                          <span class="text-green-400">{{ d.pipeline.wins }}</span><span class="text-surface-600">/</span><span class="text-red-400">{{ d.pipeline.losses }}</span>
+                        </td>
+                        <td class="py-1.5 px-2 text-right font-mono" :class="d.pipeline.pnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ d.pipeline.pnl.toFixed(2) }}</td>
+                        <td class="py-1.5 px-2 text-center font-mono text-surface-300">{{ d.baseline.count }}</td>
+                        <td class="py-1.5 px-2 text-center font-mono">
+                          <span class="text-green-400">{{ d.baseline.wins }}</span><span class="text-surface-600">/</span><span class="text-red-400">{{ d.baseline.losses }}</span>
+                        </td>
+                        <td class="py-1.5 px-2 text-right font-mono" :class="d.baseline.pnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ d.baseline.pnl.toFixed(2) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
                 <div v-if="baselineEquityCurve?.length && equityCurve?.length" class="card">
                   <h4 class="text-xs font-semibold text-surface-400 mb-3">Equity Curve Overlay</h4>
@@ -1144,7 +1249,7 @@
                     <svg v-else class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
                     <span class="text-sm font-semibold" :class="pipelineWins ? 'text-green-400' : 'text-red-400'">{{ pipelineWins ? 'Pipeline improves performance' : 'Pipeline reduces performance' }}</span>
                   </div>
-                  <p class="text-xs text-surface-400">Net profit {{ pipelineWins ? 'increased' : 'decreased' }} by <span class="font-mono font-semibold" :class="pipelineWins ? 'text-green-400' : 'text-red-400'">{{ Math.abs(pipelineNetDelta).toFixed(2) }}%</span> with pipeline. Max drawdown: <span class="font-mono text-surface-300">{{ (baselineMetrics.max_drawdown_percentage || 0).toFixed(1) }}%</span> to <span class="font-mono text-surface-300">{{ (metrics.max_drawdown_percentage || 0).toFixed(1) }}%</span>.</p>
+                  <p class="text-xs text-surface-400">Net profit {{ pipelineWins ? 'increased' : 'decreased' }} by <span class="font-mono font-semibold" :class="pipelineWins ? 'text-green-400' : 'text-red-400'">{{ Math.abs(pipelineNetDelta).toFixed(2) }}%</span> with pipeline. Max drawdown: <span class="font-mono text-surface-300">{{ (baselineMetrics.max_drawdown || 0).toFixed(2) }}%</span> to <span class="font-mono text-surface-300">{{ (metrics.max_drawdown || 0).toFixed(2) }}%</span>.</p>
                 </div>
               </div>
             </div>
@@ -1213,6 +1318,10 @@
                             :class="s.pipeline.danger_at_entry > 0.7 ? 'bg-red-400' : s.pipeline.danger_at_entry > 0.5 ? 'bg-amber-400' : 'bg-green-400'"
                             :title="`Danger: ${s.pipeline.danger_at_entry.toFixed(3)}`"></span>
                       <span v-if="s.pipeline?.abort_triggers > 0" class="text-[10px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono">{{ s.pipeline.abort_triggers }} abort</span>
+                      <span v-if="s.pipeline?.regime != null" class="text-[10px] px-1.5 py-0.5 rounded bg-brand-500/15 text-brand-400 font-mono" :title="'Regime ' + s.pipeline.regime + (s.pipeline.confidence ? ' (' + (s.pipeline.confidence*100).toFixed(0) + '%)' : '')">R{{ s.pipeline.regime }}</span>
+                      <span v-if="sessionHP(s)" class="text-[10px] px-1 py-0.5 rounded bg-surface-700 text-surface-400 font-mono" :title="Object.keys(sessionHP(s)).length + ' params'">
+                        {{ s.pipeline?.genes ? 'DNA' : 'HP' }}
+                      </span>
                       <span v-if="s.margin_block_leg != null" class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-bold">Margin Block L{{ s.margin_block_leg }}</span>
                     </div>
                     <div class="flex items-center gap-4">
@@ -1288,6 +1397,34 @@
                       <div v-if="s.pipeline.gate_blocks_before_entry > 0">
                         <span class="text-surface-500">Gate Blocks Before Entry:</span>
                         <span class="font-mono text-amber-400 ml-1">{{ s.pipeline.gate_blocks_before_entry }}</span>
+                      </div>
+                      <div v-if="s.pipeline.regime != null">
+                        <span class="text-surface-500">Regime:</span>
+                        <span class="font-mono text-brand-400 ml-1">R{{ s.pipeline.regime }}</span>
+                      </div>
+                      <div v-if="s.pipeline.confidence != null">
+                        <span class="text-surface-500">Confidence:</span>
+                        <span class="font-mono text-surface-300 ml-1">{{ (s.pipeline.confidence * 100).toFixed(1) }}%</span>
+                      </div>
+                    </div>
+                    <!-- Pipeline HP / DNA for this session -->
+                    <div v-if="sessionHP(s)" class="px-3 py-2 bg-surface-850/50 border-b border-surface-700">
+                      <div class="flex items-center gap-2 mb-1.5">
+                        <span class="text-[10px] text-surface-500 font-semibold uppercase tracking-wider">
+                          {{ s.pipeline?.genes ? 'Evolved DNA' : 'Active Hyperparameters' }}
+                        </span>
+                        <span class="text-[9px] text-surface-600 font-mono">{{ Object.keys(sessionHP(s)).length }} params</span>
+                        <button @click="s._showAllHP = !s._showAllHP" class="text-[9px] text-brand-400 hover:text-brand-300 ml-auto">
+                          {{ s._showAllHP ? 'Show Key Only' : 'Show All' }}
+                        </button>
+                      </div>
+                      <div class="flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+                        <template v-for="(val, key) in sessionHP(s)" :key="key">
+                          <div v-if="s._showAllHP || isKeyGene(key)">
+                            <span class="text-surface-500">{{ key }}:</span>
+                            <span class="font-mono text-surface-300 ml-0.5">{{ formatHPVal(val) }}</span>
+                          </div>
+                        </template>
                       </div>
                     </div>
                     <table class="w-full text-xs">
@@ -1720,7 +1857,10 @@
                       :class="statusBadgeClass(s.status)">{{ s.status }}</span>
                   </td>
                   <td class="py-2.5">
-                    <div class="text-surface-200 text-sm font-medium">{{ s.title || sessionLabel(s) }}</div>
+                    <div class="text-surface-200 text-sm font-medium flex items-center gap-1.5">
+                      {{ s.title || sessionLabel(s) }}
+                      <span v-if="s.has_pipeline" class="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 font-semibold uppercase tracking-wider">Pipeline</span>
+                    </div>
                     <div class="text-[11px] text-surface-500 mt-0.5">{{ formatSessionRoutes(s.state) }}</div>
                     <div v-if="s.hyperparameters && s.hyperparameters.length" class="flex flex-wrap gap-1 mt-1">
                       <span v-for="(hp, idx) in s.hyperparameters.slice(0, 4)" :key="idx" class="text-[10px] px-1.5 py-0.5 bg-surface-700 rounded text-surface-400 font-mono">
@@ -1765,7 +1905,10 @@
       <div v-if="selectedSession" class="card">
         <div class="flex items-center justify-between mb-2">
           <div>
-            <h2 class="text-sm font-semibold text-surface-200">{{ historySessionTitle }}</h2>
+            <h2 class="text-sm font-semibold text-surface-200 flex items-center gap-2">
+              {{ historySessionTitle }}
+              <span v-if="selectedSession.has_pipeline" class="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 font-semibold uppercase tracking-wider">Pipeline</span>
+            </h2>
             <div class="flex items-center gap-3 mt-1 text-[11px] text-surface-500">
               <span v-if="selectedSession.created_at">
                 <svg class="w-3 h-3 inline mr-0.5 -mt-px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -1868,6 +2011,18 @@
               </div>
             </div>
             <div v-if="selectedSession.id" class="mt-4 flex flex-wrap gap-2">
+              <a v-if="selectedSession.export_paths?.tradingview" :href="downloadUrl('tradingview', selectedSession.id)" target="_blank" class="btn-sm bg-surface-700 text-surface-300 hover:bg-surface-600 inline-flex items-center gap-1">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                TradingView
+              </a>
+              <a v-if="selectedSession.export_paths?.csv" :href="downloadUrl('csv', selectedSession.id)" target="_blank" class="btn-sm bg-surface-700 text-surface-300 hover:bg-surface-600 inline-flex items-center gap-1">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                CSV
+              </a>
+              <a v-if="selectedSession.export_paths?.json" :href="downloadUrl('json', selectedSession.id)" target="_blank" class="btn-sm bg-surface-700 text-surface-300 hover:bg-surface-600 inline-flex items-center gap-1">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                JSON
+              </a>
               <a :href="downloadUrl('full-reports', selectedSession.id)" target="_blank" class="btn-sm bg-surface-700 text-surface-300 hover:bg-surface-600 inline-flex items-center gap-1">
                 <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 Full Report
@@ -2188,6 +2343,12 @@
           <div v-else class="text-surface-500 text-sm py-8 text-center">No cost data available for this session.</div>
         </div>
 
+        <!-- Pipeline tab (history) -->
+        <div v-if="historyTab === 'pipeline'">
+          <PipelineIntelligence v-if="selectedSession.pipeline_stats && Object.keys(selectedSession.pipeline_stats).length" :stats="selectedSession.pipeline_stats" />
+          <div v-else class="text-surface-500 text-sm py-8 text-center">Pipeline data not available. Re-run this backtest with a pipeline to capture stats.</div>
+        </div>
+
         <!-- Logs tab -->
         <div v-if="historyTab === 'logs'">
           <div class="flex items-center justify-between mb-3">
@@ -2263,6 +2424,7 @@ const selectedSession = ref(null)
 const openTabs = ref([])
 const tabCache = ref({})
 const running = ref(false)
+const configCollapsed = ref(false)
 
 // Workspace tabs
 const workspaceTabs = ref([{ id: 'ws-1', label: 'Backtest 1', running: false, hasResults: false }])
@@ -2282,6 +2444,14 @@ const existingCandles = ref([])
 
 // WebSocket-driven state
 const progress = ref({ current: 0, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 })
+const liveLogsExpanded = ref(false)
+const liveLogsEl = ref(null)
+const marginFreePercent = computed(() => {
+  const eq = progress.value.equity
+  const mu = progress.value.marginUsed
+  if (!eq || eq <= 0) return 100
+  return Math.max(0, ((eq - mu) / eq) * 100)
+})
 const runStartedAt = ref(null)
 const elapsedNow = ref(Date.now())
 let elapsedTimer = null
@@ -2388,6 +2558,7 @@ const savingNotes = ref(false)
 const showDataRoutes = ref(false)
 const showOptions = ref(false)
 const showHyperparams = ref(false)
+const showResultHP = ref(false)
 
 // History detail tabs
 const historyTab = ref('summary')
@@ -2714,14 +2885,32 @@ function pickMetricsFrom(src, keys) {
 }
 
 // ── A/B Comparison computed ──
+const baselineHPsPreview = computed(() => {
+  if (!btHyperParams.value.length) return []
+  const originalValues = btPresetData.value?.['original'] || {}
+  return btHyperParams.value
+    .filter(hp => hp.name !== 'preset')
+    .map(hp => {
+      const val = originalValues[hp.name] !== undefined
+        ? originalValues[hp.name]
+        : (hp.default !== undefined ? hp.default : hp.value)
+      const isPreset = originalValues[hp.name] !== undefined
+      return { name: hp.name, value: val, isPreset }
+    })
+})
+
 const comparisonDeltas = computed(() => {
   if (!metrics.value || !baselineMetrics.value) return []
   const keys = [
     { key: 'net_profit_percentage', label: 'Net Profit %', fmt: v => v.toFixed(2) + '%', higherBetter: true },
-    { key: 'win_rate', label: 'Win Rate', fmt: v => (v * 100).toFixed(1) + '%', higherBetter: true },
+    { key: 'total_sessions', label: 'Sessions', fmt: v => String(Math.round(v)), higherBetter: null },
+    { key: 'session_win_rate', label: 'Session Win Rate', fmt: v => (v * 100).toFixed(1) + '%', higherBetter: true },
+    { key: 'total_losing_sessions', label: 'Lost Sessions', fmt: v => String(Math.round(v)), higherBetter: false },
     { key: 'profit_factor', label: 'Profit Factor', fmt: v => v.toFixed(2), higherBetter: true },
-    { key: 'max_drawdown_percentage', label: 'Max Drawdown', fmt: v => v.toFixed(1) + '%', higherBetter: false },
-    { key: 'total', label: 'Total Trades', fmt: v => String(v), higherBetter: null },
+    { key: 'max_drawdown', label: 'Max Drawdown %', fmt: v => v.toFixed(2) + '%', higherBetter: false },
+    { key: 'worst_floating_pnl', label: 'Worst Float', fmt: v => v.toFixed(2), higherBetter: false },
+    { key: 'total_busts', label: 'Busts', fmt: v => String(Math.round(v)), higherBetter: false },
+    { key: 'worst_bust_pnl', label: 'Worst Bust', fmt: v => v.toFixed(2), higherBetter: false },
     { key: 'sharpe_ratio', label: 'Sharpe Ratio', fmt: v => v.toFixed(2), higherBetter: true },
   ]
   return keys.map(k => {
@@ -2736,6 +2925,28 @@ const comparisonDeltas = computed(() => {
       deltaFormatted: k.fmt(delta), deltaPositive: positive,
     }
   })
+})
+
+const depthComparison = computed(() => {
+  if (!metrics.value || !baselineMetrics.value) return []
+  const pDepths = metrics.value.depth_breakdown || []
+  const bDepths = baselineMetrics.value.depth_breakdown || []
+  if (!pDepths.length && !bDepths.length) return []
+
+  // Merge all depths from both runs
+  const allDepths = new Set([
+    ...pDepths.map(d => d.depth),
+    ...bDepths.map(d => d.depth),
+  ])
+  const empty = { count: 0, wins: 0, losses: 0, pnl: 0 }
+  const pMap = Object.fromEntries(pDepths.map(d => [d.depth, d]))
+  const bMap = Object.fromEntries(bDepths.map(d => [d.depth, d]))
+
+  return [...allDepths].sort((a, b) => a - b).map(depth => ({
+    depth,
+    pipeline: pMap[depth] || { ...empty },
+    baseline: bMap[depth] || { ...empty },
+  }))
 })
 
 const pipelineNetDelta = computed(() => {
@@ -2762,7 +2973,7 @@ const tradeKeys = [
   ['average_win_loss', 'Win/Loss Ratio'], ['fee', 'Total Fees'], ['open_pl', 'Open P&L'],
 ]
 const riskKeys = [
-  ['max_drawdown', 'Max Drawdown'], ['max_drawdown_percentage', 'Max Drawdown %'],
+  ['max_drawdown', 'Max Drawdown %'],
   ['sharpe_ratio', 'Sharpe Ratio'], ['smart_sharpe', 'Smart Sharpe'],
   ['sortino_ratio', 'Sortino Ratio'], ['smart_sortino', 'Smart Sortino'],
   ['calmar_ratio', 'Calmar Ratio'], ['omega_ratio', 'Omega Ratio'],
@@ -2779,10 +2990,12 @@ const forexKeys = [
 ]
 const hedgeKeys = [
   ['total_sessions', 'Total Sessions'], ['session_win_rate', 'Session Win Rate'],
+  ['total_losing_sessions', 'Lost Sessions'],
   ['avg_session_win', 'Avg Session Win'], ['avg_session_loss', 'Avg Session Loss'],
   ['ev_per_session', 'EV / Session'], ['avg_legs_per_session', 'Avg Legs / Session'],
   ['max_legs_in_session', 'Max Legs in Session'], ['sessions_with_1_leg', 'Sessions with 1 Leg'],
   ['max_consecutive_session_wins', 'Max Consec. Session Wins'], ['max_consecutive_session_losses', 'Max Consec. Session Losses'],
+  ['total_busts', 'Busts'], ['worst_bust_pnl', 'Worst Bust PnL'],
 ]
 
 const performanceMetrics = computed(() => pickMetrics(perfKeys))
@@ -2866,6 +3079,7 @@ const historyDetailTabs = computed(() => {
     if (hs.length) tabs.push({ id: 'sessions', label: `Sessions (${hs.length})` })
     tabs.push({ id: 'trades', label: `Trades${s.trades?.length ? ` (${s.trades.length})` : ''}` })
     tabs.push({ id: 'costs', label: 'Costs' })
+    if (s.has_pipeline || s.pipeline_stats) tabs.push({ id: 'pipeline', label: 'Pipeline' })
     tabs.push({ id: 'logs', label: 'Logs' })
     tabs.push({ id: 'code', label: 'Strategy Code' })
   }
@@ -2956,6 +3170,35 @@ function sessionOutcomeClass(outcome) {
   if (outcome === 'max_levels' || outcome === 'max_level_sl') return 'text-red-400'
   if (outcome === 'abort' || outcome === 'pipeline_abort') return 'text-amber-400'
   return 'text-surface-400'
+}
+
+const KEY_GENES = new Set([
+  'gate_confidence_min', 'abort_aggressiveness', 'base_size_pct', 'max_levels',
+  'signal_mode', 'direction_bias', 'entry_on_crossover',
+  'ema_fast', 'ema_slow', 'hedge_mode', 'hedge_value', 'tp_mode', 'tp_value',
+  'sizing_curve', 'sizing_factor', 'hysteresis_margin', 'confidence_sensitivity',
+  // Strategy HP keys (GridPilot mode)
+  'preset', 'multiplier', 'tp_pips', 'hedge_pips', 'lot_size', 'cooldown_mode',
+  'cooldown_value', 'bust_protection', 'max_level', 'entry_signal',
+])
+function isKeyGene(key) {
+  return KEY_GENES.has(key)
+}
+
+function sessionHP(s) {
+  // Return genes (IslandPilot evolved) or hp (GridPilot strategy HP), or null
+  const genes = s.pipeline?.genes
+  if (genes && Object.keys(genes).length) return genes
+  const hp = s.pipeline?.hp
+  if (hp && Object.keys(hp).length) return hp
+  return null
+}
+
+function formatHPVal(val) {
+  if (val == null) return '-'
+  if (typeof val === 'boolean') return val ? 'yes' : 'no'
+  if (typeof val === 'number') return Number.isInteger(val) ? String(val) : val.toFixed(4)
+  return String(val)
 }
 
 function sessionOutcomeLabel(outcome) {
@@ -3207,6 +3450,22 @@ useWebSocket((msg) => {
       pipelineCycles: data?.pipeline_cycles ?? null,
       pipelineDangerHistory: data?.pipeline_danger_history ?? null,
       pipelineDecisions: data?.pipeline_decisions ?? null,
+    }
+    // Accumulate live logs from progress updates
+    if (data?.recent_logs?.length) {
+      for (const log of data.recent_logs) {
+        backtestLogs.value.push(log)
+      }
+      // Cap at 500 entries to avoid memory bloat
+      if (backtestLogs.value.length > 500) {
+        backtestLogs.value = backtestLogs.value.slice(-500)
+      }
+      // Auto-scroll if expanded
+      if (liveLogsExpanded.value && liveLogsEl.value) {
+        nextTick(() => {
+          if (liveLogsEl.value) liveLogsEl.value.scrollTop = liveLogsEl.value.scrollHeight
+        })
+      }
     }
     // Accumulate pipeline decisions for live feed
     if (data?.pipeline_decisions?.length) {
@@ -4138,6 +4397,7 @@ async function runBacktest() {
   exposureTable.value = []
   logs.value = null
   backtestLogs.value = []
+  liveLogsExpanded.value = false
   logFilter.value = 'all'
   sessionStrategyCodes.value = null
   btChartCandles.value = []
@@ -4158,6 +4418,7 @@ async function runBacktest() {
   progress.value = { current: 0, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
   runStartedAt.value = Date.now()
   running.value = true
+  configCollapsed.value = true
   activeTab.value = 'summary'
   tradesPage.value = 1
   sessionsPage.value = 1
@@ -4268,6 +4529,24 @@ async function runBaselineComparison() {
     timeframe: dr.timeframe,
   }))
 
+  // Build hyperparameters from 'original' preset — always compare against baseline config
+  // Send ALL HPs: use original preset value where defined, code default for the rest
+  const baselineHPs = {}
+  const originalPresetValues = btPresetData.value?.['original'] || {}
+  for (const hp of btHyperParams.value) {
+    if (hp.name === 'preset') {
+      baselineHPs['preset'] = 'original'
+      continue
+    }
+    // Preset value takes priority, then fall back to strategy code default
+    const rawVal = originalPresetValues[hp.name] !== undefined
+      ? originalPresetValues[hp.name]
+      : (hp.default !== undefined ? hp.default : hp.value)
+    baselineHPs[hp.name] = hp.type === 'int' ? parseInt(rawVal)
+      : hp.type === 'float' ? parseFloat(rawVal)
+      : String(rawVal)
+  }
+
   try {
     await api.runBacktest({
       id,
@@ -4293,11 +4572,11 @@ async function runBaselineComparison() {
       export_tradingview: false,
       export_csv: false,
       export_json: false,
-      fast_mode: true,
+      fast_mode: false,
       benchmark: false,
       cost_model: form.value.costModel,
-      hyperparameters: buildBtHyperparamsPayload(),
-      // No pipelines — this is the baseline run
+      hyperparameters: Object.keys(baselineHPs).length ? baselineHPs : null,
+      // No pipelines — baseline run with preset=original
     })
   } catch (e) {
     comparisonRunning.value = false
