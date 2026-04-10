@@ -805,9 +805,8 @@ class Martingale(Strategy):
         if adx_val < self.hp.get('adx_threshold', 25):
             return None  # No trend — don't enter
         # Use +DI / -DI for direction
-        plus_di = ta.plus_di(self.candles, period=self.hp.get('adx_period', 14))
-        minus_di = ta.minus_di(self.candles, period=self.hp.get('adx_period', 14))
-        return 'long' if plus_di > minus_di else 'short'
+        di_result = ta.di(self.candles, period=self.hp.get('adx_period', 14))
+        return 'long' if di_result.plus > di_result.minus else 'short'
 
     def _signal_bollinger(self):
         bb = ta.bollinger_bands(self.candles,
@@ -1197,7 +1196,10 @@ class Martingale(Strategy):
         """Cancel the pending hedge STOP order if it exists."""
         order_id = self.vars.get('hedge_stop_order_id')
         if order_id:
-            self.broker.cancel_order(order_id)
+            try:
+                self.broker.cancel_order(order_id)
+            except (AttributeError, Exception):
+                pass  # order already filled, cancelled, or removed
             self.vars['hedge_stop_order_id'] = None
             self.vars['pending_hedge_level'] = None
             self.vars['pending_hedge_dir'] = None
@@ -1617,6 +1619,15 @@ class Martingale(Strategy):
             'bars': self.index - self.vars.get('session_start_bar', 0),
         }
         self.vars['sessions'].append(session_record)
+
+        # Notify pipeline of cycle end.
+        # _close_remaining_tickets (CFD) bypasses the engine's
+        # _on_closed_position flow, so the pipeline hook must be called
+        # explicitly.  For futures/spot, _on_close_position may also
+        # fire — the pipeline's on_cycle_end guards against double-fire
+        # via its _cycle_active flag.
+        if self._pipelines:
+            self._pipelines.on_cycle_end(pnl, self)
 
         # Update bust tracking
         if is_bust:

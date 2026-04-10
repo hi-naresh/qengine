@@ -1,3 +1,4 @@
+import math
 from datetime import datetime
 from typing import List
 
@@ -361,26 +362,72 @@ def _calculate_forex_metrics(trades_list: List[ClosedTrade]) -> dict:
     }
 
 
-def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
-    """Calculate hedge session-level metrics from trade metadata."""
-    sessions_map = {}
+def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
+    """Extract session structures from a list of ClosedTrade objects.
+
+    Returns list of dicts with keys:
+        pnl, legs, max_level, exit_reason, holding_seconds, leg_levels, leg_holdings
+    """
+    sessions_map = {}   # session_num -> accumulated data
+    session_order = []  # preserve insertion order for stable output
+
     for t in trades_list:
-        meta = getattr(t, 'meta', {})
+        meta = getattr(t, 'meta', {}) or {}
         session_num = meta.get('session')
         if session_num is None:
-            # Each non-session trade is its own "session"
             session_num = f'standalone-{id(t)}'
-        if session_num not in sessions_map:
-            sessions_map[session_num] = {'pnl': 0.0, 'legs': 0}
-        sessions_map[session_num]['pnl'] += t.pnl
-        sessions_map[session_num]['legs'] += 1
 
-    if not sessions_map:
+        if session_num not in sessions_map:
+            sessions_map[session_num] = {
+                'pnl': 0.0, 'legs': 0, 'max_level': 0,
+                'exit_reason': None, 'leg_levels': [], 'leg_holdings': [],
+            }
+            session_order.append(session_num)
+
+        s = sessions_map[session_num]
+        s['pnl'] += t.pnl
+        s['legs'] += 1
+
+        level = meta.get('level', 0)
+        if isinstance(level, (int, float)):
+            level = int(level)
+            if level > s['max_level']:
+                s['max_level'] = level
+            s['leg_levels'].append(level)
+        else:
+            s['leg_levels'].append(0)
+
+        hp = getattr(t, 'holding_period', None)
+        s['leg_holdings'].append(hp if hp is not None else 0)
+
+        reason = meta.get('session_exit_reason', meta.get('exit_reason'))
+        if reason:
+            s['exit_reason'] = reason
+
+    result = []
+    for sn in session_order:
+        s = sessions_map[sn]
+        result.append({
+            'pnl': s['pnl'],
+            'legs': s['legs'],
+            'max_level': s['max_level'],
+            'exit_reason': s['exit_reason'],
+            'holding_seconds': sum(s['leg_holdings']),
+            'leg_levels': s['leg_levels'],
+            'leg_holdings': s['leg_holdings'],
+        })
+    return result
+
+
+def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
+    """Calculate hedge session-level metrics from trade metadata."""
+    sessions = _parse_sessions(trades_list)
+    if not sessions:
         return {}
 
-    total_sessions = len(sessions_map)
-    session_pnls = [s['pnl'] for s in sessions_map.values()]
-    session_legs = [s['legs'] for s in sessions_map.values()]
+    total_sessions = len(sessions)
+    session_pnls = [s['pnl'] for s in sessions]
+    session_legs = [s['legs'] for s in sessions]
 
     winning_sessions = [p for p in session_pnls if p > 0]
     losing_sessions = [p for p in session_pnls if p <= 0]
@@ -401,6 +448,40 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
     max_consec_wins = _max_consecutive(wins, 1)
     max_consec_losses = _max_consecutive(wins, 0)
 
+    # Bust metrics — sessions ending in bust/max_levels/margin_call
+    bust_outcomes = {'bust', 'max_levels', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
+    bust_pnls = [s['pnl'] for s in sessions if s['exit_reason'] in bust_outcomes]
+    total_busts = len(bust_pnls)
+    worst_bust_pnl = round(min(bust_pnls), 2) if bust_pnls else 0.0
+
+    # Loss sessions — any session that ended with PnL <= 0 (includes busts, aborts, etc.)
+    total_losing_sessions = len(losing_sessions)
+
+    # Depth analysis — how many sessions reached each max level, and win/loss at each
+    depth_stats = {}
+    for s in sessions:
+        depth = s['max_level']
+        if depth not in depth_stats:
+            depth_stats[depth] = {'count': 0, 'wins': 0, 'losses': 0, 'pnl': 0.0}
+        depth_stats[depth]['count'] += 1
+        depth_stats[depth]['pnl'] += s['pnl']
+        if s['pnl'] > 0:
+            depth_stats[depth]['wins'] += 1
+        else:
+            depth_stats[depth]['losses'] += 1
+
+    # Convert to sorted list for frontend
+    depth_breakdown = []
+    for depth in sorted(depth_stats.keys()):
+        d = depth_stats[depth]
+        depth_breakdown.append({
+            'depth': depth,
+            'count': d['count'],
+            'wins': d['wins'],
+            'losses': d['losses'],
+            'pnl': round(d['pnl'], 2),
+        })
+
     return {
         'total_sessions': total_sessions,
         'session_win_rate': round(session_win_rate, 4),
@@ -412,6 +493,173 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
         'sessions_with_1_leg': sessions_1_leg,
         'max_consecutive_session_wins': max_consec_wins,
         'max_consecutive_session_losses': max_consec_losses,
+        'total_busts': total_busts,
+        'worst_bust_pnl': worst_bust_pnl,
+        'total_losing_sessions': total_losing_sessions,
+        'depth_breakdown': depth_breakdown,
+    }
+
+
+def _calculate_martingale_metrics(sessions: list, starting_balance: float,
+                                  total_fees: float = 0.0, total_spread: float = 0.0,
+                                  total_swap: float = 0.0, gross_profit: float = 0.0) -> dict:
+    """Calculate martingale/surefire-specific metrics from parsed sessions.
+
+    Args:
+        sessions: list of session dicts (from _parse_sessions or test helpers) with keys:
+            pnl, legs, max_level, exit_reason, holding_seconds, leg_levels, leg_holdings
+        starting_balance: account balance before first session
+        total_fees: total trading fees across all trades
+        total_spread: total spread cost across all trades
+        total_swap: total overnight swap charges
+        gross_profit: sum of winning trade PnLs (before costs)
+    """
+    if not sessions:
+        return {}
+
+    total_sessions = len(sessions)
+    session_pnls = [s['pnl'] for s in sessions]
+
+    # --- Session Performance ---
+    winning_pnls = [p for p in session_pnls if p > 0]
+    losing_pnls = [p for p in session_pnls if p <= 0]
+
+    sum_wins = sum(winning_pnls)
+    sum_losses_abs = abs(sum(losing_pnls))
+
+    if sum_losses_abs == 0:
+        session_profit_factor = float('inf') if sum_wins > 0 else 0.0
+    else:
+        session_profit_factor = sum_wins / sum_losses_abs
+
+    median_session_pnl = float(np.median(session_pnls))
+
+    # --- Survival & Ruin ---
+    bust_outcomes = {'bust', 'max_levels', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
+    bust_sessions = [s for s in sessions if s['exit_reason'] in bust_outcomes]
+    bust_count = len(bust_sessions)
+    bust_rate = bust_count / total_sessions
+
+    bust_pnls = [s['pnl'] for s in bust_sessions]
+    avg_bust_loss = float(np.mean(bust_pnls)) if bust_pnls else 0.0
+
+    if len(bust_pnls) >= 2:
+        bust_severity_std = float(np.std(bust_pnls, ddof=1))
+    else:
+        bust_severity_std = 0.0
+
+    avg_session_win = float(np.mean(winning_pnls)) if winning_pnls else 0.0
+    wins_to_recover = abs(avg_bust_loss) / avg_session_win if avg_session_win > 0 and bust_pnls else 0.0
+
+    # Geometric growth rate — track running balance
+    running_balance = starting_balance
+    log_returns = []
+    for s in sessions:
+        if running_balance > 0:
+            ratio = 1 + s['pnl'] / running_balance
+            lr = math.log(ratio) if ratio > 0 else float('-inf')
+        else:
+            lr = float('-inf')
+        log_returns.append(lr)
+        running_balance += s['pnl']
+
+    geometric_growth_rate = float(np.mean(log_returns)) if log_returns else 0.0
+
+    # Survival
+    if bust_rate == 0:
+        survival_100 = 1.0
+        survival_500 = 1.0
+        survival_half_life = float('inf')
+    elif bust_rate >= 1.0:
+        survival_100 = 0.0
+        survival_500 = 0.0
+        survival_half_life = 0.0
+    else:
+        survival_100 = (1 - bust_rate) ** 100
+        survival_500 = (1 - bust_rate) ** 500
+        survival_half_life = math.log(0.5) / math.log(1 - bust_rate)
+
+    # --- Structural Diagnostics ---
+
+    # Level transitions
+    level_data = {}  # level -> {entries, wins, escalations}
+    for s in sessions:
+        max_lv = s['max_level']
+        for lv in range(max_lv + 1):
+            if lv not in level_data:
+                level_data[lv] = {'entries': 0, 'wins': 0, 'escalations': 0}
+            level_data[lv]['entries'] += 1
+            if lv < max_lv:
+                level_data[lv]['escalations'] += 1
+            elif lv == max_lv and s['pnl'] > 0:
+                level_data[lv]['wins'] += 1
+
+    level_transitions = []
+    for lv in sorted(level_data.keys()):
+        d = level_data[lv]
+        entries = d['entries']
+        level_transitions.append({
+            'level': lv,
+            'entries': entries,
+            'wins': d['wins'],
+            'escalations': d['escalations'],
+            'p_win': d['wins'] / entries if entries > 0 else 0.0,
+            'p_escalate': d['escalations'] / entries if entries > 0 else 0.0,
+        })
+
+    # EV by depth (keyed by max_level)
+    ev_by_depth = {}
+    for s in sessions:
+        ml = s['max_level']
+        if ml not in ev_by_depth:
+            ev_by_depth[ml] = {'count': 0, 'total_pnl': 0.0, 'wins': 0}
+        ev_by_depth[ml]['count'] += 1
+        ev_by_depth[ml]['total_pnl'] += s['pnl']
+        if s['pnl'] > 0:
+            ev_by_depth[ml]['wins'] += 1
+
+    for ml in ev_by_depth:
+        d = ev_by_depth[ml]
+        d['avg_pnl'] = d['total_pnl'] / d['count']
+        d['win_rate'] = d['wins'] / d['count']
+
+    # Time at depth
+    time_at_depth = {}
+    for s in sessions:
+        for lv, holding in zip(s['leg_levels'], s['leg_holdings']):
+            time_at_depth[lv] = time_at_depth.get(lv, 0.0) + holding
+
+    # L0 win rate
+    l0_wins = sum(1 for s in sessions if s['max_level'] == 0 and s['pnl'] > 0)
+    l0_win_rate = l0_wins / total_sessions
+
+    # --- Capital & Costs ---
+    if gross_profit > 0:
+        cost_drag_pct = (total_fees + total_spread + total_swap) / gross_profit * 100
+    else:
+        cost_drag_pct = 0.0
+
+    return {
+        # Session Performance
+        'session_profit_factor': session_profit_factor,
+        'median_session_pnl': median_session_pnl,
+        # Survival & Ruin
+        'bust_rate': bust_rate,
+        'bust_count': bust_count,
+        'wins_to_recover': wins_to_recover,
+        'geometric_growth_rate': geometric_growth_rate,
+        'survival_100': survival_100,
+        'survival_500': survival_500,
+        'survival_half_life': survival_half_life,
+        'avg_bust_loss': avg_bust_loss,
+        'bust_severity_std': bust_severity_std,
+        # Structural Diagnostics
+        'level_transitions': level_transitions,
+        'ev_by_depth': ev_by_depth,
+        'time_at_depth': time_at_depth,
+        'l0_win_rate': l0_win_rate,
+        # Capital & Costs
+        'cost_drag_pct': cost_drag_pct,
     }
 
 
@@ -523,19 +771,85 @@ def trades(trades_list: List[ClosedTrade], daily_balance: list, final: bool = Tr
     periods = _get_annualization_periods()
 
     max_dd = np.nan if len(daily_return) < 2 else max_drawdown(daily_return).iloc[0] * 100
-    max_underwater_period = np.nan if len(daily_balance) < 2 else calculate_max_underwater_period(daily_balance)
     annual_return = np.nan if len(daily_return) < 2 else cagr(daily_return, periods=periods).iloc[0] * 100
-    sharpe = np.nan if len(daily_return) < 2 else sharpe_ratio(daily_return, periods=periods).iloc[0]
-    calmar = np.nan if len(daily_return) < 2 else calmar_ratio(daily_return).iloc[0]
-    sortino = np.nan if len(daily_return) < 2 else sortino_ratio(daily_return, periods=periods).iloc[0]
-    omega = np.nan if len(daily_return) < 2 else omega_ratio(daily_return, periods=periods).iloc[0]
-    serenity = np.nan if len(daily_return) < 2 else serenity_index(daily_return).iloc[0]
 
     # Forex-specific metrics
     forex_metrics = _calculate_forex_metrics(trades_list)
 
     # Profit factor
     profit_factor = abs(gross_profit / gross_loss) if gross_loss != 0 else float('inf')
+
+    # Peak/risk metrics from simulation tracking
+    worst_floating_pnl = store.app.worst_floating_pnl
+    peak_margin_used = store.app.peak_margin_used
+    peak_equity_usage_pct = store.app.peak_equity_usage_pct
+    margin_closeouts = store.app.total_liquidations
+    account_blown = bool(current_balance <= 0 or (starting_balance > 0 and current_balance / starting_balance < 0.02))
+
+    # Detect martingale mode early — skip expensive ratio computations
+    has_sessions = any(hasattr(t, 'meta') and getattr(t, 'meta', {}).get('session') is not None for t in trades_list)
+
+    if has_sessions:
+        parsed_sessions = _parse_sessions(trades_list)
+        hedge_metrics = _calculate_hedge_session_metrics(trades_list)
+        martingale = _calculate_martingale_metrics(
+            parsed_sessions,
+            starting_balance=starting_balance,
+            total_fees=safe_convert(fee),
+            total_spread=safe_convert(forex_metrics.get('total_spread_cost', 0)),
+            total_swap=safe_convert(forex_metrics.get('total_swap_cost', 0)),
+            gross_profit=safe_convert(gross_profit),
+        )
+        return {
+            'is_martingale': True,
+            **hedge_metrics,
+            **martingale,
+            # Account-level kept
+            'net_profit': safe_convert(net_profit),
+            'net_profit_percentage': safe_convert(net_profit_percentage),
+            'annual_return': safe_convert(annual_return),
+            'starting_balance': safe_convert(starting_balance),
+            'finishing_balance': safe_convert(current_balance),
+            'gross_pnl': safe_convert(gross_pnl),
+            'gross_profit': safe_convert(gross_profit),
+            'gross_loss': safe_convert(gross_loss),
+            'max_drawdown': safe_convert(max_dd),
+            'margin_closeouts': safe_convert(margin_closeouts, int),
+            'account_blown': account_blown,
+            'max_consecutive_session_losses': hedge_metrics.get('max_consecutive_session_losses', 0),
+            'worst_floating_pnl': safe_convert(worst_floating_pnl),
+            'peak_margin_used': safe_convert(peak_margin_used),
+            'peak_equity_usage_pct': safe_convert(peak_equity_usage_pct),
+            'fee': safe_convert(fee),
+            'profit_factor': safe_convert(profit_factor),
+            **forex_metrics,
+            'raw_trade_stats': {
+                'total': safe_convert(total_completed, int),
+                'total_winning_trades': safe_convert(total_winning_trades, int),
+                'total_losing_trades': safe_convert(total_losing_trades, int),
+                'win_rate': safe_convert(win_rate),
+                'longs_count': safe_convert(longs_count, int),
+                'shorts_count': safe_convert(shorts_count, int),
+                'largest_winning_trade': safe_convert(largest_winning_trade),
+                'largest_losing_trade': safe_convert(largest_losing_trade),
+                'winning_streak': safe_convert(winning_streak, int),
+                'losing_streak': safe_convert(losing_streak, int),
+                'average_win': safe_convert(average_win),
+                'average_loss': safe_convert(average_loss),
+                'average_holding_period': safe_convert(average_holding_period),
+            },
+            'total_open_trades': safe_convert(total_open_trades, int),
+            'open_pl': safe_convert(open_pl),
+            'total': safe_convert(total_completed, int),
+        }
+
+    # --- Non-martingale path: compute expensive ratios ---
+    max_underwater_period = np.nan if len(daily_balance) < 2 else calculate_max_underwater_period(daily_balance)
+    sharpe = np.nan if len(daily_return) < 2 else sharpe_ratio(daily_return, periods=periods).iloc[0]
+    calmar = np.nan if len(daily_return) < 2 else calmar_ratio(daily_return).iloc[0]
+    sortino = np.nan if len(daily_return) < 2 else sortino_ratio(daily_return, periods=periods).iloc[0]
+    omega = np.nan if len(daily_return) < 2 else omega_ratio(daily_return, periods=periods).iloc[0]
+    serenity = np.nan if len(daily_return) < 2 else serenity_index(daily_return).iloc[0]
 
     # Kelly Criterion: W - (1-W)/R where W=win_rate, R=avg_win/avg_loss ratio
     if ratio_avg_win_loss != 0 and not np.isinf(ratio_avg_win_loss):
@@ -562,17 +876,6 @@ def trades(trades_list: List[ClosedTrade], daily_balance: list, final: bool = Tr
         cvar_99 = sorted_returns[:idx_99].mean() * starting_balance if idx_99 > 0 else np.nan
     else:
         var_95, var_99, cvar_95, cvar_99 = np.nan, np.nan, np.nan, np.nan
-
-    # Peak/risk metrics from simulation tracking
-    worst_floating_pnl = store.app.worst_floating_pnl
-    peak_margin_used = store.app.peak_margin_used
-    peak_equity_usage_pct = store.app.peak_equity_usage_pct
-    margin_closeouts = store.app.total_liquidations
-    account_blown = bool(current_balance <= 0 or (starting_balance > 0 and current_balance / starting_balance < 0.02))
-
-    # Hedge session metrics (only if trades have session metadata)
-    has_sessions = any(hasattr(t, 'meta') and getattr(t, 'meta', {}).get('session') is not None for t in trades_list)
-    hedge_metrics = _calculate_hedge_session_metrics(trades_list) if has_sessions else {}
 
     return {
         'total': safe_convert(total_completed, int),
@@ -630,7 +933,6 @@ def trades(trades_list: List[ClosedTrade], daily_balance: list, final: bool = Tr
         'margin_closeouts': safe_convert(margin_closeouts, int),
         'account_blown': account_blown,
         **forex_metrics,
-        **hedge_metrics,
     }
 
 

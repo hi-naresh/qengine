@@ -153,18 +153,21 @@ class PipelineStats:
             self._current_cycle['danger_count'] += 1
 
     def end_cycle(self, pnl: float, exit_reason: str = '', level: int = 0,
-                  danger_at_exit: float = None, duration_bars: int = 0):
+                  danger_at_exit: float = None, duration_bars: int = 0,
+                  session_number: int = None, hp_snapshot: dict = None):
         """Call when cycle ends — records outcome and links back to decisions."""
         self.cycles_completed += 1
 
         cycle = {
-            'cycle': self.cycles_completed,
+            'cycle': session_number if session_number is not None else self.cycles_completed,
             'pnl': round(pnl, 4),
             'exit_reason': exit_reason,
             'level': level,
             'duration_bars': duration_bars,
             'danger_at_exit': round(danger_at_exit, 4) if danger_at_exit is not None else None,
         }
+        if hp_snapshot:
+            cycle['hp'] = hp_snapshot
 
         if self._current_cycle:
             cycle['danger_at_entry'] = self._current_cycle.get('danger_at_entry')

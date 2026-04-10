@@ -214,6 +214,7 @@ def get_backtest_session(session: BacktestSession) -> dict:
         'description': session.description,
         'strategy_codes': session.strategy_codes_json,
         'hyperparameters': json.loads(session.hyperparameters) if session.hyperparameters else None,
+        'has_pipeline': bool(getattr(session, 'pipeline_stats', None)),
     }
 
     return jh.clean_nan_values(jh.clean_infinite_values(result))
@@ -245,6 +246,8 @@ def get_backtest_session_for_load_more(session: BacktestSession) -> dict:
     hyperparameters = jh.clean_infinite_values(json.loads(session.hyperparameters)) if session.hyperparameters else None
 
     sessions = jh.clean_infinite_values(json.loads(session.sessions)) if session.sessions else []
+    # Pipeline stats are loaded on-demand via /pipeline-stats-full endpoint (too large for main response)
+    export_paths = json.loads(session.export_paths) if getattr(session, 'export_paths', None) else None
 
     result = {
         'id': str(session.id),
@@ -264,7 +267,9 @@ def get_backtest_session_for_load_more(session: BacktestSession) -> dict:
         'traceback': session.traceback,
         'title': session.title,
         'description': session.description,
-        'strategy_codes': session.strategy_codes_json
+        'strategy_codes': session.strategy_codes_json,
+        'export_paths': export_paths,
+        'has_pipeline': bool(getattr(session, 'pipeline_stats', None)),
     }
 
     return jh.clean_nan_values(jh.clean_infinite_values(result))

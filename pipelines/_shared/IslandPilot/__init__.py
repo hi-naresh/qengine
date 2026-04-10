@@ -85,6 +85,11 @@ class IslandPilot(Pipeline):
         self._candle_count: int = 0
         self._feature_vector: Optional[np.ndarray] = None
         self._cycle_count: int = 0
+        self._abort_count: int = 0
+        self._gate_block_count: int = 0
+        self._gate_allow_count: int = 0
+        self._cycle_hp_log: List[dict] = []
+        self._last_recorded_session: Optional[int] = None
         self._sibling_groups: Dict[str, List[str]] = {}
 
         # Auto-load pre-trained models if available
@@ -154,8 +159,8 @@ class IslandPilot(Pipeline):
 
             if genome_dict is not None:
                 self._active_genome = genome_dict.get('genes', genome_dict)
-                # ONLY apply genome when no position is open (between cycles).
-                # Changing hp mid-cycle breaks hedge sizing/direction logic.
+                # Apply genome to strategy HP only between cycles (not mid-cycle).
+                # Changing HP mid-cycle breaks hedge direction and sizing chains.
                 position_open = False
                 if hasattr(strategy, 'position') and hasattr(strategy.position, 'is_open'):
                     position_open = strategy.position.is_open
@@ -173,25 +178,44 @@ class IslandPilot(Pipeline):
         """Block entry if no genome available, low confidence, or in grace period."""
         # During warmup, block
         if self._candle_count < self.cfg['warmup']:
+            self._gate_block_count += 1
             return False
 
         # No genome means the regime/evolver isn't ready
         if self._active_genome is None:
+            self._gate_block_count += 1
             return False
 
         # Low confidence
         min_conf = self.cfg['inference']['min_confidence']
         if self._active_confidence < min_conf:
+            self._gate_block_count += 1
             return False
 
         # Grace period after regime switch
         if self.inferencer is not None and self.inferencer.in_grace_period:
+            self._gate_block_count += 1
             return False
 
+        self._gate_allow_count += 1
         return True
 
     def adjust_size(self, strategy, qty: float, side: str) -> float:
-        """Scale position size using AdaptiveSizer."""
+        """Do NOT scale individual entry sizes for martingale/hedge strategies.
+
+        The hedge sizing math (geometric 2×, fibonacci, etc.) requires L0, L1, L2
+        to maintain exact ratios. If the pipeline scales L0 but not L1/L2 (which
+        are placed internally by the strategy), the ratios break and sessions
+        never profit.
+
+        Instead, the pipeline controls entry TIMING (gate_entry) and cycle
+        TERMINATION (suggest_exit), not position sizing.
+        """
+        # Pass through unchanged — sizing is the strategy's domain
+        return qty
+
+    def _adjust_size_disabled(self, strategy, qty: float, side: str) -> float:
+        """Original adaptive sizing — disabled because it breaks hedge ratios."""
         if self._active_genome is None:
             return qty
 
@@ -247,27 +271,60 @@ class IslandPilot(Pipeline):
         return order_intent
 
     def suggest_exit(self, strategy) -> Optional[dict]:
-        """Abort based on danger proxy exceeding genome threshold."""
+        """Abort if danger exceeds threshold derived from genome.
+
+        abort_aggressiveness=0 means never abort (conservative).
+        abort_aggressiveness=1 means abort at any danger (aggressive).
+        The threshold is inverted: threshold = 1 - aggressiveness.
+        So aggressiveness=0.8 → abort when danger > 0.2 (aggressive).
+        And aggressiveness=0.2 → abort when danger > 0.8 (conservative).
+        """
         if self._active_genome is None:
             return None
 
-        danger = self._compute_danger(strategy)
-        abort_threshold = self._active_genome.get('abort_aggressiveness', 0.5)
+        aggressiveness = self._active_genome.get('abort_aggressiveness', 0.5)
+        # Convert to threshold: higher aggressiveness = lower threshold = easier to abort
+        threshold = 1.0 - aggressiveness
 
-        if danger > abort_threshold:
+        danger = self._compute_danger(strategy)
+        if danger > threshold:
+            self._abort_count += 1
             return {'action': 'close_all'}
 
         return None
 
     def on_cycle_end(self, pnl: float, strategy) -> None:
-        """Record outcome for the evolver."""
+        """Record outcome for the evolver and log active HP per cycle.
+
+        Guards against double-fire: in CFD mode, close_all_tickets() and
+        Martingale._reset_cycle() both call on_cycle_end. We use the strategy's
+        session_number as the canonical cycle ID to deduplicate.
+        """
+        # Use strategy's session_number as canonical cycle ID (avoids double-count)
+        sn = getattr(strategy, 'vars', {}).get('session_number') if strategy else None
+        if sn is not None and sn == self._last_recorded_session:
+            return  # already recorded this session
+        self._last_recorded_session = sn
+
         self._cycle_count += 1
+        cycle_id = sn if sn is not None else self._cycle_count
+
+        # Track active HP per cycle for session display
+        cycle_hp: Dict[str, Any] = {
+            'cycle': cycle_id,
+            'regime': self._active_regime,
+            'confidence': round(self._active_confidence, 4) if self._active_confidence else None,
+        }
+        if self._active_genome is not None:
+            genes = self._active_genome if isinstance(self._active_genome, dict) else getattr(self._active_genome, 'genes', {})
+            cycle_hp['genes'] = {k: round(v, 4) if isinstance(v, float) else v for k, v in genes.items()}
+        self._cycle_hp_log.append(cycle_hp)
 
         if self.evolver is not None and self._active_regime is not None:
             self.evolver.record_outcome(
                 regime_id=str(self._active_regime),
                 pnl=pnl,
-                cycle=self._cycle_count,
+                cycle=cycle_id,
                 genome=self._active_genome,
             )
 
@@ -277,11 +334,17 @@ class IslandPilot(Pipeline):
 
     def get_stats(self) -> dict:
         """Comprehensive stats from all components."""
+        total_gate = self._gate_allow_count + self._gate_block_count
         stats: Dict[str, Any] = {
             'active_regime': self._active_regime,
-            'active_confidence': self._active_confidence,
+            'active_confidence': round(self._active_confidence, 4) if self._active_confidence else 0,
             'candle_count': self._candle_count,
             'cycle_count': self._cycle_count,
+            'entries_allowed': self._gate_allow_count,
+            'entries_blocked': self._gate_block_count,
+            'total_gate_checks': total_gate,
+            'block_rate': round(self._gate_block_count / total_gate, 4) if total_gate > 0 else 0,
+            'aborts_triggered': self._abort_count,
             'has_genome': self._active_genome is not None,
         }
 
@@ -294,13 +357,113 @@ class IslandPilot(Pipeline):
             stats['n_transitions'] = len(self.inferencer.get_transition_log())
 
         if self.evolver is not None:
-            stats['fitness_summary'] = self.evolver.get_fitness_summary()
-            stats['diversity'] = self.evolver.get_diversity_stats()
+            raw_fitness = self.evolver.get_fitness_summary()
+            # Flatten for frontend table: {island_id: {best, mean, n, std}} → list
+            stats['fitness_summary'] = raw_fitness
+
+            # Summarize diversity: per-island average gene std → single value per island
+            raw_div = self.evolver.get_diversity_stats()
+            diversity_summary: Dict[str, Any] = {}
+            total_avg_std = []
+            for lid, gene_stds in raw_div.items():
+                vals = [v for v in gene_stds.values() if isinstance(v, (int, float))]
+                avg = sum(vals) / len(vals) if vals else 0
+                diversity_summary[lid] = round(avg, 6)
+                total_avg_std.append(avg)
+            stats['diversity'] = {
+                'n_islands': len(raw_div),
+                'mean_gene_diversity': round(sum(total_avg_std) / len(total_avg_std), 6) if total_avg_std else 0,
+                'min_diversity_island': min(diversity_summary, key=diversity_summary.get) if diversity_summary else '-',
+                'max_diversity_island': max(diversity_summary, key=diversity_summary.get) if diversity_summary else '-',
+                'min_diversity': round(min(total_avg_std), 6) if total_avg_std else 0,
+                'max_diversity': round(max(total_avg_std), 6) if total_avg_std else 0,
+            }
             stats['n_migrations'] = len(self.evolver.get_migration_log())
 
         stats['sizer'] = self.sizer.get_stats()
+        stats['cycle_hp_log'] = self._cycle_hp_log
+        stats['_ui'] = self.ui_metadata()
 
         return stats
+
+    def ui_metadata(self) -> dict:
+        n_leaves = self.regime_tree.n_leaves if self.regime_tree else 0
+        return {
+            'badges': [
+                {'label': self.name or 'IslandPilot', 'color': 'brand'},
+                {'label': f'Regime: {self._active_regime or "?"}',
+                 'color': 'amber' if self._active_regime else 'surface'},
+                {'label': f'{n_leaves} islands', 'color': 'surface'},
+                {'label': 'Genome active' if self._active_genome else 'No genome',
+                 'color': 'green' if self._active_genome else 'red'},
+            ],
+            'metric_cards': [
+                {'label': 'Active Regime', 'key': 'active_regime', 'format': 'text', 'icon': 'chart',
+                 'tooltip': 'Current detected market regime island'},
+                {'label': 'Confidence', 'key': 'active_confidence', 'format': 'pct', 'threshold': [0.5, 0.7], 'icon': 'shield',
+                 'tooltip': 'Regime classification confidence'},
+                {'label': 'Entries Blocked', 'key': 'block_rate', 'format': 'pct', 'color': 'amber',
+                 'sub_template': '{entries_blocked} / {total_gate_checks}', 'icon': 'block',
+                 'tooltip': '% of entries blocked by low-confidence gate'},
+                {'label': 'Islands', 'key': 'n_leaves', 'format': 'int', 'icon': 'chart',
+                 'tooltip': 'Total regime islands discovered'},
+                {'label': 'Migrations', 'key': 'n_migrations', 'format': 'int', 'icon': 'chart',
+                 'tooltip': 'Cross-island genome migrations'},
+                {'label': 'Cycles', 'key': 'cycle_count', 'format': 'int', 'icon': 'chart',
+                 'tooltip': 'Total completed trading cycles'},
+            ],
+            'sections': [
+                # Regime distribution (top 20 by count, collapsed)
+                {
+                    'type': 'bar_breakdown',
+                    'title': 'Regime Distribution',
+                    'data_key': 'regime_counts',
+                    'empty_message': 'No regime data yet. Inferencer is still warming up.',
+                    'label_prefix': 'R',
+                    'mode': 'count_only',
+                    'max_items': 20,
+                    'sort_by_value': True,
+                },
+                # Fitness summary per island
+                {
+                    'type': 'kv_table',
+                    'title': 'Fitness Summary by Island',
+                    'data_key': 'fitness_summary',
+                    'show_if': 'fitness_summary',
+                    'empty_message': 'No fitness data. Evolver needs more cycles.',
+                    'columns': [
+                        {'key': 'island', 'label': 'Island'},
+                        {'key': 'best', 'label': 'Best Fitness', 'format': 'dec4'},
+                        {'key': 'mean', 'label': 'Mean Fitness', 'format': 'dec4'},
+                        {'key': 'std', 'label': 'Std', 'format': 'dec4'},
+                        {'key': 'n', 'label': 'Samples', 'format': 'int'},
+                    ],
+                    'max_items': 20,
+                    'sort_key': 'best',
+                    'sort_desc': True,
+                    'hide_empty': True,
+                },
+                # Diversity stats (summarized)
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Genetic Diversity',
+                    'data_key': 'diversity',
+                    'show_if': 'diversity',
+                    'empty_message': 'No diversity data yet.',
+                    'auto_items': True,
+                    'grid': 'full',
+                },
+                # Sizer stats
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Adaptive Sizer',
+                    'data_key': 'sizer',
+                    'show_if': 'sizer',
+                    'auto_items': True,
+                    'grid': 'full',
+                },
+            ],
+        }
 
     def save_state(self, path: str) -> None:
         """Persist all components to disk."""
@@ -513,64 +676,82 @@ class IslandPilot(Pipeline):
     # ------------------------------------------------------------------
 
     def _apply_genome(self, strategy, genome: dict) -> None:
-        """Override strategy.hp dict with genome parameters.
+        """Apply evolved genome to strategy HP — discovered dynamically at runtime.
 
-        Maps genome keys to the correct hp keys for each strategy variant:
-        - Surefire v1: sizing_operator, sizing_factor, max_levels, hedge_distance, tp_distance
-        - SurefireV2: sizing_operator, sizing_factor, max_levels, hedge_atr_mult
-        - Martingale: sizing_curve, sizing_factor, max_levels, hedge_atr_mult
+        Instead of hardcoding strategy key names, the pipeline reads the strategy's
+        own hyperparameters() declaration to discover which params exist, their
+        valid ranges, and groups. Only 'General' and 'Grid / Hedge' group params
+        are overridden (entry signals, filters, risk management are left to user).
 
-        Applies sanity bounds to prevent GA's extreme evolved values from
-        blowing up real backtests with margin constraints.
+        This works with ANY strategy that declares hyperparameters().
         """
-        if not hasattr(strategy, 'hp'):
+        if not hasattr(strategy, 'hp') or not hasattr(strategy, 'hyperparameters'):
             return
 
+        # Force 'custom' preset so pipeline has full control over all params.
+        # Named presets lock certain values — 'custom' unlocks everything.
+        if strategy.hp.get('preset') and strategy.hp['preset'] != 'custom':
+            strategy.hp['preset'] = 'custom'
+
+        # Build lookup from strategy's declared HP
+        if not hasattr(self, '_hp_spec'):
+            try:
+                hp_list = strategy.hyperparameters()
+                self._hp_spec = {h['name']: h for h in hp_list if isinstance(h, dict) and 'name' in h}
+            except Exception:
+                self._hp_spec = {}
+
+        if not self._hp_spec:
+            return
+
+        # Groups the pipeline is allowed to tune
+        _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit', 'Entry Signal'}
+
+        # Validated options for categorical params that may have broken choices.
+        # Only allow signal modes that are known to work in the strategy.
+        _SAFE_OPTIONS = {
+            'signal_mode': {'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch', 'ema_rsi', 'ema_macd', 'triple'},
+            'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
+            'tp_mode': {'fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward'},
+            'base_size_mode': {'pct_equity', 'capital_aware'},
+            'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci'},
+        }
+
         hp = strategy.hp
+        for hp_name, spec in self._hp_spec.items():
+            group = spec.get('group', '')
+            if group not in _TUNABLE_GROUPS:
+                continue
 
-        # max_levels — universal, capped at 8 for safety
-        if 'max_levels' in genome:
-            hp['max_levels'] = min(int(genome['max_levels']), 8)
+            if hp_name not in genome:
+                continue
 
-        # sizing_factor — universal, capped at 2.5 for real margin
-        if 'sizing_factor' in genome:
-            hp['sizing_factor'] = min(genome['sizing_factor'], 2.5)
+            val = genome[hp_name]
 
-        # sizing_curve → detect which key the strategy uses
-        sizing_curve = genome.get('sizing_curve')
-        if sizing_curve is not None:
-            curve_str = SIZING_CURVE_MAP.get(sizing_curve, sizing_curve) if isinstance(sizing_curve, int) else sizing_curve
-            # Surefire v1/v2 use 'sizing_operator', Martingale uses 'sizing_curve'
-            if 'sizing_operator' in hp:
-                hp['sizing_operator'] = curve_str
-            else:
-                hp['sizing_curve'] = curve_str
-
-        # hedge_distance_atr_mult → strategy-specific key
-        hedge_mult = genome.get('hedge_distance_atr_mult')
-        if hedge_mult is not None:
-            # Clamp to reasonable range
-            hedge_mult = max(0.5, min(hedge_mult, 3.0))
-            if 'hedge_atr_mult' in hp:
-                # SurefireV2, Martingale: ATR multiplier
-                hp['hedge_atr_mult'] = hedge_mult
-            elif 'hedge_distance' in hp:
-                # Surefire v1: fixed pips — convert ATR mult to approx pips
-                # Typical EUR-USD 5m ATR ~5-10 pips, so mult * 10 ≈ pips
-                # Floor at 8 pips to prevent near-instant hedging
-                hp['hedge_distance'] = max(8.0, round(hedge_mult * 10, 1))
-
-        # tp_distance_atr_mult → strategy-specific key
-        tp_mult = genome.get('tp_distance_atr_mult')
-        if tp_mult is not None:
-            tp_mult = max(1.0, min(tp_mult, 5.0))
-            if 'tp_distance' in hp:
-                # Surefire v1: fixed pips, floor at 10 pips
-                hp['tp_distance'] = max(10.0, round(tp_mult * 10, 1))
-            # SurefireV2 uses bucket_pct (not TP distance), so don't override
-            # Martingale may use tp_atr_mult
-            if 'tp_atr_mult' in hp:
-                hp['tp_atr_mult'] = tp_mult
+            # Enforce declared bounds and convert types
+            hp_type = spec.get('type')
+            if hp_type == 'categorical':
+                options = spec.get('options', [])
+                # Filter to safe options if we have a safelist
+                safe = _SAFE_OPTIONS.get(hp_name)
+                if safe:
+                    options = [o for o in options if o in safe]
+                if not options:
+                    continue
+                # Genome may store int index (from GA) or string value
+                if isinstance(val, (int, float)):
+                    idx = int(round(val))
+                    idx = max(0, min(idx, len(options) - 1))
+                    hp[hp_name] = options[idx]
+                elif val in options:
+                    hp[hp_name] = val
+            elif hp_type in (int, float) or hp_type in ('int', 'float'):
+                lo = spec.get('min', float('-inf'))
+                hi = spec.get('max', float('inf'))
+                val = max(lo, min(hi, float(val)))
+                if hp_type in (int, 'int'):
+                    val = int(round(val))
+                hp[hp_name] = val
 
     def _compute_danger(self, strategy) -> float:
         """Simple volatility-based danger proxy in [0, 1]."""

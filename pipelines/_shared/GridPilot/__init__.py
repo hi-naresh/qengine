@@ -217,6 +217,7 @@ class GridPilot(Pipeline):
         # Track per-cycle state
         self._danger_at_entry = 0.5
         self._cycle_start_index = 0
+        self._last_recorded_session = None
 
     def on_before(self, strategy) -> None:
         """Update danger score from current candle features."""
@@ -306,7 +307,16 @@ class GridPilot(Pipeline):
         self._stats.start_cycle(ts, self._danger_at_entry)
 
     def on_cycle_end(self, pnl: float, strategy) -> None:
-        """Feed reward to Q-learner."""
+        """Feed reward to Q-learner.
+
+        Guards against double-fire: CFD close_all_tickets() and Martingale._reset_cycle()
+        both call on_cycle_end. Deduplicate via strategy session_number.
+        """
+        sn = getattr(strategy, 'vars', {}).get('session_number') if strategy else None
+        if sn is not None and sn == self._last_recorded_session:
+            return
+        self._last_recorded_session = sn
+
         self.abort.end_episode(reward=pnl)
 
         level = strategy.vars.get('level', 0)
@@ -336,6 +346,7 @@ class GridPilot(Pipeline):
             level=level,
             danger_at_exit=self.scorer.current_score,
             duration_bars=duration,
+            session_number=sn,
         )
 
         # Snapshot Q-learning progression for convergence chart
@@ -355,7 +366,209 @@ class GridPilot(Pipeline):
         # Merge PipelineStats analytics with component stats (don't overwrite)
         stats['gate'] = {**stats.get('gate', {}), **self.gate.stats}
         stats['abort'] = {**stats.get('abort', {}), **self.abort.stats}
+        stats['_ui'] = self.ui_metadata()
         return stats
+
+    def ui_metadata(self) -> dict:
+        return {
+            'badges': [
+                {'label': self.name or 'GridPilot', 'color': 'brand'},
+                {'label': f'Gate p{self.gate.percentile}', 'color': 'surface', 'show_if': 'gate.percentile'},
+                {'label': 'Q-Abort', 'color': 'surface', 'show_if': 'abort.enabled'},
+                {'label': 'Scorer active' if self.scorer.stats.get('warmed_up') else 'Warming up',
+                 'color': 'green' if self.scorer.stats.get('warmed_up') else 'amber'},
+            ],
+            'metric_cards': [
+                {'label': 'Protection Value', 'key': 'protection.total_protection_value', 'format': 'currency', 'prefix': '+', 'color': 'green', 'icon': 'shield',
+                 'tooltip': 'Estimated PnL saved by gate blocks + abort early-exits combined'},
+                {'label': 'Gate Accuracy', 'key': 'gate.allow_accuracy', 'format': 'pct', 'threshold': [0.5, 0.7], 'icon': 'filter',
+                 'tooltip': '% of allowed entries that were profitable'},
+                {'label': 'Entries Blocked', 'key': 'block_rate', 'format': 'pct', 'color': 'amber',
+                 'sub_template': '{entries_blocked} / {total_gate_checks}', 'icon': 'block',
+                 'tooltip': '% of entry signals rejected by the danger gate'},
+                {'label': 'Abort Rate', 'key': 'abort_rate', 'format': 'pct', 'color': 'red',
+                 'sub_template': '{aborts_triggered} aborts', 'icon': 'abort',
+                 'tooltip': '% of active cycles terminated early by Q-learning abort'},
+                {'label': 'Win Rate', 'key': 'cycles.win_rate', 'format': 'pct', 'threshold': [0.4, 0.6],
+                 'sub_template': '{cycles.wins}W / {cycles.losses}L', 'icon': 'chart',
+                 'tooltip': '% of completed cycles that ended in profit'},
+                {'label': 'Avg Danger', 'key': 'danger.mean', 'format': 'dec3', 'threshold_inv': [0.5, 0.7],
+                 'sub_template': 'std {danger.std}', 'icon': 'danger',
+                 'tooltip': 'Mean danger score across all observations (0=safe, 1=extreme risk)'},
+            ],
+            'sections': [
+                # Cycle scatter: danger at entry vs PnL
+                {
+                    'type': 'scatter',
+                    'title': 'Cycle Scatter: Danger at Entry vs PnL',
+                    'subtitle': 'Each dot = one cycle. Color = exit reason, size = level reached',
+                    'data_key': 'cycle_outcomes',
+                    'x_key': 'danger_at_entry', 'x_label': 'Danger at Entry',
+                    'y_key': 'pnl', 'y_label': 'PnL',
+                    'color_key': 'exit_reason',
+                    'size_key': 'level',
+                    'color_map': {
+                        'bucket_hit': {'color': '#4ade80', 'label': 'TP Hit'},
+                        'tp_hit': {'color': '#4ade80', 'label': 'TP Hit'},
+                        'pipeline_abort': {'color': '#fbbf24', 'label': 'Aborted'},
+                        'max_levels': {'color': '#f87171', 'label': 'Max Level'},
+                        'max_level_sl': {'color': '#f87171', 'label': 'Max Level'},
+                        '_default': {'color': '#64748b', 'label': 'Other'},
+                    },
+                    'ref_lines': [
+                        {'axis': 'y', 'value': 0, 'style': 'dashed', 'color': '#333'},
+                        {'axis': 'x', 'key': 'gate.avg_danger_at_block', 'style': 'dashed', 'color': 'rgba(239,68,68,0.4)', 'label': 'gate'},
+                    ],
+                    'summary_stats': [
+                        {'label': 'Correlation', 'compute': 'correlation', 'x': 'danger_at_entry', 'y': 'pnl'},
+                        {'label': 'High-Danger PnL', 'compute': 'sum_filtered', 'key': 'pnl', 'filter': 'danger_at_entry > 0.7'},
+                        {'label': 'Low-Danger PnL', 'compute': 'sum_filtered', 'key': 'pnl', 'filter': 'danger_at_entry <= 0.3'},
+                        {'label': 'Gate Threshold', 'key': 'gate.avg_danger_at_block', 'format': 'dec3', 'color': 'red'},
+                    ],
+                },
+                # Q-Learning convergence
+                {
+                    'type': 'line_chart',
+                    'title': 'Q-Learning Convergence',
+                    'subtitle': 'Mean Q-value, volatility, and state coverage over cycles',
+                    'data_key': 'abort.q_progression',
+                    'show_if': 'abort.q_progression',
+                    'empty_message': 'No Q-learning data recorded. The abort module may still be warming up.',
+                    'series': [
+                        {'index': 1, 'label': 'Mean Q', 'color': '#818cf8', 'width': 2, 'axis': 'left'},
+                        {'index': 2, 'label': 'Std Q', 'color': '#fbbf24', 'width': 1, 'band_of': 1, 'axis': 'left'},
+                        {'index': 3, 'label': 'Coverage', 'color': '#4ade80', 'width': 1.5, 'dashed': True, 'axis': 'right', 'format': 'pct'},
+                    ],
+                    'x_label': 'Cycle',
+                    'summary_stats': [
+                        {'label': 'States Visited', 'template': '{abort.states_visited}/{abort.total_states}'},
+                        {'label': 'Coverage', 'key': 'abort.coverage', 'format': 'pct'},
+                        {'label': 'Abort-preferred', 'key': 'abort.abort_preferred_states', 'color': 'red'},
+                        {'label': 'Continue-preferred', 'key': 'abort.continue_preferred_states', 'color': 'green'},
+                        {'label': 'Q-Margin @ Abort', 'key': 'abort.q_margin_at_abort', 'format': 'dec4'},
+                    ],
+                },
+                # Per-level performance
+                {
+                    'type': 'bar_breakdown',
+                    'title': 'Per-Level Performance',
+                    'data_key': 'level_performance',
+                    'empty_message': 'No level data recorded. Cycles may not have completed yet.',
+                    'label_prefix': 'L',
+                    'label_colors': {
+                        '0': 'green', '1': 'brand', '2': 'brand',
+                        '3': 'amber', '4': 'amber', '5': 'amber',
+                    },
+                    'default_label_color': 'red',
+                    'show_danger': True,
+                },
+                # Entry gate analysis
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Entry Gate Analysis',
+                    'items': [
+                        {'label': 'Allow Accuracy', 'key': 'gate.allow_accuracy', 'format': 'pct', 'threshold': [0.5, 0.6]},
+                        {'label': 'Correct / Wrong Allows', 'template': '<green>{gate.correct_allows}</green> / <red>{gate.wrong_allows}</red>'},
+                        {'label': 'PnL of Allowed Entries', 'key': 'gate.pnl_of_allowed', 'format': 'currency_signed'},
+                        {'label': 'Est. Saved by Blocks', 'key': 'gate.est_pnl_saved_by_blocks', 'format': 'currency', 'prefix': '+', 'color': 'green'},
+                        {'label': 'Avg Danger @ Block / Allow', 'template': '<red>{gate.avg_danger_at_block:.3f}</red> / <green>{gate.avg_danger_at_allow:.3f}</green>'},
+                    ],
+                    'grid': 'half',
+                },
+                # Q-Abort analysis
+                {
+                    'type': 'kv_pairs',
+                    'title': 'Q-Abort Analysis',
+                    'items': [
+                        {'label': 'Avg Level @ Abort', 'key': 'abort.avg_level_at_abort', 'format': 'dec1'},
+                        {'label': 'Cut Losses / Cut Profits', 'template': '<green>{abort.aborts_at_loss}</green> / <red>{abort.aborts_at_profit}</red>'},
+                        {'label': 'Avg PnL @ Abort', 'key': 'abort.avg_pnl_at_abort', 'format': 'currency_signed'},
+                        {'label': 'PnL Saved by Aborts', 'key': 'abort.pnl_saved_by_aborts', 'format': 'currency', 'prefix': '+', 'color': 'green'},
+                        {'label': 'Total Decisions', 'key': 'abort.total_visits', 'fallback_key': 'abort_checks', 'format': 'int'},
+                    ],
+                    'grid': 'half',
+                },
+                # Danger bucket table
+                {
+                    'type': 'bucket_table',
+                    'title': 'Risk Intelligence: Danger Buckets',
+                    'data_key': 'risk_intel.danger_buckets',
+                    'show_if': 'risk_intel.danger_buckets',
+                    'bucket_colors': {
+                        'extreme': 'red', 'high': 'orange', 'medium': 'amber',
+                        'low': 'green', 'very_low': 'green-light',
+                    },
+                    'columns': ['count', 'win_rate', 'pnl', 'avg_pnl', 'distribution'],
+                    'footer_stats': [
+                        {'label': 'High-Danger Entries', 'key': 'risk_intel.high_danger_entries', 'color': 'red'},
+                        {'label': 'High-Danger Win Rate', 'key': 'risk_intel.high_danger_entry_winrate', 'format': 'pct'},
+                        {'label': 'Avg Danger Before Bust', 'key': 'risk_intel.avg_danger_before_bust', 'format': 'dec3', 'color': 'red'},
+                        {'label': 'Max Danger During Bust', 'key': 'risk_intel.avg_max_danger_during_bust', 'format': 'dec3', 'color': 'red'},
+                    ],
+                    'peak_danger': {'key': 'risk_intel.peak_danger_window'},
+                },
+                # Decision audit table
+                {
+                    'type': 'audit_table',
+                    'title': 'Decision Audit Log',
+                    'subtitle': 'Every gate and abort decision with outcome linkage',
+                    'sources': [
+                        {
+                            'data_key': 'gate_decisions',
+                            'type_label': 'gate',
+                            'type_color': 'blue',
+                            'map': {
+                                'ts': 'ts', 'danger': 'danger', 'threshold': 'threshold',
+                                'decision': {'key': 'allowed', 'true': 'ALLOWED', 'false': 'BLOCKED'},
+                                'outcome_pnl': 'outcome_pnl',
+                            },
+                        },
+                        {
+                            'data_key': 'abort_decisions',
+                            'type_label': 'abort',
+                            'type_color': 'purple',
+                            'map': {
+                                'ts': 'ts', 'danger': 'danger',
+                                'decision': {'key': 'action', 'abort': 'ABORT', '_default': 'continue'},
+                                'level': 'level', 'q_continue': 'q_continue', 'q_abort': 'q_abort',
+                                'outcome_pnl': 'pnl_at_abort',
+                            },
+                        },
+                    ],
+                    'columns': [
+                        {'key': 'ts', 'label': 'Time', 'sortable': True, 'format': 'datetime'},
+                        {'key': 'type', 'label': 'Type', 'format': 'badge'},
+                        {'key': 'danger', 'label': 'Danger', 'sortable': True, 'format': 'dec3',
+                         'color_thresholds': {'red': 0.7, 'amber': 0.5, 'green': 0}},
+                        {'key': 'threshold', 'label': 'Threshold', 'format': 'dec3'},
+                        {'key': 'decision', 'label': 'Decision', 'format': 'decision_badge'},
+                        {'key': 'level', 'label': 'Level', 'format': 'int'},
+                        {'key': 'q_values', 'label': 'Q-Values', 'format': 'q_values'},
+                        {'key': 'outcome_pnl', 'label': 'Outcome PnL', 'sortable': True, 'format': 'currency_signed'},
+                    ],
+                    'filters': [
+                        {'value': 'all', 'label': 'All Decisions'},
+                        {'value': 'gate_blocked', 'label': 'Gate: Blocked', 'match': {'type': 'gate', 'decision': 'BLOCKED'}},
+                        {'value': 'gate_allowed', 'label': 'Gate: Allowed', 'match': {'type': 'gate', 'decision': 'ALLOWED'}},
+                        {'value': 'abort_triggered', 'label': 'Abort: Triggered', 'match': {'type': 'abort', 'decision': 'ABORT'}},
+                        {'value': 'abort_continued', 'label': 'Abort: Continued', 'match': {'type': 'abort', 'decision': 'continue'}},
+                    ],
+                    'max_rows': 200,
+                },
+                # Exit reason breakdown
+                {
+                    'type': 'exit_reasons',
+                    'title': 'Outcome Breakdown by Exit Reason',
+                    'data_key': 'cycles.pnl_by_exit',
+                    'show_if': 'cycles.pnl_by_exit',
+                    'reason_colors': {
+                        'bucket_hit': 'green', 'tp_hit': 'green',
+                        'pipeline_abort': 'amber',
+                        'max_levels': 'red', 'max_level_sl': 'red',
+                    },
+                },
+            ],
+        }
 
     def save_state(self, path: str) -> None:
         os.makedirs(path, exist_ok=True)

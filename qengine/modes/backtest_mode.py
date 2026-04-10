@@ -276,6 +276,25 @@ def _execute_backtest(
                 'floating_pnl': result.get('floating_pnl_curve'),
                 'margin_usage': result.get('margin_usage_curve'),
             }
+        # Collect export file paths for history downloads
+        export_paths = {}
+        if result.get('tradingview'):
+            export_paths['tradingview'] = result['tradingview']
+        if result.get('csv'):
+            export_paths['csv'] = result['csv']
+        if result.get('json'):
+            export_paths['json'] = result['json']
+        full_report_path = f'storage/full-reports/{client_id}.html'
+        if os.path.exists(full_report_path):
+            export_paths['full_report'] = full_report_path
+
+        # Pipeline stats for DB (strip bulky cycle_hp_log)
+        pipeline_stats_for_db = None
+        if result.get('pipeline_stats'):
+            pipeline_stats_for_db = {}
+            for rk, ps in result['pipeline_stats'].items():
+                pipeline_stats_for_db[rk] = {k: v for k, v in ps.items() if k != 'cycle_hp_log'}
+
         update_backtest_session_results(
             id=client_id,
             metrics=result.get('metrics'),
@@ -286,7 +305,9 @@ def _execute_backtest(
             execution_duration=result.get('execution_duration'),
             strategy_codes=strategy_codes if strategy_codes else None,
             logs=result.get('logs'),
-            sessions=result.get('sessions')
+            sessions=result.get('sessions'),
+            pipeline_stats=pipeline_stats_for_db,
+            export_paths=export_paths if export_paths else None,
         )
         update_backtest_session_status(client_id, 'finished')
 
@@ -311,8 +332,12 @@ def _execute_backtest(
         if 'sessions' in result:
             sync_publish('sessions', result['sessions'], compression=True)
         # Publish pipeline stats (if any pipelines were active)
+        # Sent once at completion with compression — include all data except bulky cycle_hp_log
         if result.get('pipeline_stats'):
-            sync_publish('pipeline_stats', result['pipeline_stats'], compression=True)
+            ps_for_ws = {}
+            for rk, ps in result['pipeline_stats'].items():
+                ps_for_ws[rk] = {k: v for k, v in ps.items() if k != 'cycle_hp_log'}
+            sync_publish('pipeline_stats', ps_for_ws, compression=True)
         # Publish backtest logs
         if result.get('logs'):
             sync_publish('backtest_logs', result['logs'], compression=True)
@@ -971,6 +996,24 @@ def _get_live_stats() -> dict:
                 break
     except Exception:
         pass
+
+    # Stream recent logs (send new entries since last update)
+    try:
+        all_logs = store.logs.info
+        last_sent = getattr(_get_live_stats, '_last_log_idx', 0)
+        if len(all_logs) > last_sent:
+            new_logs = all_logs[last_sent:]
+            # Send last 20 new entries max per tick to avoid bloat
+            stats['recent_logs'] = [
+                {'timestamp': jh.timestamp_to_time(l['timestamp'])[:19] if l.get('timestamp') else '',
+                 'type': l.get('type', ''),
+                 'message': l.get('message', '')}
+                for l in new_logs[-20:]
+            ]
+            _get_live_stats._last_log_idx = len(all_logs)
+    except Exception:
+        pass
+
     return stats
 
 
@@ -1343,92 +1386,215 @@ def _check_for_liquidations(candle: np.ndarray, exchange: str, symbol: str) -> N
 def _generate_full_report(session_id: str, result: dict):
     """Generate an HTML full report for the backtest session."""
     import os
+    import math
     os.makedirs('./storage/full-reports', exist_ok=True)
     path = f'storage/full-reports/{session_id}.html'
 
-    metrics = result.get('metrics')
+    metrics = result.get('metrics') or {}
     trades_list = result.get('trades', [])
-    equity_data = result.get('equity_curve')
+    sessions_list = result.get('sessions', [])
 
-    # Build equity curve values for the chart
-    eq_labels = '[]'
-    eq_values = '[]'
-    if equity_data and len(equity_data) > 0:
-        portfolio_series = equity_data[0] if isinstance(equity_data, list) else None
-        if portfolio_series and 'data' in portfolio_series:
-            points = portfolio_series['data']
-            import json as json_mod
-            eq_labels = json_mod.dumps([i for i in range(len(points))])
-            eq_values = json_mod.dumps([p.get('value', 0) for p in points])
+    def _fmt(v):
+        """Format metric value for display."""
+        if v is None:
+            return '-'
+        if isinstance(v, bool):
+            return 'Yes' if v else 'No'
+        if isinstance(v, float):
+            if math.isnan(v) or math.isinf(v):
+                return '-'
+            return f'{v:,.4f}' if abs(v) < 1 else f'{v:,.2f}'
+        return str(v)
 
-    # Build metrics table rows
-    metrics_rows = ''
-    if metrics:
-        for k, v in metrics.items():
-            if isinstance(v, float):
-                v = round(v, 4)
-            metrics_rows += f'<tr><td>{k.replace("_", " ").title()}</td><td>{v}</td></tr>\n'
-    else:
-        metrics_rows = '<tr><td colspan="2">No metrics (0 completed trades)</td></tr>'
+    def _label(k):
+        return k.replace('_', ' ').title()
 
-    # Build trades table
-    trades_header = '<tr><th>#</th><th>Symbol</th><th>Type</th><th>Entry</th><th>Exit</th><th>Qty</th><th>PnL</th><th>PnL %</th></tr>'
-    trades_rows = ''
-    for i, t in enumerate(trades_list):
-        pnl = t.get('pnl', 0)
-        pnl_pct = t.get('pnl_percentage', 0)
-        color = '#4ade80' if (pnl or 0) >= 0 else '#f87171'
-        trades_rows += (
-            f'<tr><td>{i+1}</td><td>{t.get("symbol", "")}</td>'
-            f'<td>{t.get("type", "")}</td>'
-            f'<td>{t.get("entry_price", "")}</td>'
-            f'<td>{t.get("exit_price", "")}</td>'
-            f'<td>{t.get("qty", "")}</td>'
-            f'<td style="color:{color}">{round(pnl, 2) if pnl else 0}</td>'
-            f'<td style="color:{color}">{round(pnl_pct, 2) if pnl_pct else 0}%</td></tr>\n'
+    # Separate session-level metrics from trade-level metrics
+    session_metric_keys = [
+        'total_sessions', 'session_win_rate', 'total_losing_sessions',
+        'avg_session_win', 'avg_session_loss',
+        'ev_per_session', 'avg_legs_per_session', 'max_legs_in_session',
+        'sessions_with_1_leg', 'max_consecutive_session_wins', 'max_consecutive_session_losses',
+        'total_busts', 'worst_bust_pnl',
+    ]
+    summary_keys = [
+        'starting_balance', 'finishing_balance', 'net_profit', 'net_profit_percentage',
+        'profit_factor', 'max_drawdown', 'sharpe_ratio', 'sortino_ratio',
+        'worst_floating_pnl', 'peak_margin_used', 'peak_equity_usage_pct',
+        'margin_closeouts', 'account_blown',
+    ]
+    trade_keys = [
+        'total', 'total_winning_trades', 'total_losing_trades', 'win_rate',
+        'average_win', 'average_loss', 'expectancy', 'largest_winning_trade',
+        'largest_losing_trade', 'winning_streak', 'losing_streak', 'fee',
+        'gross_profit', 'gross_loss', 'annual_return', 'calmar_ratio',
+        'omega_ratio', 'serenity_index', 'kelly_criterion',
+        'var_95', 'cvar_95', 'total_pips', 'avg_pips_per_trade',
+    ]
+
+    has_sessions = any(k in metrics for k in session_metric_keys)
+
+    # Build summary metrics table
+    summary_rows = ''
+    for k in summary_keys:
+        if k in metrics:
+            summary_rows += f'<tr><td>{_label(k)}</td><td>{_fmt(metrics[k])}</td></tr>\n'
+
+    # Build session metrics table (if hedge sessions exist)
+    session_rows = ''
+    if has_sessions:
+        for k in session_metric_keys:
+            if k in metrics:
+                v = metrics[k]
+                # Highlight session win rate
+                style = ''
+                if k == 'session_win_rate':
+                    wr = v if isinstance(v, (int, float)) else 0
+                    color = '#4ade80' if wr > 0.5 else '#facc15' if wr > 0.3 else '#f87171'
+                    style = f' style="color:{color};font-weight:600"'
+                session_rows += f'<tr><td>{_label(k)}</td><td{style}>{_fmt(v)}</td></tr>\n'
+
+    # Build per-trade metrics table
+    trade_rows = ''
+    for k in trade_keys:
+        if k in metrics:
+            trade_rows += f'<tr><td>{_label(k)}</td><td>{_fmt(metrics[k])}</td></tr>\n'
+    # Any remaining metrics not in the above lists
+    shown_keys = set(summary_keys + session_metric_keys + trade_keys)
+    for k, v in metrics.items():
+        if k not in shown_keys:
+            trade_rows += f'<tr><td>{_label(k)}</td><td>{_fmt(v)}</td></tr>\n'
+
+    # Build sessions/trades section
+    sessions_html = ''
+    if sessions_list:
+        total_trades = sum(s.get('trade_count', len(s.get('trades', []))) for s in sessions_list)
+        winning = sum(1 for s in sessions_list if s.get('total_pnl', 0) > 0)
+        losing = len(sessions_list) - winning
+        sessions_html += (
+            f'<h2>Sessions ({len(sessions_list)}) &mdash; {total_trades} Trades '
+            f'<span style="color:#4ade80;font-size:14px">{winning}W</span> / '
+            f'<span style="color:#f87171;font-size:14px">{losing}L</span></h2>\n'
         )
+
+        for s in sessions_list:
+            spnl = s.get('total_pnl', 0)
+            sfee = s.get('total_fee', 0)
+            scolor = '#4ade80' if spnl >= 0 else '#f87171'
+            outcome = s.get('outcome', '')
+            levels = s.get('levels', 0)
+            session_label = s.get('session', '?')
+            opened = jh.timestamp_to_time(int(s['opened_at']))[:19] if s.get('opened_at') else ''
+            closed = jh.timestamp_to_time(int(s['closed_at']))[:19] if s.get('closed_at') else ''
+            max_float = s.get('max_float', 0)
+            min_float = s.get('min_float', 0)
+
+            outcome_color = '#4ade80' if outcome == 'tp_hit' else '#f87171' if outcome in ('bust', 'liquidation') else '#facc15'
+
+            sessions_html += (
+                f'<div class="session">'
+                f'<div class="session-header">'
+                f'<span class="session-label">#{session_label}</span>'
+                f'<span class="tag" style="color:{outcome_color}">{outcome}</span>'
+                f'<span class="tag">L{levels}</span>'
+                f'<span style="color:{scolor};font-weight:600;font-size:14px">{round(spnl, 2)}</span>'
+            )
+            if sfee:
+                sessions_html += f'<span class="dim">fee: {round(sfee, 4)}</span>'
+            if min_float:
+                sessions_html += f'<span class="dim">float: {round(min_float, 2)} / {round(max_float, 2)}</span>'
+            # Pipeline info
+            pipeline = s.get('pipeline')
+            if pipeline:
+                danger = pipeline.get('danger_at_entry')
+                if danger is not None:
+                    dcolor = '#4ade80' if danger < 0.5 else '#facc15' if danger < 0.75 else '#f87171'
+                    sessions_html += f'<span style="color:{dcolor}" class="dim">danger: {round(danger, 3)}</span>'
+            sessions_html += f'<span class="dim">{opened}</span>'
+            sessions_html += '</div>\n'
+
+            # Trades table for this session
+            sessions_html += (
+                '<table class="trades-table"><tr>'
+                '<th>#</th><th>Type</th><th>Level</th><th>Entry</th><th>Exit</th>'
+                '<th>Qty</th><th>PnL</th><th>PnL %</th><th>Opened</th></tr>\n'
+            )
+            for ti, t in enumerate(s.get('trades', [])):
+                pnl = t.get('pnl', t.get('PNL', 0)) or 0
+                pnl_pct = t.get('pnl_percentage', t.get('PNL_percentage', 0)) or 0
+                meta = t.get('meta', {})
+                level = meta.get('level', '')
+                color = '#4ade80' if pnl >= 0 else '#f87171'
+                t_opened = jh.timestamp_to_time(int(t['opened_at']))[11:19] if t.get('opened_at') else ''
+                sessions_html += (
+                    f'<tr><td>{ti+1}</td>'
+                    f'<td>{t.get("type", "")}</td>'
+                    f'<td>{level}</td>'
+                    f'<td>{round(t.get("entry_price", 0), 5)}</td>'
+                    f'<td>{round(t.get("exit_price", 0), 5)}</td>'
+                    f'<td>{round(abs(t.get("qty", 0)), 1)}</td>'
+                    f'<td style="color:{color}">{round(pnl, 2)}</td>'
+                    f'<td style="color:{color}">{round(pnl_pct, 2)}%</td>'
+                    f'<td>{t_opened}</td></tr>\n'
+                )
+            sessions_html += '</table></div>\n'
+    else:
+        # Fallback: flat trades table
+        sessions_html += f'<h2>Trades ({len(trades_list)})</h2>\n'
+        sessions_html += (
+            '<table><tr><th>#</th><th>Symbol</th><th>Type</th><th>Entry</th>'
+            '<th>Exit</th><th>Qty</th><th>PnL</th><th>PnL %</th></tr>\n'
+        )
+        for i, t in enumerate(trades_list):
+            pnl = t.get('pnl', 0) or 0
+            pnl_pct = t.get('pnl_percentage', 0) or 0
+            color = '#4ade80' if pnl >= 0 else '#f87171'
+            sessions_html += (
+                f'<tr><td>{i+1}</td><td>{t.get("symbol", "")}</td>'
+                f'<td>{t.get("type", "")}</td>'
+                f'<td>{t.get("entry_price", "")}</td>'
+                f'<td>{t.get("exit_price", "")}</td>'
+                f'<td>{t.get("qty", "")}</td>'
+                f'<td style="color:{color}">{round(pnl, 2)}</td>'
+                f'<td style="color:{color}">{round(pnl_pct, 2)}%</td></tr>\n'
+            )
+        sessions_html += '</table>\n'
+
+    # Build metrics HTML sections
+    metrics_html = f'<h2>Summary</h2>\n<table class="metrics">{summary_rows}</table>\n'
+    if session_rows:
+        metrics_html += f'<h2>Session Metrics</h2>\n<table class="metrics">{session_rows}</table>\n'
+    metrics_html += f'<details><summary style="cursor:pointer;color:#818cf8;margin:12px 0">Per-Trade Metrics</summary>\n<table class="metrics">{trade_rows}</table></details>\n'
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Backtest Report - {session_id[:8]}</title>
 <style>
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; margin: 0; padding: 20px; }}
-h1, h2 {{ color: #818cf8; }} table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
-th, td {{ padding: 8px 12px; border: 1px solid #2a2d3a; text-align: left; }}
-th {{ background: #1a1d2e; color: #94a3b8; }} tr:nth-child(even) {{ background: #131620; }}
-.chart {{ background: #1a1d2e; border-radius: 8px; padding: 16px; margin: 16px 0; }}
-canvas {{ width: 100%; height: 300px; }}
+* {{ box-sizing: border-box; }}
+body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; margin: 0; padding: 20px; max-width: 1200px; margin: 0 auto; }}
+h1 {{ color: #818cf8; margin-bottom: 4px; }}
+h2 {{ color: #818cf8; margin-top: 24px; }}
+table {{ border-collapse: collapse; width: 100%; margin: 8px 0; }}
+th, td {{ padding: 6px 10px; border: 1px solid #2a2d3a; text-align: left; font-size: 13px; }}
+th {{ background: #1a1d2e; color: #94a3b8; }}
+tr:nth-child(even) {{ background: #131620; }}
+.metrics {{ max-width: 500px; }}
+.metrics td:first-child {{ color: #94a3b8; width: 60%; }}
+.metrics td:last-child {{ font-family: 'SF Mono', 'Fira Code', monospace; text-align: right; }}
+.session {{ background: #161926; border: 1px solid #2a2d3a; border-radius: 8px; margin: 10px 0; padding: 10px 12px; }}
+.session-header {{ display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }}
+.session-label {{ font-weight: 700; color: #818cf8; font-size: 14px; min-width: 50px; }}
+.tag {{ background: #1e2235; padding: 2px 8px; border-radius: 4px; font-size: 12px; }}
+.dim {{ color: #64748b; font-size: 12px; }}
+.trades-table {{ font-size: 12px; }}
+.trades-table th {{ font-size: 11px; padding: 4px 8px; }}
+.trades-table td {{ padding: 3px 8px; }}
+details > summary {{ font-size: 14px; }}
 </style>
 </head><body>
 <h1>Backtest Report</h1>
-<p style="color:#94a3b8">Session: {session_id}</p>
-<h2>Equity Curve</h2>
-<div class="chart"><canvas id="eq"></canvas></div>
-<h2>Performance Metrics</h2>
-<table>{metrics_rows}</table>
-<h2>Trades ({len(trades_list)})</h2>
-<table>{trades_header}{trades_rows if trades_rows else '<tr><td colspan="8">No trades</td></tr>'}</table>
-<script>
-(function(){{
-  var c=document.getElementById('eq'),ctx=c.getContext('2d');
-  c.width=c.parentElement.clientWidth-32;c.height=300;
-  var vals={eq_values},pad=40;
-  if(!vals.length)return;
-  var mn=Math.min(...vals),mx=Math.max(...vals),rng=mx-mn||1;
-  ctx.strokeStyle=vals[vals.length-1]>=vals[0]?'#4ade80':'#f87171';
-  ctx.lineWidth=2;ctx.beginPath();
-  for(var i=0;i<vals.length;i++){{
-    var x=pad+(c.width-pad-10)*(i/(vals.length-1));
-    var y=pad+(c.height-pad*2)*(1-(vals[i]-mn)/rng);
-    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
-  }}ctx.stroke();
-  ctx.fillStyle='#666';ctx.font='10px monospace';ctx.textAlign='right';
-  for(var j=0;j<=4;j++){{
-    var yy=pad+(c.height-pad*2)*(j/4);
-    ctx.fillText((mx-rng*(j/4)).toFixed(0),pad-5,yy+4);
-    ctx.strokeStyle='#2a2d3a';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(c.width-10,yy);ctx.stroke();
-  }}
-}})();
-</script>
+<p class="dim">Session: {session_id}</p>
+{metrics_html}
+{sessions_html}
 </body></html>"""
 
     with open(path, 'w') as f:
@@ -1481,9 +1647,14 @@ def _generate_outputs(
 
     # Collect pipeline stats from strategies (if any pipelines attached)
     pipeline_stats = {}
+    _stack_hp_logs = {}  # route → HP log from PipelineStack (works for ALL pipelines)
     for r in router.routes:
         if getattr(r.strategy, '_pipelines', None):
-            stack_stats = r.strategy._pipelines.get_stats()
+            stack = r.strategy._pipelines
+            stack_stats = stack.get_stats()
+            route_key = f"{r.exchange}-{r.symbol}"
+            # Capture HP log from stack (framework-level, pipeline-agnostic)
+            _stack_hp_logs[route_key] = getattr(stack, '_cycle_hp_log', [])
             # Flatten PipelineStack nesting: {pipeline_name: stats} → stats
             # For single pipeline (common case), use its stats directly
             # For multiple, merge all pipeline stats into one dict
@@ -1491,18 +1662,35 @@ def _generate_outputs(
             for pname, pstats in stack_stats.items():
                 merged.update(pstats)
                 merged['pipeline_name'] = pname
-            pipeline_stats[f"{r.exchange}-{r.symbol}"] = merged
+                # Include architecture metadata for the frontend
+                for p in stack.pipelines:
+                    if p.name == pname:
+                        try:
+                            merged['_architecture'] = p.architecture()
+                        except Exception:
+                            pass
+                        break
+            pipeline_stats[route_key] = merged
     if pipeline_stats:
         result["pipeline_stats"] = pipeline_stats
 
-        # Enrich sessions with pipeline context (danger, abort info per session)
+        # Enrich sessions with pipeline context (danger, abort info, HP per session)
         if sessions:
             for route_key, ps in pipeline_stats.items():
                 cycles = ps.get('cycle_outcomes', [])
                 cycle_map = {c['cycle']: c for c in cycles}
+                # Framework-level HP log (PipelineStack captures strategy.hp for ALL pipelines)
+                stack_hp = _stack_hp_logs.get(route_key, [])
+                stack_hp_map = {h['cycle']: h for h in stack_hp}
+                # Pipeline-specific HP log (IslandPilot's evolved genes)
+                pipeline_hp = ps.get('cycle_hp_log', [])
+                pipeline_hp_map = {h['cycle']: h for h in pipeline_hp} if pipeline_hp else {}
                 for s in sessions:
                     sn = s.get('session')
-                    if isinstance(sn, int) and sn in cycle_map:
+                    if not isinstance(sn, int):
+                        continue
+                    # Pipeline danger/abort context (from PipelineStats)
+                    if sn in cycle_map:
                         c = cycle_map[sn]
                         s['pipeline'] = {
                             'danger_at_entry': c.get('danger_at_entry'),
@@ -1514,6 +1702,20 @@ def _generate_outputs(
                             'abort_triggers': c.get('abort_triggers', 0),
                             'gate_blocks_before_entry': c.get('gate_blocks_before_entry', 0),
                         }
+                    # Always attach HP from PipelineStack (works for ANY pipeline)
+                    if sn in stack_hp_map:
+                        if 'pipeline' not in s:
+                            s['pipeline'] = {}
+                        s['pipeline']['hp'] = stack_hp_map[sn].get('hp')
+                    # Overlay evolved genes from IslandPilot (if present)
+                    if sn in pipeline_hp_map:
+                        if 'pipeline' not in s:
+                            s['pipeline'] = {}
+                        hp_entry = pipeline_hp_map[sn]
+                        s['pipeline']['regime'] = hp_entry.get('regime')
+                        s['pipeline']['confidence'] = hp_entry.get('confidence')
+                        if hp_entry.get('genes'):
+                            s['pipeline']['genes'] = hp_entry['genes']
 
     return result
 
