@@ -9,11 +9,12 @@ The model starts permissive (all entries allowed) and gradually tightens
 as it accumulates cycle outcomes.  During a configurable warmup period
 the gate always allows entry but still collects data and updates weights.
 
-Feature vector (17 dimensions):
+Feature vector (20 dimensions):
   - 4 continuous market features: danger, trend_strength, volatility, efficiency
   - 5 regime one-hot: regime_id encoded as k binary features (k_max=5)
   - 3 account features: equity drawdown %, consecutive busts, cycles since bust
   - 4 session one-hot: Asian / London / Overlap / New York
+  - 3 R(t) stress features: normalised_rt, inter_cycle_gap_ratio, recent_stress_rate
   - 1 bias term
 
 Update rule (SGD with L2 regularisation):
@@ -33,7 +34,7 @@ import numpy as np
 # Constants
 # ---------------------------------------------------------------------------
 
-_N_FEATURES = 17          # 4 market + 5 regime + 3 account + 4 session + 1 bias
+_N_FEATURES = 20          # 4 market + 5 regime + 3 account + 4 session + 3 stress + 1 bias
 _K_MAX_DEFAULT = 5        # max regime clusters (one-hot width)
 _SESSION_NAMES = ('asian', 'london', 'overlap', 'new_york')
 _MAX_THRESHOLD = 0.5      # ceiling for adaptive threshold
@@ -107,8 +108,9 @@ def _build_features(
     *,
     k_max: int = _K_MAX_DEFAULT,
     peak_equity: float = 0.0,
+    stress_features: Optional[dict] = None,
 ) -> np.ndarray:
-    """Construct the 17-dimensional feature vector for the classifier.
+    """Construct the 20-dimensional feature vector for the classifier.
 
     Parameters
     ----------
@@ -121,11 +123,14 @@ def _build_features(
         Number of regime slots for one-hot encoding.
     peak_equity : float
         Highest equity observed so far (for drawdown calculation).
+    stress_features : dict, optional
+        R(t) stress features: normalised_rt, inter_cycle_gap_ratio,
+        recent_stress_rate (Chen 2026).
 
     Returns
     -------
     np.ndarray
-        Shape ``(17,)`` feature vector with a bias term at the end.
+        Shape ``(20,)`` feature vector with a bias term at the end.
     """
     x = np.zeros(_N_FEATURES, dtype=np.float64)
 
@@ -179,8 +184,14 @@ def _build_features(
     session_idx = _SESSION_NAMES.index(session) if session in _SESSION_NAMES else 0
     x[12 + session_idx] = 1.0
 
-    # --- 1 bias [16] ---
-    x[16] = 1.0
+    # --- 3 R(t) stress features [16:19] (Chen 2026) ---
+    sf = stress_features or {}
+    x[16] = min(1.0, max(0.0, float(sf.get('normalised_rt', 0.0))))
+    x[17] = min(1.0, max(0.0, float(sf.get('inter_cycle_gap_ratio', 0.0))))
+    x[18] = min(1.0, max(0.0, float(sf.get('recent_stress_rate', 0.0))))
+
+    # --- 1 bias [19] ---
+    x[19] = 1.0
 
     return x
 
@@ -221,7 +232,8 @@ class CycleGate:
     # Public API
     # ------------------------------------------------------------------
 
-    def predict(self, market_state: dict, strategy) -> float:
+    def predict(self, market_state: dict, strategy,
+                stress_features: Optional[dict] = None) -> float:
         """Return P(profitable | features).
 
         Does **not** update weights — call :meth:`update` after a cycle
@@ -233,6 +245,8 @@ class CycleGate:
             Current MarketState dict from MarketBrain.
         strategy
             Live strategy object.
+        stress_features : dict, optional
+            R(t) stress features (Chen 2026).
 
         Returns
         -------
@@ -244,11 +258,13 @@ class CycleGate:
             market_state, strategy,
             k_max=self._k_max,
             peak_equity=self._peak_equity,
+            stress_features=stress_features,
         )
         z = float(np.dot(self._weights, x))
         return _sigmoid(z)
 
-    def gate(self, market_state: dict, strategy) -> Tuple[bool, float]:
+    def gate(self, market_state: dict, strategy,
+             stress_features: Optional[dict] = None) -> Tuple[bool, float]:
         """Decide whether to allow a new entry.
 
         Parameters
@@ -257,6 +273,8 @@ class CycleGate:
             Current MarketState dict from MarketBrain.
         strategy
             Live strategy object.
+        stress_features : dict, optional
+            R(t) stress features (Chen 2026).
 
         Returns
         -------
@@ -264,12 +282,13 @@ class CycleGate:
             ``allowed`` is True if the entry should proceed.
             ``confidence`` is the raw P(profitable) prediction.
         """
-        p = self.predict(market_state, strategy)
+        p = self.predict(market_state, strategy, stress_features=stress_features)
         threshold = self._current_threshold()
         allowed = self._n_cycles < self._warmup or p >= threshold
         return allowed, p
 
-    def update(self, market_state: dict, strategy, profitable: bool) -> None:
+    def update(self, market_state: dict, strategy, profitable: bool,
+               stress_features: Optional[dict] = None) -> None:
         """Perform one SGD weight update after a cycle completes.
 
         Parameters
@@ -281,12 +300,15 @@ class CycleGate:
             Live strategy object.
         profitable : bool
             True if the cycle ended profitably, False otherwise.
+        stress_features : dict, optional
+            R(t) stress features (Chen 2026).
         """
         self._track_equity(strategy)
         x = _build_features(
             market_state, strategy,
             k_max=self._k_max,
             peak_equity=self._peak_equity,
+            stress_features=stress_features,
         )
         y = 1.0 if profitable else 0.0
         z = float(np.dot(self._weights, x))
