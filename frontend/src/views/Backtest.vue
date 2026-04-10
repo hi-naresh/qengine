@@ -672,65 +672,196 @@
               </select>
             </div>
 
-            <!-- Performance metrics -->
-            <div class="mb-4">
-              <div class="flex items-center justify-between mb-1"><h3 class="text-xs font-semibold text-surface-500">Performance</h3><button @click="showTooltips = !showTooltips" class="text-[10px] px-2 py-0.5 rounded transition-colors" :class="showTooltips ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-700 text-surface-500'">{{ showTooltips ? 'Hints On' : 'Hints Off' }}</button></div>
-              <SectionGuide category="performance" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in performanceMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+            <!-- ═══ Martingale Mode ═══ -->
+            <template v-if="isMartingale">
+              <!-- Session Performance -->
+              <div class="mb-4">
+                <div class="flex items-center justify-between mb-1"><h3 class="text-xs font-semibold text-surface-500">Session Performance</h3><button @click="showTooltips = !showTooltips" class="text-[10px] px-2 py-0.5 rounded transition-colors" :class="showTooltips ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-700 text-surface-500'">{{ showTooltips ? 'Hints On' : 'Hints Off' }}</button></div>
+                <SectionGuide category="martingale" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in mSessionPerf" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Hedge Session Stats -->
-            <div v-if="hedgeSessionMetrics.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-1">Hedge Session Stats</h3>
-              <SectionGuide category="hedge" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in hedgeSessionMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+              <!-- Survival & Ruin -->
+              <div class="mb-4">
+                <h3 class="text-xs font-semibold text-red-400/70 mb-1">Survival &amp; Ruin</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in mSurvival" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Risk metrics -->
-            <div class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-1">Risk &amp; Ratios</h3>
-              <SectionGuide category="risk" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in riskMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+              <!-- Structural Diagnostics -->
+              <div class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Structural Diagnostics</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in mStructural" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <!-- Trade Stats -->
-            <div class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-1">Trade Statistics</h3>
-              <SectionGuide category="trades" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in tradeStatsMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+                <!-- Level Transition Matrix -->
+                <div v-if="metrics.level_transitions?.length" class="mt-3">
+                  <h4 class="text-[10px] text-surface-600 uppercase tracking-wider mb-1">Level Transition Matrix</h4>
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                      <thead>
+                        <tr class="border-b border-surface-700">
+                          <th class="text-left py-1 px-2 text-surface-500">Level</th>
+                          <th class="text-right py-1 px-2 text-surface-500">Entries</th>
+                          <th class="text-right py-1 px-2 text-surface-500">Wins</th>
+                          <th class="text-right py-1 px-2 text-surface-500">Escalated</th>
+                          <th class="text-right py-1 px-2 text-surface-500">P(Win)</th>
+                          <th class="text-right py-1 px-2 text-surface-500">P(Esc)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="lt in metrics.level_transitions" :key="lt.level" class="border-b border-surface-800/50">
+                          <td class="py-1 px-2 font-mono text-surface-300">L{{ lt.level }}</td>
+                          <td class="py-1 px-2 text-right font-mono text-surface-300">{{ lt.entries }}</td>
+                          <td class="py-1 px-2 text-right font-mono text-green-400">{{ lt.wins }}</td>
+                          <td class="py-1 px-2 text-right font-mono text-amber-400">{{ lt.escalations }}</td>
+                          <td class="py-1 px-2 text-right font-mono" :class="lt.p_win >= 0.5 ? 'text-green-400' : 'text-red-400'">{{ (lt.p_win * 100).toFixed(1) }}%</td>
+                          <td class="py-1 px-2 text-right font-mono" :class="lt.p_escalate > 0.5 ? 'text-red-400' : 'text-amber-400'">{{ (lt.p_escalate * 100).toFixed(1) }}%</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <!-- Forex/CFD Costs -->
-            <div v-if="forexMetrics.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-1">Forex / CFD Costs</h3>
-              <SectionGuide category="forex" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in forexMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+                <!-- EV by Depth -->
+                <div v-if="metrics.ev_by_depth && Object.keys(metrics.ev_by_depth).length" class="mt-3">
+                  <h4 class="text-[10px] text-surface-600 uppercase tracking-wider mb-1">EV Decomposition by Depth</h4>
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-xs">
+                      <thead>
+                        <tr class="border-b border-surface-700">
+                          <th class="text-left py-1 px-2 text-surface-500">Depth</th>
+                          <th class="text-right py-1 px-2 text-surface-500">Count</th>
+                          <th class="text-right py-1 px-2 text-surface-500">Win Rate</th>
+                          <th class="text-right py-1 px-2 text-surface-500">Total PnL</th>
+                          <th class="text-right py-1 px-2 text-surface-500">Avg PnL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(d, depth) in metrics.ev_by_depth" :key="depth" class="border-b border-surface-800/50">
+                          <td class="py-1 px-2 font-mono text-surface-300">L{{ depth }}</td>
+                          <td class="py-1 px-2 text-right font-mono text-surface-300">{{ d.count }}</td>
+                          <td class="py-1 px-2 text-right font-mono" :class="d.win_rate >= 0.5 ? 'text-green-400' : 'text-red-400'">{{ (d.win_rate * 100).toFixed(1) }}%</td>
+                          <td class="py-1 px-2 text-right font-mono" :class="d.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ formatMetric(d.total_pnl) }}</td>
+                          <td class="py-1 px-2 text-right font-mono" :class="d.avg_pnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ formatMetric(d.avg_pnl) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Depth Distribution -->
+                <div v-if="metrics.depth_breakdown?.length" class="mt-3">
+                  <h4 class="text-[10px] text-surface-600 uppercase tracking-wider mb-1">Depth Distribution</h4>
+                  <div class="space-y-1">
+                    <div v-for="d in metrics.depth_breakdown" :key="d.depth" class="flex items-center gap-2 text-xs">
+                      <span class="w-8 text-surface-500 font-mono text-right">L{{ d.depth }}</span>
+                      <div class="flex-1 h-4 bg-surface-800 rounded overflow-hidden relative">
+                        <div class="h-full rounded"
+                          :class="d.pnl >= 0 ? 'bg-green-500/30' : 'bg-red-500/30'"
+                          :style="{ width: Math.max((d.count / metrics.total_sessions) * 100, 2) + '%' }">
+                        </div>
+                        <span class="absolute inset-0 flex items-center px-2 font-mono text-[10px] text-surface-300">
+                          {{ d.count }} ({{ ((d.count / metrics.total_sessions) * 100).toFixed(1) }}%)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              <!-- Capital & Costs -->
+              <div class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Capital &amp; Costs</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in mCapital" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Raw Trade Data (collapsed) -->
+              <details class="mb-4">
+                <summary class="text-xs text-surface-600 cursor-pointer hover:text-surface-400 select-none">
+                  Raw Trade Data (debug)
+                </summary>
+                <div v-if="metrics.raw_trade_stats" class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  <div v-for="(val, key) in metrics.raw_trade_stats" :key="key" class="p-2 bg-surface-900 rounded">
+                    <div class="text-surface-600 text-xs">{{ formatKey(key) }}</div>
+                    <div class="font-mono text-surface-400">{{ formatMetric(val) }}</div>
+                  </div>
+                </div>
+              </details>
+            </template>
+
+            <!-- ═══ Generic Mode (existing) ═══ -->
+            <template v-else>
+              <!-- Performance metrics -->
+              <div class="mb-4">
+                <div class="flex items-center justify-between mb-1"><h3 class="text-xs font-semibold text-surface-500">Performance</h3><button @click="showTooltips = !showTooltips" class="text-[10px] px-2 py-0.5 rounded transition-colors" :class="showTooltips ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-700 text-surface-500'">{{ showTooltips ? 'Hints On' : 'Hints Off' }}</button></div>
+                <SectionGuide category="performance" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in performanceMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="hedgeSessionMetrics.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Hedge Session Stats</h3>
+                <SectionGuide category="hedge" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hedgeSessionMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Risk &amp; Ratios</h3>
+                <SectionGuide category="risk" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in riskMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Trade Statistics</h3>
+                <SectionGuide category="trades" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in tradeStatsMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="forexMetrics.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Forex / CFD Costs</h3>
+                <SectionGuide category="forex" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in forexMetrics" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+            </template>
             
             <!-- Pipeline Analytics -->
             <div v-if="pipelineStats" class="mb-4 space-y-4">
@@ -3004,6 +3135,44 @@ const riskMetrics = computed(() => pickMetrics(riskKeys))
 const forexMetrics = computed(() => pickMetrics(forexKeys))
 const hedgeSessionMetrics = computed(() => pickMetrics(hedgeKeys))
 
+// ── Martingale-mode key arrays ──
+const isMartingale = computed(() => metrics.value?.is_martingale === true)
+
+const sessionPerfKeys = [
+  ['total_sessions', 'Sessions'], ['session_win_rate', 'Session Win Rate'],
+  ['session_profit_factor', 'Session Profit Factor'], ['ev_per_session', 'EV / Session'],
+  ['median_session_pnl', 'Median Session PnL'],
+  ['net_profit', 'Net Profit'], ['net_profit_percentage', 'Net Profit %'],
+  ['annual_return', 'Annual Return'], ['starting_balance', 'Starting Balance'],
+  ['finishing_balance', 'Finishing Balance'],
+]
+const survivalKeys = [
+  ['bust_rate', 'Bust Rate'], ['bust_count', 'Busts'],
+  ['wins_to_recover', 'Wins to Recover'], ['geometric_growth_rate', 'Geometric Growth Rate'],
+  ['survival_100', 'P(Survive 100)'], ['survival_500', 'P(Survive 500)'],
+  ['survival_half_life', 'Half-Life (sessions)'],
+  ['worst_bust_pnl', 'Worst Bust PnL'], ['avg_bust_loss', 'Avg Bust Loss'],
+  ['bust_severity_std', 'Bust Severity Spread'],
+  ['max_drawdown', 'Max Drawdown %'], ['max_consecutive_session_losses', 'Max Consec. Losses'],
+  ['margin_closeouts', 'Margin Close-outs'], ['account_blown', 'Account Blown'],
+]
+const structuralKeys = [
+  ['l0_win_rate', 'L0 Win Rate'], ['avg_legs_per_session', 'Avg Legs / Session'],
+  ['max_legs_in_session', 'Max Legs in Session'], ['sessions_with_1_leg', 'L0 Wins (1-leg)'],
+]
+const capitalKeys = [
+  ['peak_margin_used', 'Peak Margin Used'], ['peak_equity_usage_pct', 'Peak Equity Used %'],
+  ['worst_floating_pnl', 'Worst Floating Loss'], ['profit_factor', 'Profit Factor'],
+  ['fee', 'Total Fees'], ['total_spread_cost', 'Total Spread Cost'],
+  ['total_swap_cost', 'Total Swap Cost'], ['total_pips', 'Total Pips'],
+  ['avg_pips_per_trade', 'Avg Pips / Trade'], ['cost_drag_pct', 'Cost Drag %'],
+]
+
+const mSessionPerf = computed(() => pickMetrics(sessionPerfKeys))
+const mSurvival = computed(() => pickMetrics(survivalKeys))
+const mStructural = computed(() => pickMetrics(structuralKeys))
+const mCapital = computed(() => pickMetrics(capitalKeys))
+
 // History session detail metrics (from selectedSession.metrics)
 const hPerf = computed(() => pickMetricsFrom(selectedSession.value?.metrics, perfKeys))
 const hTrade = computed(() => pickMetricsFrom(selectedSession.value?.metrics, tradeKeys))
@@ -3809,7 +3978,9 @@ function formatMetric(val) {
   if (typeof val === 'boolean') return val ? 'Yes' : 'No'
   if (typeof val === 'number') {
     if (isNaN(val)) return '-'
+    if (!isFinite(val)) return val > 0 ? '\u221E' : '-\u221E'
     if (Number.isInteger(val)) return val.toLocaleString()
+    if (Math.abs(val) > 0 && Math.abs(val) < 0.01) return val.toFixed(6)
     return val.toFixed(2)
   }
   return val
@@ -3929,6 +4100,17 @@ function metricColor(key, val) {
   if (key === 'avg_session_loss') return 'text-red-400'
   if (key === 'var_95' || key === 'var_99' || key === 'cvar_95' || key === 'cvar_99') return 'text-amber-400'
   if (key === 'margin_closeouts') return val > 0 ? 'text-red-400' : 'text-green-400'
+  if (key === 'bust_rate') return val > 0.02 ? 'text-red-400' : val > 0 ? 'text-amber-400' : 'text-green-400'
+  if (key === 'geometric_growth_rate') return val >= 0 ? 'text-green-400' : 'text-red-400'
+  if (key === 'survival_100' || key === 'survival_500') return val >= 0.5 ? 'text-green-400' : val >= 0.1 ? 'text-amber-400' : 'text-red-400'
+  if (key === 'wins_to_recover') return val > 100 ? 'text-red-400' : val > 50 ? 'text-amber-400' : 'text-green-400'
+  if (key === 'session_profit_factor') return val >= 1 ? 'text-green-400' : 'text-red-400'
+  if (key === 'median_session_pnl') return val >= 0 ? 'text-green-400' : 'text-red-400'
+  if (key === 'l0_win_rate') return val >= 0.5 ? 'text-green-400' : 'text-amber-400'
+  if (key === 'cost_drag_pct') return val > 30 ? 'text-red-400' : val > 15 ? 'text-amber-400' : 'text-green-400'
+  if (key === 'avg_bust_loss' || key === 'worst_bust_pnl') return 'text-red-400'
+  if (key === 'bust_count') return val > 0 ? 'text-red-400' : 'text-green-400'
+  if (key === 'survival_half_life') return val === Infinity ? 'text-green-400' : val > 200 ? 'text-green-400' : val > 50 ? 'text-amber-400' : 'text-red-400'
   return 'text-surface-100'
 }
 
