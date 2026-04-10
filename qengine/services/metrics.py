@@ -794,6 +794,119 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
                 'max_level_observed': int(max_lv),
             }
 
+    # --- P9: Analytical Ruin Probability (Karathanasopoulos et al. 2021) ---
+    # P_survive via Gamma distribution. Special case when μ/σ² ≈ 1: P = exp(-2k₀/μw)
+    # μ = mean return per cycle, σ = std of returns, k₀ = fixed cost per cycle, w = wealth ratio
+    analytical_ruin_prob = 1.0
+    analytical_survival_prob = 0.0
+    survival_condition_ratio = 0.0  # μ/σ²
+    survival_condition_met = False
+    mu = 0.0
+    sigma_sq = 1e-12
+    k0 = 0.0
+    w = 1.0
+    if total_sessions >= 10:
+        mu = float(np.mean(session_pnls))
+        sigma = float(np.std(session_pnls, ddof=1)) if total_sessions > 1 else 1e-12
+        sigma_sq = sigma ** 2
+        # k₀ = average fixed cost per cycle (spread + fees / n_sessions)
+        k0 = (total_fees + total_spread + total_swap) / total_sessions if total_sessions > 0 else 0.0
+        # w = final_equity / starting_balance
+        final_equity = starting_balance + sum(session_pnls)
+        w = final_equity / starting_balance if starting_balance > 0 else 1.0
+
+        if sigma_sq > 1e-12:
+            survival_condition_ratio = mu / sigma_sq
+            survival_condition_met = survival_condition_ratio > 0.5
+
+            if survival_condition_ratio > 0.5 and w > 0:
+                alpha_param = 2 * mu / sigma_sq - 1
+                beta_param = 2 * k0 / sigma_sq if sigma_sq > 0 else 0.0
+
+                if abs(survival_condition_ratio - 1.0) < 0.1 and mu > 0:
+                    # Special case: P_survive = exp(-2k₀ / μw)
+                    analytical_survival_prob = min(1.0, math.exp(-2 * k0 / (mu * w)))
+                elif alpha_param > 0 and beta_param >= 0:
+                    # General case: P_survive = 1 - Gamma_CDF(1/w, α, 1/β)
+                    from scipy.stats import gamma as gamma_dist
+                    try:
+                        if beta_param > 0:
+                            analytical_survival_prob = float(1.0 - gamma_dist.cdf(
+                                1.0 / max(w, 1e-12), a=alpha_param, scale=1.0 / beta_param))
+                        else:
+                            analytical_survival_prob = 1.0 if mu > 0 else 0.0
+                    except (ValueError, OverflowError):
+                        analytical_survival_prob = 0.5  # fallback
+                else:
+                    analytical_survival_prob = 0.0
+            elif survival_condition_ratio <= 0.5:
+                analytical_survival_prob = 0.0  # mathematically guaranteed ruin
+            else:
+                analytical_survival_prob = 0.5  # indeterminate
+
+        analytical_ruin_prob = 1.0 - analytical_survival_prob
+
+    # P10: Survival condition health label
+    if survival_condition_ratio >= 1.0:
+        survival_health = 'green'   # comfortably met
+    elif survival_condition_ratio > 0.5:
+        survival_health = 'yellow'  # marginal
+    else:
+        survival_health = 'red'     # guaranteed ruin
+
+    # --- P11: Minimum Account Size (Karathanasopoulos et al. 2021, Eq 9) ---
+    # w_min = -2k₀ / (μ · ln(P_target)) for target survival probability
+    min_account_95 = None
+    min_account_99 = None
+    if total_sessions >= 10 and mu > 0 and k0 > 0:
+        # Using special case formula: P = exp(-2k₀/μw) → w = -2k₀/(μ·ln(P))
+        for target_p, attr_name in [(0.95, 'min_account_95'), (0.99, 'min_account_99')]:
+            ln_p = math.log(target_p)
+            if ln_p < 0:
+                w_min = -2 * k0 / (mu * ln_p)
+                min_val = w_min * starting_balance
+                if attr_name == 'min_account_95':
+                    min_account_95 = round(min_val, 2)
+                else:
+                    min_account_99 = round(min_val, 2)
+
+    # --- P12: Fixed Cost Sensitivity (Karathanasopoulos et al. 2021) ---
+    # Sweep k₀ from 0 to 3× current, show P_survive at each point
+    cost_sensitivity = None
+    if total_sessions >= 10 and mu > 0 and sigma_sq > 1e-12 and w > 0:
+        sweep_points = []
+        max_k0 = max(k0 * 3, 0.01)  # at least sweep to 0.01
+        for frac in np.linspace(0, max_k0, 20):
+            if abs(survival_condition_ratio - 1.0) < 0.1:
+                p_surv = min(1.0, max(0.0, math.exp(-2 * frac / (mu * w)))) if mu * w > 0 else 0.0
+            elif survival_condition_ratio > 0.5:
+                alpha_p = 2 * mu / sigma_sq - 1
+                beta_p = 2 * frac / sigma_sq
+                if alpha_p > 0 and beta_p > 0:
+                    from scipy.stats import gamma as gamma_dist
+                    try:
+                        p_surv = float(1.0 - gamma_dist.cdf(1.0 / max(w, 1e-12), a=alpha_p, scale=1.0 / beta_p))
+                    except (ValueError, OverflowError):
+                        p_surv = 0.0
+                else:
+                    p_surv = 0.0
+            else:
+                p_surv = 0.0
+            sweep_points.append({'cost': round(float(frac), 6), 'p_survive': round(p_surv, 4)})
+
+        # Find break-even spread (where P_survive drops below 50%)
+        breakeven_cost = None
+        for sp in sweep_points:
+            if sp['p_survive'] < 0.5:
+                breakeven_cost = sp['cost']
+                break
+
+        cost_sensitivity = {
+            'sweep': sweep_points,
+            'current_cost': round(k0, 6),
+            'breakeven_cost': breakeven_cost,
+        }
+
     return {
         # Session Performance
         'session_profit_factor': session_profit_factor,
@@ -829,6 +942,18 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         'depth_barrier_details': depth_barrier_details,
         # P7: Triangular Loss Growth (Taranto & Khan 2020)
         'loss_growth_validation': loss_growth_validation,
+        # P9: Analytical Ruin Probability (Karathanasopoulos et al. 2021)
+        'analytical_ruin_prob': round(analytical_ruin_prob, 6),
+        'analytical_survival_prob': round(analytical_survival_prob, 6),
+        # P10: Survival Condition
+        'survival_condition_ratio': round(survival_condition_ratio, 6),
+        'survival_condition_met': survival_condition_met,
+        'survival_health': survival_health,
+        # P11: Minimum Account Size
+        'min_account_95': min_account_95,
+        'min_account_99': min_account_99,
+        # P12: Fixed Cost Sensitivity
+        'cost_sensitivity': cost_sensitivity,
     }
 
 
