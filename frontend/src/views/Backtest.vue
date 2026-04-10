@@ -1281,7 +1281,7 @@
 
           <!-- Pipeline Intelligence Tab -->
           <div v-if="activeTab === 'pipeline'">
-            <PipelineIntelligence :stats="pipelineStats" />
+            <PipelineIntelligence :stats="pipelineStats" :session-id="generalInfo?.session_id" />
             <!-- A/B Comparison -->
             <div class="mt-8 border-t border-surface-700/50 pt-6">
               <div class="flex items-center justify-between mb-4">
@@ -1390,8 +1390,89 @@
           <div v-if="activeTab === 'sessions'">
             <div v-if="!hedgeSessions.length" class="text-surface-500 text-sm py-8 text-center">No sessions recorded.</div>
             <div v-if="hedgeSessions.length">
-              <!-- Session summary stats -->
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
+              <!-- Session summary stats (martingale) -->
+              <div v-if="isMartingale && sessionAnalytics" class="space-y-3 mb-4">
+                <!-- Row 1: Outcome Breakdown -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Total Sessions</div>
+                    <div class="font-mono text-surface-100">{{ sessionAnalytics.total }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Wins</div>
+                    <div class="font-mono text-green-400">{{ sessionAnalytics.wins }} <span class="text-surface-500 text-xs">({{ sessionAnalytics.winPct.toFixed(1) }}%)</span></div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Busts</div>
+                    <div class="font-mono text-red-400">{{ sessionAnalytics.busts }} <span class="text-xs">({{ sessionAnalytics.bustTotalPnl.toFixed(2) }})</span></div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Aborts</div>
+                    <div class="font-mono" :class="sessionAnalytics.aborts > 0 ? 'text-amber-400' : 'text-surface-400'">
+                      {{ sessionAnalytics.aborts }} <span v-if="sessionAnalytics.aborts" class="text-xs">({{ sessionAnalytics.abortTotalPnl.toFixed(2) }})</span>
+                    </div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Current Streak</div>
+                    <div class="font-mono" :class="sessionAnalytics.streak >= 0 ? 'text-green-400' : 'text-red-400'">
+                      {{ Math.abs(sessionAnalytics.streak) }} {{ sessionAnalytics.streak >= 0 ? 'W' : 'L' }}
+                    </div>
+                  </div>
+                </div>
+                <!-- Row 2: Session Economics -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Total PnL</div>
+                    <div class="font-mono" :class="sessionAnalytics.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ sessionAnalytics.totalPnl.toFixed(2) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Avg Win PnL</div>
+                    <div class="font-mono text-green-400">{{ sessionAnalytics.avgWinPnl.toFixed(2) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Avg Bust Loss</div>
+                    <div class="font-mono text-red-400">{{ sessionAnalytics.avgBustLoss.toFixed(2) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Bust Recovery</div>
+                    <div v-if="!sessionAnalytics.hasBusts" class="font-mono text-green-400 text-xs">No busts</div>
+                    <div v-else>
+                      <div class="font-mono text-xs" :class="sessionAnalytics.winsSinceLastBust >= sessionAnalytics.wtr ? 'text-green-400' : 'text-amber-400'">
+                        {{ sessionAnalytics.winsSinceLastBust }} / {{ sessionAnalytics.wtr }} wins
+                      </div>
+                      <div class="mt-1 h-1.5 bg-surface-700 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full transition-all" :class="sessionAnalytics.winsSinceLastBust >= sessionAnalytics.wtr ? 'bg-green-500' : 'bg-amber-500'" :style="{ width: Math.min(100, sessionAnalytics.wtr > 0 ? (sessionAnalytics.winsSinceLastBust / sessionAnalytics.wtr * 100) : 0) + '%' }"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- Row 3: Risk & Capital -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Worst Session Float</div>
+                    <div class="font-mono text-red-400">{{ sessionAnalytics.worstFloat.toFixed(2) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Peak Equity Used</div>
+                    <div class="font-mono" :class="sessionAnalytics.peakEquityPct > 80 ? 'text-red-400' : 'text-amber-400'">{{ sessionAnalytics.peakEquityPct.toFixed(1) }}%</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Avg Equity Used</div>
+                    <div class="font-mono text-surface-100">{{ sessionAnalytics.avgEquityPct.toFixed(1) }}%</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Margin Blocks</div>
+                    <div class="font-mono" :class="sessionAnalytics.marginBlocks > 0 ? 'text-red-400 font-bold' : 'text-green-400'">{{ sessionAnalytics.marginBlocks }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Avg Duration</div>
+                    <div class="font-mono text-surface-100">{{ formatDuration(sessionAnalytics.avgDurationSec) }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Session summary stats (non-martingale) -->
+              <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
                 <div class="p-2 bg-surface-800 rounded">
                   <div class="text-surface-500 text-xs">Total Sessions</div>
                   <div class="font-mono text-surface-100">{{ hedgeSessions.length }}</div>
@@ -1659,6 +1740,119 @@
           <!-- Costs Tab -->
           <div v-if="activeTab === 'costs'">
             <div v-if="!metrics" class="text-surface-500 text-sm py-8 text-center">No cost data available.</div>
+
+            <!-- Martingale Costs -->
+            <div v-else-if="isMartingale && sessionAnalytics" class="space-y-6">
+
+              <!-- Section 1: Cost Summary (session-focused) -->
+              <div>
+                <h3 class="text-xs font-semibold text-surface-500 mb-2">Cost Summary</h3>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Total All Costs</div>
+                    <div class="font-mono text-red-400 font-bold">{{ fmtCost(totalCosts) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Cost / Session</div>
+                    <div class="font-mono text-surface-100">{{ sessionAnalytics.total ? fmtCost(totalCosts / sessionAnalytics.total) : '-' }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Cost / Win</div>
+                    <div class="font-mono text-surface-100">{{ sessionAnalytics.wins ? fmtCost(totalCosts / sessionAnalytics.wins) : '-' }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Cost Drag %</div>
+                    <div class="font-mono" :class="(metrics.cost_drag_pct || 0) > 30 ? 'text-red-400' : (metrics.cost_drag_pct || 0) > 15 ? 'text-amber-400' : 'text-green-400'">
+                      {{ metrics.cost_drag_pct != null ? metrics.cost_drag_pct.toFixed(1) + '%' : costProfitRatio != null ? costProfitRatio.toFixed(1) + '%' : '-' }}
+                    </div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Cost / Avg Win</div>
+                    <div class="font-mono" :class="sessionAnalytics.avgWinPnl > 0 && (totalCosts / sessionAnalytics.total) / sessionAnalytics.avgWinPnl > 0.5 ? 'text-red-400' : 'text-green-400'">
+                      {{ sessionAnalytics.avgWinPnl > 0 && sessionAnalytics.total ? ((totalCosts / sessionAnalytics.total) / sessionAnalytics.avgWinPnl * 100).toFixed(1) + '%' : '-' }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 2: Cost by Depth Level -->
+              <div v-if="costByDepth.length">
+                <h3 class="text-xs font-semibold text-surface-500 mb-2">Cost by Depth Level</h3>
+                <div class="overflow-x-auto">
+                  <table class="w-full text-xs">
+                    <thead>
+                      <tr class="text-surface-500 border-b border-surface-700">
+                        <th class="text-left py-2 px-2">Level</th>
+                        <th class="text-right py-2 px-2">Sessions</th>
+                        <th class="text-right py-2 px-2">Total Cost</th>
+                        <th class="text-right py-2 px-2">Avg Cost/Session</th>
+                        <th class="text-right py-2 px-2">Total PnL</th>
+                        <th class="text-right py-2 px-2">Cost % of PnL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="d in costByDepth" :key="d.depth" class="border-b border-surface-800 hover:bg-surface-800/50">
+                        <td class="py-1.5 px-2 font-mono text-surface-200">L{{ d.depth }}</td>
+                        <td class="py-1.5 px-2 text-right font-mono text-surface-300">{{ d.count }}</td>
+                        <td class="py-1.5 px-2 text-right font-mono text-red-400">{{ fmtCost(d.totalCost) }}</td>
+                        <td class="py-1.5 px-2 text-right font-mono text-surface-300">{{ fmtCost(d.avgCost) }}</td>
+                        <td class="py-1.5 px-2 text-right font-mono" :class="d.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'">{{ d.totalPnl.toFixed(2) }}</td>
+                        <td class="py-1.5 px-2 text-right font-mono" :class="d.costPct > 50 ? 'text-red-400' : d.costPct > 25 ? 'text-amber-400' : 'text-surface-400'">
+                          {{ d.totalPnl > 0 ? d.costPct.toFixed(1) + '%' : '-' }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Section 3: Margin & Capital Efficiency -->
+              <div>
+                <h3 class="text-xs font-semibold text-surface-500 mb-2">Margin &amp; Capital Efficiency</h3>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Peak Margin Used</div>
+                    <div class="font-mono text-surface-100">{{ fmtCost(metrics.peak_margin_used) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Peak Equity Usage</div>
+                    <div class="font-mono" :class="(metrics.peak_equity_usage_pct || 0) > 80 ? 'text-red-400' : (metrics.peak_equity_usage_pct || 0) > 50 ? 'text-amber-400' : 'text-green-400'">
+                      {{ metrics.peak_equity_usage_pct != null ? metrics.peak_equity_usage_pct.toFixed(1) + '%' : '-' }}
+                    </div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Worst Floating PnL</div>
+                    <div class="font-mono text-red-400">{{ fmtCost(metrics.worst_floating_pnl) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Margin Closeouts</div>
+                    <div class="font-mono" :class="(metrics.margin_closeouts || 0) > 0 ? 'text-red-400 font-bold' : 'text-green-400'">
+                      {{ metrics.margin_closeouts || 0 }}
+                    </div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Account Blown</div>
+                    <div class="font-mono" :class="metrics.account_blown ? 'text-red-400 font-bold' : 'text-green-400'">
+                      {{ metrics.account_blown ? 'YES' : 'No' }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 4: Margin Events (same for both modes) -->
+              <div v-if="marginEvents.length">
+                <h3 class="text-xs font-semibold text-surface-500 mb-2">Margin Events ({{ marginEvents.length }})</h3>
+                <div class="bg-surface-900 rounded p-3 max-h-[250px] overflow-auto space-y-1">
+                  <div v-for="(evt, i) in marginEvents" :key="i" class="flex items-start gap-2 text-xs">
+                    <span class="text-red-500 font-bold shrink-0">MARGIN</span>
+                    <span class="text-surface-500 shrink-0">{{ formatTimestamp(evt.timestamp) }}</span>
+                    <span class="text-surface-300">{{ evt.message }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Non-martingale Costs (original) -->
             <div v-else class="space-y-6">
 
               <!-- Cost Summary -->
@@ -2476,7 +2670,7 @@
 
         <!-- Pipeline tab (history) -->
         <div v-if="historyTab === 'pipeline'">
-          <PipelineIntelligence v-if="selectedSession.pipeline_stats && Object.keys(selectedSession.pipeline_stats).length" :stats="selectedSession.pipeline_stats" />
+          <PipelineIntelligence v-if="selectedSession.pipeline_stats && Object.keys(selectedSession.pipeline_stats).length" :stats="selectedSession.pipeline_stats" :session-id="selectedSession.id" />
           <div v-else class="text-surface-500 text-sm py-8 text-center">Pipeline data not available. Re-run this backtest with a pipeline to capture stats.</div>
         </div>
 
@@ -3201,6 +3395,98 @@ const totalCostTradesPages = computed(() => Math.ceil(trades.value.length / cost
 const paginatedCostTrades = computed(() => {
   const start = (costTradesPage.value - 1) * costTradesPerPage
   return trades.value.slice(start, start + costTradesPerPage)
+})
+
+// Session analytics (martingale-aware)
+const sessionAnalytics = computed(() => {
+  const sessions = hedgeSessions.value
+  if (!sessions.length) return null
+
+  const wins = sessions.filter(s => s.outcome === 'tp_hit' || s.outcome === 'bucket_hit')
+  const busts = sessions.filter(s => s.outcome === 'max_levels' || s.outcome === 'max_level_sl')
+  const aborts = sessions.filter(s => s.outcome === 'abort' || s.outcome === 'pipeline_abort')
+
+  const winPnls = wins.map(s => s.total_pnl)
+  const bustPnls = busts.map(s => s.total_pnl)
+  const abortPnls = aborts.map(s => s.total_pnl)
+
+  // Current streak from end
+  let streak = 0
+  let streakType = null
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    const isWin = sessions[i].outcome === 'tp_hit' || sessions[i].outcome === 'bucket_hit'
+    if (streakType === null) streakType = isWin
+    if (isWin === streakType) streak++
+    else break
+  }
+
+  // Wins since last bust
+  let winsSinceLastBust = 0
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    if (sessions[i].outcome === 'max_levels' || sessions[i].outcome === 'max_level_sl') break
+    if (sessions[i].outcome === 'tp_hit' || sessions[i].outcome === 'bucket_hit') winsSinceLastBust++
+  }
+
+  // Avg session duration
+  const durations = sessions
+    .filter(s => s.opened_at && s.closed_at)
+    .map(s => (s.closed_at - s.opened_at) / 1000)
+  const avgDurationSec = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 0
+
+  // Avg equity usage
+  const equityPcts = sessions.map(s => s.peak_equity_pct || 0).filter(v => v > 0)
+  const avgEquityPct = equityPcts.length ? equityPcts.reduce((a, b) => a + b, 0) / equityPcts.length : 0
+
+  return {
+    total: sessions.length,
+    wins: wins.length,
+    winPct: sessions.length ? (wins.length / sessions.length * 100) : 0,
+    busts: busts.length,
+    bustTotalPnl: bustPnls.reduce((a, b) => a + b, 0),
+    aborts: aborts.length,
+    abortTotalPnl: abortPnls.reduce((a, b) => a + b, 0),
+    totalPnl: sessions.reduce((a, s) => a + s.total_pnl, 0),
+    avgWinPnl: winPnls.length ? winPnls.reduce((a, b) => a + b, 0) / winPnls.length : 0,
+    avgBustLoss: bustPnls.length ? bustPnls.reduce((a, b) => a + b, 0) / bustPnls.length : 0,
+    streak: streak * (streakType ? 1 : -1),
+    winsSinceLastBust,
+    wtr: metrics.value?.wins_to_recover || 0,
+    hasBusts: busts.length > 0,
+    worstFloat: Math.min(...sessions.map(s => s.min_float || 0)),
+    peakEquityPct: Math.max(...sessions.map(s => s.peak_equity_pct || 0)),
+    avgEquityPct,
+    marginBlocks: sessions.filter(s => s.margin_block_leg != null).length,
+    avgDurationSec,
+    totalFees: sessions.reduce((a, s) => a + (s.total_fee || 0), 0),
+  }
+})
+
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return '-'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+// Cost by depth level (martingale)
+const costByDepth = computed(() => {
+  if (!hedgeSessions.value.length) return []
+  const map = {}
+  for (const s of hedgeSessions.value) {
+    const d = s.levels || 0
+    if (!map[d]) map[d] = { depth: d, count: 0, totalCost: 0, totalPnl: 0 }
+    map[d].count++
+    map[d].totalCost += s.total_fee || 0
+    map[d].totalPnl += s.total_pnl
+  }
+  return Object.values(map).sort((a, b) => a.depth - b.depth).map(d => ({
+    ...d,
+    avgCost: d.count ? d.totalCost / d.count : 0,
+    netAfterCost: d.totalPnl,
+    costPct: d.totalPnl > 0 ? (d.totalCost / d.totalPnl * 100) : 0,
+  }))
 })
 
 const totalCosts = computed(() => {
