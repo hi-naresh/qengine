@@ -449,7 +449,7 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
     max_consec_losses = _max_consecutive(wins, 0)
 
     # Bust metrics — sessions ending in bust/max_levels/margin_call
-    bust_outcomes = {'bust', 'max_levels', 'margin_call', 'liquidation'}
+    bust_outcomes = {'bust', 'max_levels', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
     bust_pnls = [s['pnl'] for s in sessions if s['exit_reason'] in bust_outcomes]
     total_busts = len(bust_pnls)
     worst_bust_pnl = round(min(bust_pnls), 2) if bust_pnls else 0.0
@@ -535,7 +535,7 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
     median_session_pnl = float(np.median(session_pnls))
 
     # --- Survival & Ruin ---
-    bust_outcomes = {'bust', 'max_levels', 'margin_call', 'liquidation'}
+    bust_outcomes = {'bust', 'max_levels', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
     bust_sessions = [s for s in sessions if s['exit_reason'] in bust_outcomes]
     bust_count = len(bust_sessions)
     bust_rate = bust_count / total_sessions

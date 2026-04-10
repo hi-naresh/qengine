@@ -1479,11 +1479,11 @@
                 </div>
                 <div class="p-2 bg-surface-800 rounded">
                   <div class="text-surface-500 text-xs">Wins</div>
-                  <div class="font-mono text-green-400">{{ hedgeSessions.filter(s => s.outcome === 'tp_hit' || s.outcome === 'bucket_hit').length }}</div>
+                  <div class="font-mono text-green-400">{{ hedgeSessions.filter(s => isWinOutcome(s.outcome)).length }}</div>
                 </div>
                 <div class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs">Max Levels</div>
-                  <div class="font-mono text-red-400">{{ hedgeSessions.filter(s => s.outcome === 'max_levels').length }}</div>
+                  <div class="text-surface-500 text-xs">Busts</div>
+                  <div class="font-mono text-red-400">{{ hedgeSessions.filter(s => isBustOutcome(s.outcome)).length }}</div>
                 </div>
                 <div class="p-2 bg-surface-800 rounded">
                   <div class="text-surface-500 text-xs">Total PnL</div>
@@ -2262,7 +2262,66 @@
         <div v-if="compareLoading" class="text-surface-500 text-sm py-8 text-center">Loading sessions...</div>
 
         <div v-else-if="compareSessions.length >= 2">
-          <!-- Session headers -->
+          <!-- Run Config Comparison -->
+          <div class="mb-4 overflow-x-auto">
+            <table class="w-full text-xs border-collapse">
+              <tbody>
+                <tr class="border-b border-surface-700">
+                  <td class="py-2 px-3 text-surface-500 font-semibold sticky left-0 bg-surface-850 z-10 min-w-[140px]">Session</td>
+                  <td v-for="s in compareSessions" :key="'name-'+s.id" class="py-2 px-3 text-right">
+                    <div class="text-surface-200 font-medium truncate max-w-[160px]" :title="s.title || sessionLabel(s)">{{ s.title || sessionLabel(s) }}</div>
+                    <div v-if="s.has_pipeline" class="text-[9px] text-purple-400 mt-0.5">Pipeline</div>
+                  </td>
+                </tr>
+                <tr class="border-b border-surface-800/50">
+                  <td class="py-1.5 px-3 text-surface-500 sticky left-0 bg-surface-850 z-10">Strategy</td>
+                  <td v-for="s in compareSessions" :key="'strat-'+s.id" class="py-1.5 px-3 text-right font-mono text-surface-300">
+                    {{ (s.state?.form || s.state)?.routes?.[0]?.strategy || '-' }}
+                  </td>
+                </tr>
+                <tr class="border-b border-surface-800/50">
+                  <td class="py-1.5 px-3 text-surface-500 sticky left-0 bg-surface-850 z-10">Symbol / TF</td>
+                  <td v-for="s in compareSessions" :key="'sym-'+s.id" class="py-1.5 px-3 text-right font-mono text-surface-300">
+                    {{ (s.state?.form || s.state)?.routes?.[0]?.symbol || '-' }} {{ (s.state?.form || s.state)?.routes?.[0]?.timeframe || '' }}
+                  </td>
+                </tr>
+                <tr class="border-b border-surface-800/50">
+                  <td class="py-1.5 px-3 text-surface-500 sticky left-0 bg-surface-850 z-10">Date Range</td>
+                  <td v-for="s in compareSessions" :key="'date-'+s.id" class="py-1.5 px-3 text-right font-mono text-surface-400 text-[10px]">
+                    {{ (s.state?.form || s.state)?.startDate || (s.state?.form || s.state)?.start_date || '-' }}
+                    <span class="text-surface-600">to</span>
+                    {{ (s.state?.form || s.state)?.endDate || (s.state?.form || s.state)?.finish_date || '-' }}
+                  </td>
+                </tr>
+                <tr class="border-b border-surface-800/50">
+                  <td class="py-1.5 px-3 text-surface-500 sticky left-0 bg-surface-850 z-10">Balance</td>
+                  <td v-for="s in compareSessions" :key="'bal-'+s.id" class="py-1.5 px-3 text-right font-mono text-surface-300">
+                    ${{ ((s.state?.form || s.state)?.balance || s.metrics?.starting_balance || 0).toLocaleString() }}
+                  </td>
+                </tr>
+                <tr class="border-b border-surface-800/50">
+                  <td class="py-1.5 px-3 text-surface-500 sticky left-0 bg-surface-850 z-10">Ran At</td>
+                  <td v-for="s in compareSessions" :key="'ran-'+s.id" class="py-1.5 px-3 text-right text-surface-400">
+                    {{ formatTimestamp(s.created_at || s.updated_at) }}
+                  </td>
+                </tr>
+                <tr v-if="compareSessions.some(s => s.hyperparameters?.length)" class="border-b border-surface-800/50">
+                  <td class="py-1.5 px-3 text-surface-500 sticky left-0 bg-surface-850 z-10 align-top">HPs</td>
+                  <td v-for="s in compareSessions" :key="'hp-'+s.id" class="py-1.5 px-3 text-right">
+                    <div v-if="s.hyperparameters?.length" class="flex flex-wrap gap-1 justify-end">
+                      <span v-for="(hp, idx) in s.hyperparameters.slice(0, 6)" :key="idx" class="text-[10px] px-1 py-0.5 bg-surface-700 rounded font-mono text-surface-400">
+                        {{ Array.isArray(hp) ? hp[0] : hp.name }}={{ Array.isArray(hp) ? hp[1] : hp.value }}
+                      </span>
+                      <span v-if="s.hyperparameters.length > 6" class="text-[10px] text-surface-600">+{{ s.hyperparameters.length - 6 }}</span>
+                    </div>
+                    <span v-else class="text-surface-600">-</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Metrics Comparison -->
           <div class="overflow-x-auto">
             <table class="w-full text-xs border-collapse">
               <thead>
@@ -2270,8 +2329,6 @@
                   <th class="text-left py-2 px-3 text-surface-500 min-w-[140px] sticky left-0 bg-surface-850 z-10">Metric</th>
                   <th v-for="s in compareSessions" :key="s.id" class="text-right py-2 px-3 min-w-[120px]">
                     <div class="text-surface-200 font-medium truncate max-w-[140px]" :title="s.title || sessionLabel(s)">{{ s.title || sessionLabel(s) }}</div>
-                    <div class="text-[10px] text-surface-500 font-normal mt-0.5">{{ formatTimestamp(s.created_at || s.updated_at) }}</div>
-                    <div v-if="s.has_pipeline" class="text-[9px] text-purple-400 font-normal">Pipeline</div>
                   </th>
                 </tr>
               </thead>
@@ -2386,56 +2443,99 @@
         <!-- Summary tab -->
         <div v-if="historyTab === 'summary'">
           <div v-if="selectedSession.metrics">
-            <div v-if="hPerf.length" class="mb-4">
-              <div class="flex items-center justify-between mb-1"><h3 class="text-xs font-semibold text-surface-500">Performance</h3><button @click="showTooltips = !showTooltips" class="text-[10px] px-2 py-0.5 rounded transition-colors" :class="showTooltips ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-700 text-surface-500'">{{ showTooltips ? 'Hints On' : 'Hints Off' }}</button></div>
-              <SectionGuide category="performance" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in hPerf" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+            <!-- Martingale history summary -->
+            <template v-if="hIsMartingale">
+              <div v-if="hSessionPerf.length" class="mb-4">
+                <div class="flex items-center justify-between mb-1"><h3 class="text-xs font-semibold text-surface-500">Session Performance</h3><button @click="showTooltips = !showTooltips" class="text-[10px] px-2 py-0.5 rounded transition-colors" :class="showTooltips ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-700 text-surface-500'">{{ showTooltips ? 'Hints On' : 'Hints Off' }}</button></div>
+                <SectionGuide category="martingale" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hSessionPerf" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div v-if="hHedge.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-1">Hedge Session Stats</h3>
-              <SectionGuide category="hedge" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in hHedge" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+              <div v-if="hSurvival.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-red-400/70 mb-1">Survival &amp; Ruin</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hSurvival" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div v-if="hRisk.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-1">Risk &amp; Ratios</h3>
-              <SectionGuide category="risk" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in hRisk" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+              <div v-if="hStructural.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Structural Diagnostics</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hStructural" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div v-if="hTrade.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-1">Trade Statistics</h3>
-              <SectionGuide category="trades" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in hTrade" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+              <div v-if="hCapital.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Capital &amp; Costs</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hCapital" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div v-if="hForex.length" class="mb-4">
-              <h3 class="text-xs font-semibold text-surface-500 mb-1">Forex / CFD Costs</h3>
-              <SectionGuide category="forex" />
-              <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div v-for="m in hForex" :key="m.key" class="p-2 bg-surface-800 rounded">
-                  <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
-                  <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+            </template>
+            <!-- Generic history summary -->
+            <template v-else>
+              <div v-if="hPerf.length" class="mb-4">
+                <div class="flex items-center justify-between mb-1"><h3 class="text-xs font-semibold text-surface-500">Performance</h3><button @click="showTooltips = !showTooltips" class="text-[10px] px-2 py-0.5 rounded transition-colors" :class="showTooltips ? 'bg-brand-500/20 text-brand-400' : 'bg-surface-700 text-surface-500'">{{ showTooltips ? 'Hints On' : 'Hints Off' }}</button></div>
+                <SectionGuide category="performance" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hPerf" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
                 </div>
               </div>
-            </div>
+              <div v-if="hHedge.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Hedge Session Stats</h3>
+                <SectionGuide category="hedge" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hHedge" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="hRisk.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Risk &amp; Ratios</h3>
+                <SectionGuide category="risk" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hRisk" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono" :class="metricColor(m.key, m.value)">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="hTrade.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Trade Statistics</h3>
+                <SectionGuide category="trades" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hTrade" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="hForex.length" class="mb-4">
+                <h3 class="text-xs font-semibold text-surface-500 mb-1">Forex / CFD Costs</h3>
+                <SectionGuide category="forex" />
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div v-for="m in hForex" :key="m.key" class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs"><MetricTooltip :metric-key="m.key">{{ m.label }}</MetricTooltip></div>
+                    <div class="font-mono text-surface-100">{{ formatMetric(m.value) }}</div>
+                  </div>
+                </div>
+              </div>
+            </template>
             <div v-if="selectedSession.id" class="mt-4 flex flex-wrap gap-2">
               <a v-if="selectedSession.export_paths?.tradingview" :href="downloadUrl('tradingview', selectedSession.id)" target="_blank" class="btn-sm bg-surface-700 text-surface-300 hover:bg-surface-600 inline-flex items-center gap-1">
                 <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
@@ -2514,11 +2614,11 @@
               </div>
               <div class="p-2 bg-surface-800 rounded">
                 <div class="text-surface-500 text-xs">Wins</div>
-                <div class="font-mono text-green-400">{{ historyHedgeSessions.filter(s => s.outcome === 'tp_hit' || s.outcome === 'bucket_hit').length }}</div>
+                <div class="font-mono text-green-400">{{ historyHedgeSessions.filter(s => isWinOutcome(s.outcome)).length }}</div>
               </div>
               <div class="p-2 bg-surface-800 rounded">
-                <div class="text-surface-500 text-xs">Max Levels</div>
-                <div class="font-mono text-red-400">{{ historyHedgeSessions.filter(s => s.outcome === 'max_levels').length }}</div>
+                <div class="text-surface-500 text-xs">Busts</div>
+                <div class="font-mono text-red-400">{{ historyHedgeSessions.filter(s => isBustOutcome(s.outcome)).length }}</div>
               </div>
               <div class="p-2 bg-surface-800 rounded">
                 <div class="text-surface-500 text-xs">Total PnL</div>
@@ -3497,6 +3597,13 @@ const hRisk = computed(() => pickMetricsFrom(selectedSession.value?.metrics, ris
 const hForex = computed(() => pickMetricsFrom(selectedSession.value?.metrics, forexKeys))
 const hHedge = computed(() => pickMetricsFrom(selectedSession.value?.metrics, hedgeKeys))
 
+// Martingale-aware history metrics
+const hIsMartingale = computed(() => selectedSession.value?.metrics?.is_martingale === true)
+const hSessionPerf = computed(() => pickMetricsFrom(selectedSession.value?.metrics, sessionPerfKeys))
+const hSurvival = computed(() => pickMetricsFrom(selectedSession.value?.metrics, survivalKeys))
+const hStructural = computed(() => pickMetricsFrom(selectedSession.value?.metrics, structuralKeys))
+const hCapital = computed(() => pickMetricsFrom(selectedSession.value?.metrics, capitalKeys))
+
 // Trades pagination
 const totalTradesPages = computed(() => Math.ceil(trades.value.length / tradesPerPage))
 const paginatedTrades = computed(() => {
@@ -3520,14 +3627,25 @@ const paginatedCostTrades = computed(() => {
   return trades.value.slice(start, start + costTradesPerPage)
 })
 
+// Outcome classification helpers
+function isWinOutcome(outcome) {
+  return outcome === 'tp_hit' || outcome === 'bucket_hit'
+}
+function isBustOutcome(outcome) {
+  return outcome === 'max_levels' || outcome === 'max_level_sl' || outcome === 'max_level_bust' || outcome === 'margin_call' || outcome === 'liquidation'
+}
+function isAbortOutcome(outcome) {
+  return outcome === 'abort' || outcome === 'pipeline_abort'
+}
+
 // Session analytics (martingale-aware)
 const sessionAnalytics = computed(() => {
   const sessions = hedgeSessions.value
   if (!sessions.length) return null
 
-  const wins = sessions.filter(s => s.outcome === 'tp_hit' || s.outcome === 'bucket_hit')
-  const busts = sessions.filter(s => s.outcome === 'max_levels' || s.outcome === 'max_level_sl')
-  const aborts = sessions.filter(s => s.outcome === 'abort' || s.outcome === 'pipeline_abort')
+  const wins = sessions.filter(s => isWinOutcome(s.outcome))
+  const busts = sessions.filter(s => isBustOutcome(s.outcome))
+  const aborts = sessions.filter(s => isAbortOutcome(s.outcome))
 
   const winPnls = wins.map(s => s.total_pnl)
   const bustPnls = busts.map(s => s.total_pnl)
@@ -3537,7 +3655,7 @@ const sessionAnalytics = computed(() => {
   let streak = 0
   let streakType = null
   for (let i = sessions.length - 1; i >= 0; i--) {
-    const isWin = sessions[i].outcome === 'tp_hit' || sessions[i].outcome === 'bucket_hit'
+    const isWin = isWinOutcome(sessions[i].outcome)
     if (streakType === null) streakType = isWin
     if (isWin === streakType) streak++
     else break
@@ -3546,8 +3664,8 @@ const sessionAnalytics = computed(() => {
   // Wins since last bust
   let winsSinceLastBust = 0
   for (let i = sessions.length - 1; i >= 0; i--) {
-    if (sessions[i].outcome === 'max_levels' || sessions[i].outcome === 'max_level_sl') break
-    if (sessions[i].outcome === 'tp_hit' || sessions[i].outcome === 'bucket_hit') winsSinceLastBust++
+    if (isBustOutcome(sessions[i].outcome)) break
+    if (isWinOutcome(sessions[i].outcome)) winsSinceLastBust++
   }
 
   // Avg session duration
@@ -3744,9 +3862,9 @@ function toggleSession(sessionNum) {
 }
 
 function sessionOutcomeClass(outcome) {
-  if (outcome === 'tp_hit' || outcome === 'bucket_hit') return 'text-green-400'
-  if (outcome === 'max_levels' || outcome === 'max_level_sl') return 'text-red-400'
-  if (outcome === 'abort' || outcome === 'pipeline_abort') return 'text-amber-400'
+  if (isWinOutcome(outcome)) return 'text-green-400'
+  if (isBustOutcome(outcome)) return 'text-red-400'
+  if (isAbortOutcome(outcome)) return 'text-amber-400'
   return 'text-surface-400'
 }
 
@@ -3784,7 +3902,10 @@ function sessionOutcomeLabel(outcome) {
   if (outcome === 'bucket_hit') return 'Bucket Hit'
   if (outcome === 'max_levels') return 'Max Levels'
   if (outcome === 'max_level_sl') return 'Max Level SL'
+  if (outcome === 'max_level_bust') return 'Max Level Bust'
   if (outcome === 'sl_hit') return 'SL Hit'
+  if (outcome === 'margin_call') return 'Margin Call'
+  if (outcome === 'liquidation') return 'Liquidation'
   if (outcome === 'abort') return 'Abort'
   if (outcome === 'terminated' || outcome === 'terminate') return 'Terminated'
   if (outcome === 'pipeline_abort') return 'Pipeline Abort'
