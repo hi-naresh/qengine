@@ -6,7 +6,7 @@
 - Hydrate `Position._tickets` from broker's existing positions on session start
 - Use OANDA `/v3/accounts/{id}/openTrades` endpoint to get individual trades
 - Map OANDA trade IDs to internal CFDTicket objects
-- File: `qengine/modes/forex_live_mode.py` (init section ~line 91)
+- File: `qengine/modes/live_mode.py` (init section ~line 91)
 
 ### P1: Ticket Persistence
 - Persist tickets to DB (or Redis) so they survive process crashes
@@ -24,13 +24,13 @@
 - `_sync_positions_with_broker()` should rebuild ticket structure from broker `/trades`
 - Detect orphaned broker trades (no matching internal ticket)
 - Detect stale internal tickets (no matching broker trade)
-- File: `qengine/modes/forex_live_mode.py` (~line 288)
+- File: `qengine/modes/live_mode.py` (~line 288)
 
 ### P3: Reduce Order Sync Latency
 - Current: 3s poll interval for order fills
 - Consider OANDA streaming `/transactions` endpoint for real-time fill detection
 - Would improve hedge timing in fast markets
-- File: `qengine/modes/forex_live_mode.py` (line 397)
+- File: `qengine/modes/live_mode.py` (line 397)
 
 ### P3: Per-Instrument Margin from Broker
 - Currently uses global `default_leverage` for all symbols

@@ -309,11 +309,11 @@ def test_live_controller_has_session_endpoints():
     assert any('/logs' in p for p in paths)
 
 
-def test_forex_live_mode_exists():
-    from qengine.modes import forex_live_mode
-    assert hasattr(forex_live_mode, 'run')
-    assert hasattr(forex_live_mode, 'get_live_logs')
-    assert hasattr(forex_live_mode, 'get_live_orders')
+def test_live_mode_exists():
+    from qengine.modes import live_mode
+    assert hasattr(live_mode, 'run')
+    assert hasattr(live_mode, 'get_live_logs')
+    assert hasattr(live_mode, 'get_live_orders')
 
 
 def test_general_info_with_builtin_live():

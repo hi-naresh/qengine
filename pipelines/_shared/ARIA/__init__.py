@@ -106,6 +106,7 @@ class ARIAPipeline(Pipeline):
 
         # StructuralStress — R(t) accumulator (Chen 2026)
         self._stress = StructuralStress()
+        self._stress_enabled = cfg.get('stress_enabled', False)
 
         # L6 — MetaEvaluator
         self._meta = MetaEvaluator({
@@ -198,14 +199,16 @@ class ARIAPipeline(Pipeline):
         danger = self._market_state.get('danger', 0.5)
         ts = strategy.candles[-1][0] if strategy.candles is not None and len(strategy.candles) > 0 else 0
 
-        stress_features = {
-            'normalised_rt': self._stress.normalised_rt,
-            'inter_cycle_gap_ratio': self._stress.inter_cycle_gap_ratio(
-                getattr(strategy, 'index', 0) - self._last_cycle_end_bar
-                if self._last_cycle_end_bar > 0 else -1
-            ),
-            'recent_stress_rate': self._stress.recent_stress_rate,
-        }
+        stress_features = None
+        if self._stress_enabled:
+            stress_features = {
+                'normalised_rt': self._stress.normalised_rt,
+                'inter_cycle_gap_ratio': self._stress.inter_cycle_gap_ratio(
+                    getattr(strategy, 'index', 0) - self._last_cycle_end_bar
+                    if self._last_cycle_end_bar > 0 else -1
+                ),
+                'recent_stress_rate': self._stress.recent_stress_rate,
+            }
 
         if self._gate_enabled:
             allowed, confidence = self._gate.gate(
@@ -238,7 +241,7 @@ class ARIAPipeline(Pipeline):
 
         result = self._shield.check(
             strategy, self._market_state,
-            stress_velocity=self._stress.stress_velocity,
+            stress_velocity=self._stress.stress_velocity if self._stress_enabled else 0.0,
         )
         if result is not None:
             # Shadow tracking: record abort for counterfactual analysis
@@ -330,20 +333,21 @@ class ARIAPipeline(Pipeline):
             tp_mult = float(hp.get('tp_value', 1.0))
             expected_tp = total_size * atr * tp_mult
 
-            stress_input = {
-                'levels': enriched.get('levels', 0),
-                'bars': enriched.get('bars', 0),
-                'pnl': pnl,
-                'reason': enriched.get('reason', ''),
-                'max_levels': int(hp.get('max_levels', 12)),
-                'multiplier': multiplier,
-                'expected_tp': expected_tp,
-                'level_timestamps': enriched.get('level_timestamps', []),
-                'gap_bars': gap_bars,
-            }
-            stress_result = self._stress.record_cycle(stress_input)
-            enriched['stress_components'] = stress_result
-            enriched['r_t'] = self._stress.r_t
+            if self._stress_enabled:
+                stress_input = {
+                    'levels': enriched.get('levels', 0),
+                    'bars': enriched.get('bars', 0),
+                    'pnl': pnl,
+                    'reason': enriched.get('reason', ''),
+                    'max_levels': int(hp.get('max_levels', 12)),
+                    'multiplier': multiplier,
+                    'expected_tp': expected_tp,
+                    'level_timestamps': enriched.get('level_timestamps', []),
+                    'gap_bars': gap_bars,
+                }
+                stress_result = self._stress.record_cycle(stress_input)
+                enriched['stress_components'] = stress_result
+                enriched['r_t'] = self._stress.r_t
 
             self._last_cycle_end_bar = getattr(strategy, 'index', 0)
 
@@ -369,11 +373,13 @@ class ARIAPipeline(Pipeline):
         # L2: CycleGate SGD update
         profitable = pnl > 0
         if self._gate_enabled:
-            stress_features = {
-                'normalised_rt': self._stress.normalised_rt,
-                'inter_cycle_gap_ratio': self._stress.inter_cycle_gap_ratio(gap_bars),
-                'recent_stress_rate': self._stress.recent_stress_rate,
-            }
+            stress_features = None
+            if self._stress_enabled:
+                stress_features = {
+                    'normalised_rt': self._stress.normalised_rt,
+                    'inter_cycle_gap_ratio': self._stress.inter_cycle_gap_ratio(gap_bars),
+                    'recent_stress_rate': self._stress.recent_stress_rate,
+                }
             self._gate.update(self._market_state, strategy, profitable,
                               stress_features=stress_features)
 
@@ -384,15 +390,19 @@ class ARIAPipeline(Pipeline):
         # L6: MetaEvaluator — compute ARIA score and check for degradation
         if self._meta_enabled:
             initial_capital = self._observer.sessions[0].get('equity_at_entry', 10_000) if self._observer.sessions else 10_000
-            stresses = self._stress._cycle_stresses
-            if len(stresses) > 50:
-                baseline = sum(s['total'] for s in stresses[:50]) / 50
-            else:
-                baseline = self._stress.recent_stress_rate
+            stress_rate = 0.0
+            baseline = 0.0
+            if self._stress_enabled:
+                stresses = self._stress._cycle_stresses
+                if len(stresses) > 50:
+                    baseline = sum(s['total'] for s in stresses[:50]) / 50
+                else:
+                    baseline = self._stress.recent_stress_rate
+                stress_rate = self._stress.recent_stress_rate
 
             self._aria_score = self._meta.evaluate(
                 self._observer.sessions, initial_capital,
-                stress_rate=self._stress.recent_stress_rate,
+                stress_rate=stress_rate,
                 baseline_stress_rate=baseline,
             )
 

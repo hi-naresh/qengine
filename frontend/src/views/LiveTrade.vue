@@ -50,13 +50,36 @@
               Debug Mode
             </label>
           </div>
-          <!-- Hyperparameters (auto-loaded from strategy) -->
+          <!-- Pipeline selector -->
+          <div v-if="availablePipelines.length" class="pt-1">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="text-xs font-semibold text-surface-400">Pipeline</h3>
+              <label class="flex items-center gap-1.5 text-[10px] text-surface-500 cursor-pointer">
+                <input v-model="pipelineEnabled" type="checkbox" class="rounded bg-surface-700 border-surface-500 w-3 h-3" />
+                Enable
+              </label>
+            </div>
+            <div v-if="pipelineEnabled" class="space-y-1.5">
+              <div v-for="(pc, idx) in livePipelineConfigs" :key="idx" class="flex items-center gap-2">
+                <select v-model="pc.name" class="select text-xs py-1.5 flex-1">
+                  <option value="">Select pipeline...</option>
+                  <option v-for="p in availablePipelines" :key="p.name" :value="p.name">{{ p.name }}</option>
+                </select>
+                <button v-if="livePipelineConfigs.length > 1" @click="livePipelineConfigs.splice(idx, 1)" class="text-surface-500 hover:text-red-400 text-sm">&times;</button>
+              </div>
+              <button @click="livePipelineConfigs.push({ name: '' })" class="text-[10px] text-brand-400 hover:text-brand-300">+ Add Pipeline</button>
+            </div>
+          </div>
+          <!-- Hyperparameters (auto-loaded from strategy, collapsible) -->
           <div v-if="liveHyperParams.length" class="pt-1">
             <div class="flex items-center justify-between mb-2">
-              <h3 class="text-xs font-semibold text-surface-400">Hyperparameters</h3>
-              <button @click="resetLiveHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
+              <button @click="hpExpanded = !hpExpanded" class="flex items-center gap-1.5 text-xs font-semibold text-surface-400 hover:text-surface-300">
+                <svg class="w-3 h-3 transition-transform" :class="hpExpanded ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+                Hyperparameters <span class="text-surface-600 font-normal">({{ liveHyperParams.length }})</span>
+              </button>
+              <button v-if="hpExpanded" @click="resetLiveHyperParams" class="text-xs text-surface-500 hover:text-surface-300">Reset Defaults</button>
             </div>
-            <div class="max-h-60 overflow-y-auto space-y-2 pr-1">
+            <div v-show="hpExpanded" class="max-h-60 overflow-y-auto space-y-2 pr-1">
               <div v-for="(hp, idx) in liveHyperParams" :key="idx" v-show="isLiveHpVisible(hp)">
                 <div class="flex gap-2 items-center">
                   <span class="text-xs text-surface-400 w-28 truncate" :title="hp.name">{{ hp.name }}</span>
@@ -890,6 +913,10 @@ const tradesFilter = ref({ symbol: '', type: '' })
 const form = ref({
   exchange: '', symbol: 'EUR-USD', strategy: '', debug_mode: false,
 })
+const availablePipelines = ref([])
+const pipelineEnabled = ref(false)
+const livePipelineConfigs = ref([{ name: '' }])
+const hpExpanded = ref(false)
 
 // Hyperparameters (loaded from strategy code)
 const liveHyperParams = ref([])
@@ -1128,6 +1155,9 @@ async function startSession() {
   starting.value = true; startError.value = ''
   try {
     const id = crypto.randomUUID()
+    const pipelineConfigs = pipelineEnabled.value
+      ? livePipelineConfigs.value.filter(pc => pc.name)
+      : null
     await api.startLive({
       id, exchange: form.value.exchange,
       exchange_api_key_id: '', notification_api_key_id: '', debug_mode: form.value.debug_mode,
@@ -1140,6 +1170,7 @@ async function startSession() {
       routes: [{ exchange: form.value.exchange, symbol: form.value.symbol, timeframe: '1m', strategy: form.value.strategy }],
       data_routes: [],
       hyperparameters: buildLiveHyperparamsPayload(),
+      ...(pipelineConfigs?.length ? { pipelines: pipelineConfigs } : {}),
     })
     showStart.value = false
     setTimeout(async () => { await loadSessions(); const f = sessions.value.find(s => s.id === id); if (f) viewSession(f) }, 2000)
@@ -1320,13 +1351,15 @@ watch(activeView, v => { if (!v) stopPolling() })
 
 onMounted(async () => {
   try {
-    const [bRes, sRes, iRes] = await Promise.all([
+    const [bRes, sRes, iRes, pRes] = await Promise.all([
       api.getConnectedBrokers(),
       api.getStrategies().catch(() => ({ data: [] })),
       api.getInstruments().catch(() => ({ data: [] })),
+      api.getRegisteredPipelines().catch(() => []),
     ])
     brokers.value = bRes.data || []; strategies.value = sRes.data || sRes.strategies || []
     instruments.value = iRes.data || []
+    availablePipelines.value = Array.isArray(pRes) ? pRes : (pRes.pipelines || pRes.data || [])
     form.value.exchange = defaultBrokerId(brokers.value)
     if (strategies.value.length > 0) form.value.strategy = strategies.value[0].name
     if (instruments.value.length > 0) {

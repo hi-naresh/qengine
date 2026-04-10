@@ -59,20 +59,25 @@ def live(request_json: LiveRequestJson, current_user: CurrentUser = Depends(get_
                 'routes': request_json.routes,
                 'data_routes': request_json.data_routes,
                 'hyperparameters': request_json.hyperparameters,
+                'pipelines': request_json.pipelines,
             }
         },
         user_id=current_user.effective_user_id,
     )
 
-    from qengine.modes import forex_live_mode
+    live_config = request_json.config
+    if request_json.pipelines:
+        live_config['pipelines'] = request_json.pipelines
+
+    from qengine.modes import live_mode
     process_manager.add_task(
-        forex_live_mode.run,
+        live_mode.run,
         request_json.id,
         request_json.debug_mode,
         request_json.exchange,
         request_json.exchange_api_key_id,
         request_json.notification_api_key_id,
-        request_json.config,
+        live_config,
         request_json.routes,
         request_json.data_routes,
         trading_mode,
@@ -105,7 +110,7 @@ def cancel_live(request_json: LiveCancelRequestJson, current_user: CurrentUser =
 @router.post('/logs')
 def get_logs(json_request: GetLogsRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
 
-    from qengine.modes.forex_live_mode import get_live_logs
+    from qengine.modes.live_mode import get_live_logs
     arr = get_live_logs(json_request.id, json_request.type, json_request.start_time)
 
     return JSONResponse({
@@ -117,7 +122,7 @@ def get_logs(json_request: GetLogsRequestJson, current_user: CurrentUser = Depen
 @router.post('/orders')
 def get_orders(json_request: GetOrdersRequestJson, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
 
-    from qengine.modes.forex_live_mode import get_live_orders
+    from qengine.modes.live_mode import get_live_orders
     arr = get_live_orders(json_request.session_id)
 
     return JSONResponse({
@@ -130,7 +135,7 @@ def get_orders(json_request: GetOrdersRequestJson, current_user: CurrentUser = D
 def get_positions(json_request: dict = Body(...), current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
 
     session_id = json_request.get('session_id', json_request.get('id', ''))
-    from qengine.modes.forex_live_mode import get_live_positions
+    from qengine.modes.live_mode import get_live_positions
     arr = get_live_positions(session_id)
 
     return JSONResponse({
@@ -143,7 +148,7 @@ def get_positions(json_request: dict = Body(...), current_user: CurrentUser = De
 def get_session_state(session_id: str, current_user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     """Get comprehensive live session state (account, positions, orders, strategies)."""
 
-    from qengine.modes.forex_live_mode import get_live_state
+    from qengine.modes.live_mode import get_live_state
     state = get_live_state(session_id)
 
     # Also get session metadata from DB
@@ -180,7 +185,7 @@ def get_session_report(session_id: str, current_user: CurrentUser = Depends(get_
         if str(session.user_id) != current_user.effective_user_id:
             return JSONResponse({'error': 'Not found'}, status_code=404)
 
-    from qengine.modes.forex_live_mode import get_session_report as _get_report
+    from qengine.modes.live_mode import get_session_report as _get_report
     report = _get_report(session_id)
 
     return JSONResponse({'data': report}, status_code=200)

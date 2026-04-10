@@ -306,7 +306,10 @@ class TestSuggestExit:
     def test_on_cycle_end_increments_count(self):
         pilot = IslandPilot()
         strategy = _make_mock_strategy()
+        # Each call needs a different session_number to pass the dedup guard
+        strategy.vars = {'session_number': 1}
         pilot.on_cycle_end(100.0, strategy)
+        strategy.vars = {'session_number': 2}
         pilot.on_cycle_end(-50.0, strategy)
         assert pilot._cycle_count == 2
 

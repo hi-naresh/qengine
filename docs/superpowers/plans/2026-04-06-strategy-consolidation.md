@@ -27,7 +27,7 @@
 | `qengine/models/Position.py:6-34` | Add `tp_price`, `sl_price` to CFDTicket |
 | `qengine/strategies/Strategy.py:1345-1476` | Add `set_ticket_tp_sl()`, `set_all_tickets_tp_sl()`, `on_ticket_tp_hit()`, `on_ticket_sl_hit()` |
 | `qengine/modes/backtest_mode.py:1065-1127` | Add `_check_ticket_tp_sl_triggers()`, call after order execution |
-| `qengine/modes/forex_live_mode.py:372-428` | Fire `on_ticket_tp_hit`/`on_ticket_sl_hit` in `_sync_trades_with_broker()` |
+| `qengine/modes/live_mode.py:372-428` | Fire `on_ticket_tp_hit`/`on_ticket_sl_hit` in `_sync_trades_with_broker()` |
 | `strategies/_admin/UniversalMartingale/__init__.py` | Use `set_ticket_tp_sl()`, add callbacks, track ticket_id on legs |
 | `tests/test_universal_martingale.py` | Add parity + callback tests |
 
@@ -804,11 +804,11 @@ git commit -m "test: integration tests for engine-managed ticket TP/SL"
 ## Task 6: Live Mode — Fire Callbacks on Broker TP/SL Closure
 
 **Files:**
-- Modify: `qengine/modes/forex_live_mode.py:372-428`
+- Modify: `qengine/modes/live_mode.py:372-428`
 
 - [ ] **Step 6.1: Extend `_sync_trades_with_broker` to fire TP/SL callbacks**
 
-In `qengine/modes/forex_live_mode.py`, replace the ticket closure block inside `_sync_trades_with_broker` (lines 407-423):
+In `qengine/modes/live_mode.py`, replace the ticket closure block inside `_sync_trades_with_broker` (lines 407-423):
 
 ```python
         # Old (lines 407-423):
@@ -870,13 +870,13 @@ In `qengine/modes/forex_live_mode.py`, replace the ticket closure block inside `
 
 - [ ] **Step 6.2: Verify no syntax errors**
 
-Run: `python -c "import qengine.modes.forex_live_mode"`
+Run: `python -c "import qengine.modes.live_mode"`
 Expected: No errors (import succeeds)
 
 - [ ] **Step 6.3: Commit**
 
 ```bash
-git add qengine/modes/forex_live_mode.py
+git add qengine/modes/live_mode.py
 git commit -m "feat: fire on_ticket_tp_hit/on_ticket_sl_hit in live mode trade sync"
 ```
 
