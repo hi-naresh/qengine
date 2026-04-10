@@ -2084,6 +2084,16 @@
             <p class="text-[11px] text-surface-500 mt-0.5">Browse, compare, and manage past backtest runs</p>
           </div>
           <div class="flex items-center gap-2">
+            <button v-if="compareSessionIds.size >= 2"
+              @click="openComparison"
+              :disabled="compareLoading"
+              class="text-xs bg-brand-600 text-white px-3 py-1 rounded hover:bg-brand-500 transition-colors flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+              Compare {{ compareSessionIds.size }}
+            </button>
+            <button v-if="compareSessionIds.size > 0 && !showComparison"
+              @click="compareSessionIds = new Set()"
+              class="text-xs text-surface-500 hover:text-surface-300">Clear</button>
             <button @click="loadSessions" class="text-xs text-brand-400 hover:text-brand-300">Refresh</button>
             <button v-if="sessions.length > 0" @click="showPurgeConfirm = true" class="text-xs text-red-400 hover:text-red-300">Purge</button>
           </div>
@@ -2163,6 +2173,9 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-surface-500 text-xs border-b border-surface-700">
+                  <th class="w-8 py-2">
+                    <span class="text-[10px] text-surface-600">{{ compareSessionIds.size }}/4</span>
+                  </th>
                   <th class="text-left py-2">Status</th>
                   <th class="text-left py-2">Strategy / Config</th>
                   <th v-if="showOwnerColumn" class="text-left py-2">Owner</th>
@@ -2177,6 +2190,13 @@
                   class="border-b border-surface-800 hover:bg-surface-800/50 cursor-pointer transition-colors"
                   :class="selectedSession?.id === s.id ? 'bg-surface-800/70 border-l-2 border-l-brand-500' : ''"
                   @click="viewSessionFromHistory(s)">
+                  <td class="py-2.5" @click.stop>
+                    <input type="checkbox"
+                      :checked="compareSessionIds.has(s.id)"
+                      :disabled="!compareSessionIds.has(s.id) && compareSessionIds.size >= 4"
+                      @change="toggleCompareSession(s.id)"
+                      class="w-3.5 h-3.5 rounded border-surface-600 bg-surface-800 text-brand-500 focus:ring-brand-500/50 cursor-pointer" />
+                  </td>
                   <td class="py-2.5">
                     <span class="text-xs px-2 py-0.5 rounded-full font-medium"
                       :class="statusBadgeClass(s.status)">{{ s.status }}</span>
@@ -2226,8 +2246,89 @@
         </div>
       </div>
 
+      <!-- Multi-Session Comparison View -->
+      <div v-if="showComparison" class="card">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-sm font-semibold text-surface-300">Comparing {{ compareSessions.length }} Sessions</h2>
+            <p class="text-[11px] text-surface-500 mt-0.5">Side-by-side metrics comparison</p>
+          </div>
+          <button @click="closeComparison" class="text-xs text-surface-400 hover:text-surface-200 flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            Close
+          </button>
+        </div>
+
+        <div v-if="compareLoading" class="text-surface-500 text-sm py-8 text-center">Loading sessions...</div>
+
+        <div v-else-if="compareSessions.length >= 2">
+          <!-- Session headers -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs border-collapse">
+              <thead>
+                <tr class="border-b border-surface-700">
+                  <th class="text-left py-2 px-3 text-surface-500 min-w-[140px] sticky left-0 bg-surface-850 z-10">Metric</th>
+                  <th v-for="s in compareSessions" :key="s.id" class="text-right py-2 px-3 min-w-[120px]">
+                    <div class="text-surface-200 font-medium truncate max-w-[140px]" :title="s.title || sessionLabel(s)">{{ s.title || sessionLabel(s) }}</div>
+                    <div class="text-[10px] text-surface-500 font-normal mt-0.5">{{ formatTimestamp(s.created_at || s.updated_at) }}</div>
+                    <div v-if="s.has_pipeline" class="text-[9px] text-purple-400 font-normal">Pipeline</div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="group in compareMetricKeys" :key="group.label">
+                  <!-- Group header -->
+                  <tr class="bg-surface-800/50">
+                    <td :colspan="compareSessions.length + 1" class="py-1.5 px-3 text-[10px] font-semibold text-surface-400 uppercase tracking-wider sticky left-0 bg-surface-800/50 z-10">{{ group.label }}</td>
+                  </tr>
+                  <!-- Metrics rows -->
+                  <tr v-for="[key, label] in group.keys.filter(([k]) => compareSessions.some(s => s.metrics && k in s.metrics))" :key="key"
+                    class="border-b border-surface-800/50 hover:bg-surface-800/30">
+                    <td class="py-1.5 px-3 text-surface-400 sticky left-0 bg-surface-850 z-10">{{ label }}</td>
+                    <td v-for="s in compareSessions" :key="s.id + key" class="py-1.5 px-3 text-right font-mono" :class="metricColor(key, s.metrics?.[key])">
+                      {{ formatMetric(s.metrics?.[key]) }}
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Best/Worst highlights -->
+          <div class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="p-2 bg-surface-800 rounded">
+              <div class="text-surface-500 text-[10px]">Best Net Profit %</div>
+              <div class="font-mono text-green-400 text-sm">
+                {{ Math.max(...compareSessions.map(s => s.metrics?.net_profit_percentage ?? -Infinity)).toFixed(2) }}%
+              </div>
+              <div class="text-[10px] text-surface-500 truncate">
+                {{ (compareSessions.find(s => s.metrics?.net_profit_percentage === Math.max(...compareSessions.map(s2 => s2.metrics?.net_profit_percentage ?? -Infinity)))?.title || 'Best') }}
+              </div>
+            </div>
+            <div class="p-2 bg-surface-800 rounded">
+              <div class="text-surface-500 text-[10px]">Best Max Drawdown</div>
+              <div class="font-mono text-green-400 text-sm">
+                {{ Math.max(...compareSessions.map(s => s.metrics?.max_drawdown ?? -Infinity)).toFixed(2) }}%
+              </div>
+            </div>
+            <div v-if="compareSessions.some(s => s.metrics?.bust_rate != null)" class="p-2 bg-surface-800 rounded">
+              <div class="text-surface-500 text-[10px]">Lowest Bust Rate</div>
+              <div class="font-mono text-green-400 text-sm">
+                {{ (Math.min(...compareSessions.filter(s => s.metrics?.bust_rate != null).map(s => s.metrics.bust_rate)) * 100).toFixed(2) }}%
+              </div>
+            </div>
+            <div v-if="compareSessions.some(s => s.metrics?.geometric_growth_rate != null)" class="p-2 bg-surface-800 rounded">
+              <div class="text-surface-500 text-[10px]">Best Geometric Growth</div>
+              <div class="font-mono text-sm" :class="Math.max(...compareSessions.filter(s => s.metrics?.geometric_growth_rate != null).map(s => s.metrics.geometric_growth_rate)) >= 0 ? 'text-green-400' : 'text-red-400'">
+                {{ Math.max(...compareSessions.filter(s => s.metrics?.geometric_growth_rate != null).map(s => s.metrics.geometric_growth_rate)).toFixed(6) }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Selected Session Detail (history) -->
-      <div v-if="selectedSession" class="card">
+      <div v-if="selectedSession && !showComparison" class="card">
         <div class="flex items-center justify-between mb-2">
           <div>
             <h2 class="text-sm font-semibold text-surface-200 flex items-center gap-2">
@@ -2748,6 +2849,10 @@ const sessions = ref([])
 const selectedSession = ref(null)
 const openTabs = ref([])
 const tabCache = ref({})
+const compareSessionIds = ref(new Set())
+const compareSessions = ref([])
+const compareLoading = ref(false)
+const showComparison = ref(false)
 const running = ref(false)
 const configCollapsed = ref(false)
 
@@ -3331,6 +3436,24 @@ const hedgeSessionMetrics = computed(() => pickMetrics(hedgeKeys))
 
 // ── Martingale-mode key arrays ──
 const isMartingale = computed(() => metrics.value?.is_martingale === true)
+
+const compareMetricKeys = computed(() => {
+  const anyMartingale = compareSessions.value.some(s => isSessionMartingale(s))
+  if (anyMartingale) {
+    return [
+      { label: 'Session Performance', keys: sessionPerfKeys },
+      { label: 'Survival & Ruin', keys: survivalKeys },
+      { label: 'Structural', keys: structuralKeys },
+      { label: 'Capital & Costs', keys: capitalKeys },
+    ]
+  }
+  return [
+    { label: 'Performance', keys: perfKeys },
+    { label: 'Risk & Ratios', keys: riskKeys },
+    { label: 'Hedge Sessions', keys: hedgeKeys },
+    { label: 'Trade Stats', keys: tradeKeys },
+  ]
+})
 
 const sessionPerfKeys = [
   ['total_sessions', 'Sessions'], ['session_win_rate', 'Session Win Rate'],
@@ -5331,6 +5454,51 @@ function loadSessionAsForm() {
   if (!selectedSession.value?.state) return
   restoreFormFromState(selectedSession.value.state)
   selectedSession.value = null
+}
+
+function toggleCompareSession(sessionId) {
+  const s = compareSessionIds.value
+  if (s.has(sessionId)) {
+    s.delete(sessionId)
+  } else if (s.size < 4) {
+    s.add(sessionId)
+  }
+  compareSessionIds.value = new Set(s)
+}
+
+async function openComparison() {
+  if (compareSessionIds.value.size < 2) return
+  compareLoading.value = true
+  showComparison.value = true
+  selectedSession.value = null
+
+  const loaded = []
+  for (const id of compareSessionIds.value) {
+    if (tabCache.value[id]) {
+      loaded.push(tabCache.value[id])
+    } else {
+      try {
+        const res = await api.getBacktestSession(id)
+        const session = res.session || res
+        tabCache.value[id] = session
+        loaded.push(session)
+      } catch (e) {
+        console.error('Failed to load session', id, e)
+      }
+    }
+  }
+  compareSessions.value = loaded
+  compareLoading.value = false
+}
+
+function closeComparison() {
+  showComparison.value = false
+  compareSessions.value = []
+  compareSessionIds.value = new Set()
+}
+
+function isSessionMartingale(session) {
+  return session?.metrics?.is_martingale === true
 }
 
 async function viewSessionFromHistory(s) {
