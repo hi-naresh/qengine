@@ -639,6 +639,95 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
     else:
         cost_drag_pct = 0.0
 
+    # --- P1: Martingale Index (Dimitrov & Shafer 2025) ---
+    # M = Cov(G, 1/K) where G = session PnL, K = peak exposure (proxy: legs * sizing)
+    # M > 0 means return is inflated by structural martingale correlation
+    # M ≈ 0 means return is genuine edge independent of position sizing
+    martingale_index = 0.0
+    martingale_contribution_pct = 0.0
+    if total_sessions >= 5:
+        G = np.array(session_pnls, dtype=float)
+        # K proxy: number of legs as exposure proxy (higher levels = more capital at risk)
+        K = np.array([max(s['legs'], 1) for s in sessions], dtype=float)
+        inv_K = 1.0 / K
+        # M = E(G * 1/K) - E(G) * E(1/K) = Cov(G, 1/K)
+        martingale_index = float(np.mean(G * inv_K) - np.mean(G) * np.mean(inv_K))
+        # Decomposition: E(R) ≈ M + E(G)·E(1/K)
+        # Martingale contribution = |M| / (|M| + |E(G)·E(1/K)|) if denominator > 0
+        genuine_component = abs(float(np.mean(G) * np.mean(inv_K)))
+        total_magnitude = abs(martingale_index) + genuine_component
+        if total_magnitude > 0:
+            martingale_contribution_pct = abs(martingale_index) / total_magnitude * 100
+
+    # --- P5: Quadratic Exposure Fit (Chen 2026) ---
+    # Fit E(k) = αk² + βk + γ to cumulative exposure at each level
+    # R² > 0.95 = healthy sub-exponential growth, R² < 0.90 = flag
+    exposure_fit_r2 = 0.0
+    exposure_coefficients = [0.0, 0.0, 0.0]
+    max_depth_observed = max((s['max_level'] for s in sessions), default=0)
+    if max_depth_observed >= 3:
+        # Build mean cumulative exposure curve from sessions reaching each depth
+        depth_exposures = {}  # depth -> list of cumulative leg counts
+        for s in sessions:
+            for lv in range(s['max_level'] + 1):
+                legs_at_depth = sum(1 for l in s['leg_levels'] if l <= lv)
+                depth_exposures.setdefault(lv, []).append(legs_at_depth)
+        # Mean exposure at each depth
+        depths = sorted(depth_exposures.keys())
+        if len(depths) >= 3:
+            x = np.array(depths, dtype=float)
+            y = np.array([np.mean(depth_exposures[d]) for d in depths], dtype=float)
+            coeffs = np.polyfit(x, y, 2)
+            predicted = np.polyval(coeffs, x)
+            ss_res = np.sum((y - predicted) ** 2)
+            ss_tot = np.sum((y - np.mean(y)) ** 2)
+            exposure_fit_r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+            exposure_coefficients = [round(float(c), 6) for c in coeffs]
+
+    # --- P6: Depth Barrier Auto-Detection (Chen 2026) ---
+    # Find the depth where win rate drops below 70% (collapse boundary)
+    depth_barrier = None
+    depth_barrier_details = []
+    for depth in sorted(ev_by_depth.keys()):
+        d = ev_by_depth[depth]
+        wr = d['win_rate']
+        n = d['count']
+        depth_barrier_details.append({
+            'depth': depth, 'count': n, 'win_rate': round(wr, 4),
+            'avg_pnl': round(d['avg_pnl'], 2),
+        })
+        if n >= 3 and wr < 0.70 and depth_barrier is None:
+            depth_barrier = depth
+
+    # --- P2: Markov Transition Matrix of Depth States ---
+    # T[i,j] = P(next cycle depth = j | current cycle depth = i)
+    max_state = min(max_depth_observed + 1, 13)  # cap at 12 levels
+    depth_transition_matrix = None
+    depth_stationary = None
+    if total_sessions >= 10 and max_state >= 2:
+        depths_seq = [s['max_level'] for s in sessions]
+        T = np.zeros((max_state, max_state), dtype=float)
+        for r in range(len(depths_seq) - 1):
+            i = min(depths_seq[r], max_state - 1)
+            j = min(depths_seq[r + 1], max_state - 1)
+            T[i, j] += 1
+        # Normalise rows
+        row_sums = T.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1  # avoid division by zero
+        T = T / row_sums
+        depth_transition_matrix = [[round(float(T[i, j]), 4) for j in range(max_state)]
+                                   for i in range(max_state)]
+        # Stationary distribution via eigenvalue decomposition
+        try:
+            eigenvalues, eigenvectors = np.linalg.eig(T.T)
+            # Find eigenvector for eigenvalue closest to 1
+            idx = np.argmin(np.abs(eigenvalues - 1.0))
+            stationary = np.real(eigenvectors[:, idx])
+            stationary = stationary / stationary.sum()  # normalise
+            depth_stationary = [round(float(s), 4) for s in stationary]
+        except np.linalg.LinAlgError:
+            depth_stationary = None
+
     return {
         # Session Performance
         'session_profit_factor': session_profit_factor,
@@ -660,6 +749,18 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         'l0_win_rate': l0_win_rate,
         # Capital & Costs
         'cost_drag_pct': cost_drag_pct,
+        # P1: Martingale Index (Dimitrov & Shafer 2025)
+        'martingale_index': round(martingale_index, 6),
+        'martingale_contribution_pct': round(martingale_contribution_pct, 2),
+        # P2: Markov Transition Matrix (Chen 2026)
+        'depth_transition_matrix': depth_transition_matrix,
+        'depth_stationary': depth_stationary,
+        # P5: Quadratic Exposure Fit (Chen 2026)
+        'exposure_fit_r2': round(exposure_fit_r2, 4),
+        'exposure_coefficients': exposure_coefficients,
+        # P6: Depth Barrier (Chen 2026)
+        'depth_barrier': depth_barrier,
+        'depth_barrier_details': depth_barrier_details,
     }
 
 
