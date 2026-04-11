@@ -171,6 +171,7 @@ class LiveRequestJson(BaseModel):
     debug_mode: bool
     paper_mode: Optional[bool] = None
     hyperparameters: Optional[dict] = None
+    pipelines: Optional[list] = None
 
 
 class LiveCancelRequestJson(BaseModel):

@@ -166,7 +166,7 @@ qengine/                          # Main Python package
     ...
   modes/                          # Execution modes
     backtest_mode.py              # Minute-by-minute simulator
-    forex_live_mode.py            # Live/paper trading for forex/CFD
+    live_mode.py            # Live/paper trading for forex/CFD
     optimize_mode/                # Optuna + Ray optimization
     monte_carlo_mode/             # Monte Carlo simulation
     import_candles_mode/          # Historical data import

@@ -130,6 +130,7 @@ def _make_strategy(hp_overrides=None, balance=10000):
     s._mock_is_open = False
     s._mock_pip_size = 0.0001
     s._mock_leverage = 30
+    s._pipelines = None
     return s
 
 
@@ -213,7 +214,7 @@ class TestPresets:
         p = PRESETS['original']
         assert p['signal_mode'] == 'none'
         assert p['direction_bias'] == 'long_only'
-        assert p['max_levels'] == 9
+        assert p['max_levels'] == 7
 
     def test_v2_preset_config(self):
         p = PRESETS['v2']
@@ -263,7 +264,7 @@ class TestPresetApplication:
         s = self._make_strategy_with_frontend_preset('original')
         assert s.hp['direction_bias'] == 'long_only'
         assert s.hp['signal_mode'] == 'none'
-        assert s.hp['max_levels'] == 9
+        assert s.hp['max_levels'] == 7
 
     def test_v2_preset_from_frontend(self):
         s = self._make_strategy_with_frontend_preset('v2')

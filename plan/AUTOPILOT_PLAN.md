@@ -360,7 +360,7 @@ Multiple pipelines:
 }
 ```
 
-### Also: Live mode hook — `qengine/modes/forex_live_mode.py`
+### Also: Live mode hook — `qengine/modes/live_mode.py`
 
 Same pipeline attachment in live mode's strategy initialization:
 ```python
@@ -577,7 +577,7 @@ Phase 5 (Frontend) — can start after Phase 2
 | `qengine/framework/pipelines/grid_pilot.py` | Create | 1c |
 | `qengine/strategies/Strategy.py` | Modify (~15 lines) | 2 |
 | `qengine/modes/backtest_mode.py` | Modify (~10 lines) | 2 |
-| `qengine/modes/forex_live_mode.py` | Modify (~5 lines) | 2 |
+| `qengine/modes/live_mode.py` | Modify (~5 lines) | 2 |
 | `qengine/config.py` | Modify (~3 lines) | 2 |
 | `qengine/controllers/framework_controller.py` | Create (`GET /pipelines`) | 2 |
 | `qengine/research/backtest.py` | Modify (~5 lines) | 3 |

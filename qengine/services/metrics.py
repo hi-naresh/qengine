@@ -381,6 +381,7 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
             sessions_map[session_num] = {
                 'pnl': 0.0, 'legs': 0, 'max_level': 0,
                 'exit_reason': None, 'leg_levels': [], 'leg_holdings': [],
+                'leg_entry_prices': [],
             }
             session_order.append(session_num)
 
@@ -396,6 +397,10 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
             s['leg_levels'].append(level)
         else:
             s['leg_levels'].append(0)
+
+        # Capture entry price for depth fan visualization (P3)
+        entry_price = getattr(t, 'entry_price', None)
+        s['leg_entry_prices'].append(float(entry_price) if entry_price else 0.0)
 
         hp = getattr(t, 'holding_period', None)
         s['leg_holdings'].append(hp if hp is not None else 0)
@@ -415,6 +420,7 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
             'holding_seconds': sum(s['leg_holdings']),
             'leg_levels': s['leg_levels'],
             'leg_holdings': s['leg_holdings'],
+            'leg_entry_prices': s['leg_entry_prices'],
         })
     return result
 
@@ -639,6 +645,356 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
     else:
         cost_drag_pct = 0.0
 
+    # --- P1: Martingale Index (Dimitrov & Shafer 2025) ---
+    # M = Cov(G, 1/K) where G = session PnL, K = peak exposure (proxy: legs * sizing)
+    # M > 0 means return is inflated by structural martingale correlation
+    # M ≈ 0 means return is genuine edge independent of position sizing
+    martingale_index = 0.0
+    martingale_contribution_pct = 0.0
+    if total_sessions >= 5:
+        G = np.array(session_pnls, dtype=float)
+        # K proxy: number of legs as exposure proxy (higher levels = more capital at risk)
+        K = np.array([max(s['legs'], 1) for s in sessions], dtype=float)
+        inv_K = 1.0 / K
+        # M = E(G * 1/K) - E(G) * E(1/K) = Cov(G, 1/K)
+        martingale_index = float(np.mean(G * inv_K) - np.mean(G) * np.mean(inv_K))
+        # Decomposition: E(R) ≈ M + E(G)·E(1/K)
+        # Martingale contribution = |M| / (|M| + |E(G)·E(1/K)|) if denominator > 0
+        genuine_component = abs(float(np.mean(G) * np.mean(inv_K)))
+        total_magnitude = abs(martingale_index) + genuine_component
+        if total_magnitude > 0:
+            martingale_contribution_pct = abs(martingale_index) / total_magnitude * 100
+
+    # --- P5: Quadratic Exposure Fit (Chen 2026) ---
+    # Fit E(k) = αk² + βk + γ to cumulative exposure at each level
+    # R² > 0.95 = healthy sub-exponential growth, R² < 0.90 = flag
+    exposure_fit_r2 = 0.0
+    exposure_coefficients = [0.0, 0.0, 0.0]
+    max_depth_observed = max((s['max_level'] for s in sessions), default=0)
+    if max_depth_observed >= 3:
+        # Build mean cumulative exposure curve from sessions reaching each depth
+        depth_exposures = {}  # depth -> list of cumulative leg counts
+        for s in sessions:
+            for lv in range(s['max_level'] + 1):
+                legs_at_depth = sum(1 for l in s['leg_levels'] if l <= lv)
+                depth_exposures.setdefault(lv, []).append(legs_at_depth)
+        # Mean exposure at each depth
+        depths = sorted(depth_exposures.keys())
+        if len(depths) >= 3:
+            x = np.array(depths, dtype=float)
+            y = np.array([np.mean(depth_exposures[d]) for d in depths], dtype=float)
+            coeffs = np.polyfit(x, y, 2)
+            predicted = np.polyval(coeffs, x)
+            ss_res = np.sum((y - predicted) ** 2)
+            ss_tot = np.sum((y - np.mean(y)) ** 2)
+            exposure_fit_r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+            exposure_coefficients = [round(float(c), 6) for c in coeffs]
+
+    # --- P6: Depth Barrier Auto-Detection (Chen 2026) ---
+    # Find the depth where win rate drops below 70% (collapse boundary)
+    depth_barrier = None
+    depth_barrier_details = []
+    for depth in sorted(ev_by_depth.keys()):
+        d = ev_by_depth[depth]
+        wr = d['win_rate']
+        n = d['count']
+        depth_barrier_details.append({
+            'depth': depth, 'count': n, 'win_rate': round(wr, 4),
+            'avg_pnl': round(d['avg_pnl'], 2),
+        })
+        if n >= 3 and wr < 0.70 and depth_barrier is None:
+            depth_barrier = depth
+
+    # --- P2: Markov Transition Matrix of Depth States ---
+    # T[i,j] = P(next cycle depth = j | current cycle depth = i)
+    max_state = min(max_depth_observed + 1, 13)  # cap at 12 levels
+    depth_transition_matrix = None
+    depth_stationary = None
+    if total_sessions >= 10 and max_state >= 2:
+        depths_seq = [s['max_level'] for s in sessions]
+        T = np.zeros((max_state, max_state), dtype=float)
+        for r in range(len(depths_seq) - 1):
+            i = min(depths_seq[r], max_state - 1)
+            j = min(depths_seq[r + 1], max_state - 1)
+            T[i, j] += 1
+        # Normalise rows
+        row_sums = T.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1  # avoid division by zero
+        T = T / row_sums
+        depth_transition_matrix = [[round(float(T[i, j]), 4) for j in range(max_state)]
+                                   for i in range(max_state)]
+        # Stationary distribution via eigenvalue decomposition
+        try:
+            eigenvalues, eigenvectors = np.linalg.eig(T.T)
+            # Find eigenvector for eigenvalue closest to 1
+            idx = np.argmin(np.abs(eigenvalues - 1.0))
+            stationary = np.real(eigenvectors[:, idx])
+            stationary = stationary / stationary.sum()  # normalise
+            depth_stationary = [round(float(s), 4) for s in stationary]
+        except np.linalg.LinAlgError:
+            depth_stationary = None
+
+    # --- P8: Protective Sell / Profitable Buy Accuracy (Wilson & Banzhaf 2010) ---
+    # Separates win rate into entry quality vs exit quality
+    profitable_buy_pct = 0.0
+    protective_sell_pct = 0.0
+    abort_outcomes = {'abort', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
+    if total_sessions > 0:
+        profitable_buys = sum(1 for s in sessions if s['pnl'] > 0)
+        profitable_buy_pct = profitable_buys / total_sessions
+        # Protective sell: among aborted cycles, % that aborted before max observed depth
+        aborted_sessions = [s for s in sessions if s['exit_reason'] in abort_outcomes]
+        if aborted_sessions:
+            max_possible = max((s['max_level'] for s in sessions), default=0)
+            protected = sum(1 for s in aborted_sessions if s['max_level'] < max_possible)
+            protective_sell_pct = protected / len(aborted_sessions)
+
+    # --- P7: Triangular Loss Growth Validation (Taranto & Khan 2020) ---
+    # Compare empirical cumulative loss at each level against:
+    #   T(n) = n(n+1)/2 (triangular), 2^n (exponential), actual multiplier^n
+    # Lower R² for exponential vs triangular validates sub-exponential sizing
+    loss_growth_validation = None
+    # Use sessions that reached deep levels (>= 3) and lost money
+    deep_loss_sessions = [s for s in sessions if s['max_level'] >= 3 and s['pnl'] < 0]
+    if len(deep_loss_sessions) >= 5:
+        # Build mean cumulative loss by level from losing sessions
+        max_lv = max(s['max_level'] for s in deep_loss_sessions)
+        level_loss = {}  # level -> list of cumulative abs(pnl) up to that level
+        for s in deep_loss_sessions:
+            # Approximate: distribute loss proportional to legs at each level
+            total_legs = s['legs']
+            if total_legs == 0:
+                continue
+            loss_per_leg = abs(s['pnl']) / total_legs
+            cumulative = 0.0
+            for lv in range(s['max_level'] + 1):
+                legs_at_lv = sum(1 for l in s['leg_levels'] if l == lv)
+                cumulative += loss_per_leg * legs_at_lv
+                level_loss.setdefault(lv, []).append(cumulative)
+
+        levels_with_data = sorted(lv for lv, vals in level_loss.items() if len(vals) >= 3)
+        if len(levels_with_data) >= 3:
+            x = np.array(levels_with_data, dtype=float)
+            y = np.array([np.mean(level_loss[lv]) for lv in levels_with_data], dtype=float)
+
+            # Fit triangular: T(n) = a * n(n+1)/2 + b
+            t_vals = x * (x + 1) / 2
+            if np.std(t_vals) > 0:
+                tri_coeffs = np.polyfit(t_vals, y, 1)
+                tri_pred = np.polyval(tri_coeffs, t_vals)
+                tri_ss_res = np.sum((y - tri_pred) ** 2)
+                tri_ss_tot = np.sum((y - np.mean(y)) ** 2)
+                tri_r2 = float(1 - tri_ss_res / tri_ss_tot) if tri_ss_tot > 0 else 0.0
+            else:
+                tri_r2 = 0.0
+
+            # Fit exponential: log(y) = a*n + b -> y = e^(a*n + b)
+            y_pos = np.maximum(y, 1e-12)
+            exp_coeffs = np.polyfit(x, np.log(y_pos), 1)
+            exp_pred = np.exp(np.polyval(exp_coeffs, x))
+            exp_ss_res = np.sum((y - exp_pred) ** 2)
+            exp_ss_tot = np.sum((y - np.mean(y)) ** 2)
+            exp_r2 = float(1 - exp_ss_res / exp_ss_tot) if exp_ss_tot > 0 else 0.0
+
+            # Fit quadratic (our actual multiplier pattern)
+            quad_coeffs = np.polyfit(x, y, 2)
+            quad_pred = np.polyval(quad_coeffs, x)
+            quad_ss_res = np.sum((y - quad_pred) ** 2)
+            quad_ss_tot = np.sum((y - np.mean(y)) ** 2)
+            quad_r2 = float(1 - quad_ss_res / quad_ss_tot) if quad_ss_tot > 0 else 0.0
+
+            best_fit = 'triangular' if tri_r2 >= exp_r2 and tri_r2 >= quad_r2 else \
+                       'quadratic' if quad_r2 >= exp_r2 else 'exponential'
+
+            loss_growth_validation = {
+                'triangular_r2': round(tri_r2, 4),
+                'exponential_r2': round(exp_r2, 4),
+                'quadratic_r2': round(quad_r2, 4),
+                'best_fit': best_fit,
+                'n_sessions_used': len(deep_loss_sessions),
+                'max_level_observed': int(max_lv),
+            }
+
+    # --- P9: Analytical Ruin Probability (Karathanasopoulos et al. 2021) ---
+    # P_survive via Gamma distribution. Special case when μ/σ² ≈ 1: P = exp(-2k₀/μw)
+    # μ = mean return per cycle, σ = std of returns, k₀ = fixed cost per cycle, w = wealth ratio
+    analytical_ruin_prob = 1.0
+    analytical_survival_prob = 0.0
+    survival_condition_ratio = 0.0  # μ/σ²
+    survival_condition_met = False
+    mu = 0.0
+    sigma_sq = 1e-12
+    k0 = 0.0
+    w = 1.0
+    if total_sessions >= 10:
+        mu = float(np.mean(session_pnls))
+        sigma = float(np.std(session_pnls, ddof=1)) if total_sessions > 1 else 1e-12
+        sigma_sq = sigma ** 2
+        # k₀ = average fixed cost per cycle (spread + fees / n_sessions)
+        k0 = (total_fees + total_spread + total_swap) / total_sessions if total_sessions > 0 else 0.0
+        # w = final_equity / starting_balance
+        final_equity = starting_balance + sum(session_pnls)
+        w = final_equity / starting_balance if starting_balance > 0 else 1.0
+
+        if sigma_sq > 1e-12:
+            survival_condition_ratio = mu / sigma_sq
+            survival_condition_met = survival_condition_ratio > 0.5
+
+            if survival_condition_ratio > 0.5 and w > 0:
+                alpha_param = 2 * mu / sigma_sq - 1
+                beta_param = 2 * k0 / sigma_sq if sigma_sq > 0 else 0.0
+
+                if abs(survival_condition_ratio - 1.0) < 0.1 and mu > 0:
+                    # Special case: P_survive = exp(-2k₀ / μw)
+                    analytical_survival_prob = min(1.0, math.exp(-2 * k0 / (mu * w)))
+                elif alpha_param > 0 and beta_param >= 0:
+                    # General case: P_survive = 1 - Gamma_CDF(1/w, α, 1/β)
+                    from scipy.stats import gamma as gamma_dist
+                    try:
+                        if beta_param > 0:
+                            analytical_survival_prob = float(1.0 - gamma_dist.cdf(
+                                1.0 / max(w, 1e-12), a=alpha_param, scale=1.0 / beta_param))
+                        else:
+                            analytical_survival_prob = 1.0 if mu > 0 else 0.0
+                    except (ValueError, OverflowError):
+                        analytical_survival_prob = 0.5  # fallback
+                else:
+                    analytical_survival_prob = 0.0
+            elif survival_condition_ratio <= 0.5:
+                analytical_survival_prob = 0.0  # mathematically guaranteed ruin
+            else:
+                analytical_survival_prob = 0.5  # indeterminate
+
+        analytical_ruin_prob = 1.0 - analytical_survival_prob
+
+    # P10: Survival condition health label
+    if survival_condition_ratio >= 1.0:
+        survival_health = 'green'   # comfortably met
+    elif survival_condition_ratio > 0.5:
+        survival_health = 'yellow'  # marginal
+    else:
+        survival_health = 'red'     # guaranteed ruin
+
+    # --- P11: Minimum Account Size (Karathanasopoulos et al. 2021, Eq 9) ---
+    # w_min = -2k₀ / (μ · ln(P_target)) for target survival probability
+    min_account_95 = None
+    min_account_99 = None
+    if total_sessions >= 10 and mu > 0 and k0 > 0:
+        # Using special case formula: P = exp(-2k₀/μw) → w = -2k₀/(μ·ln(P))
+        for target_p, attr_name in [(0.95, 'min_account_95'), (0.99, 'min_account_99')]:
+            ln_p = math.log(target_p)
+            if ln_p < 0:
+                w_min = -2 * k0 / (mu * ln_p)
+                min_val = w_min * starting_balance
+                if attr_name == 'min_account_95':
+                    min_account_95 = round(min_val, 2)
+                else:
+                    min_account_99 = round(min_val, 2)
+
+    # --- P12: Fixed Cost Sensitivity (Karathanasopoulos et al. 2021) ---
+    # Sweep k₀ from 0 to 3× current, show P_survive at each point
+    cost_sensitivity = None
+    if total_sessions >= 10 and mu > 0 and sigma_sq > 1e-12 and w > 0:
+        sweep_points = []
+        max_k0 = max(k0 * 3, 0.01)  # at least sweep to 0.01
+        for frac in np.linspace(0, max_k0, 20):
+            if abs(survival_condition_ratio - 1.0) < 0.1:
+                p_surv = min(1.0, max(0.0, math.exp(-2 * frac / (mu * w)))) if mu * w > 0 else 0.0
+            elif survival_condition_ratio > 0.5:
+                alpha_p = 2 * mu / sigma_sq - 1
+                beta_p = 2 * frac / sigma_sq
+                if alpha_p > 0 and beta_p > 0:
+                    from scipy.stats import gamma as gamma_dist
+                    try:
+                        p_surv = float(1.0 - gamma_dist.cdf(1.0 / max(w, 1e-12), a=alpha_p, scale=1.0 / beta_p))
+                    except (ValueError, OverflowError):
+                        p_surv = 0.0
+                else:
+                    p_surv = 0.0
+            else:
+                p_surv = 0.0
+            sweep_points.append({'cost': round(float(frac), 6), 'p_survive': round(p_surv, 4)})
+
+        # Find break-even spread (where P_survive drops below 50%)
+        breakeven_cost = None
+        for sp in sweep_points:
+            if sp['p_survive'] < 0.5:
+                breakeven_cost = sp['cost']
+                break
+
+        cost_sensitivity = {
+            'sweep': sweep_points,
+            'current_cost': round(k0, 6),
+            'breakeven_cost': breakeven_cost,
+        }
+
+    # --- P3: NPD-PR Depth Fan Visualization (Chen 2025) ---
+    # For each cycle, normalize entry prices by first entry price, keyed by depth.
+    # Returns per-level stats (mean, std, min, max of normalized price) and
+    # individual cycle traces for the fan chart.
+    depth_fan = None
+    bust_outcomes_set = bust_outcomes  # reuse from above
+    # Only build fan if sessions have entry prices
+    sessions_with_prices = [s for s in sessions
+                           if s.get('leg_entry_prices') and len(s['leg_entry_prices']) > 0
+                           and s['leg_entry_prices'][0] > 0 and s['max_level'] >= 1]
+    if len(sessions_with_prices) >= 10:
+        # Per-level normalized price stats
+        level_ratios = {}  # level -> list of (normalized_price, is_bust)
+        fan_traces = []    # individual cycle traces (capped for frontend performance)
+        max_traces = 200
+
+        for s in sessions_with_prices:
+            first_price = s['leg_entry_prices'][0]
+            is_bust = s['exit_reason'] in bust_outcomes_set
+            trace = []
+
+            for lv, ep in zip(s['leg_levels'], s['leg_entry_prices']):
+                if ep > 0:
+                    ratio = ep / first_price
+                    level_ratios.setdefault(lv, []).append((ratio, is_bust))
+                    trace.append({'level': lv, 'ratio': round(ratio, 6)})
+
+            if len(fan_traces) < max_traces:
+                fan_traces.append({
+                    'max_level': s['max_level'],
+                    'is_bust': is_bust,
+                    'points': trace,
+                })
+
+        # Aggregate stats per level
+        fan_stats = []
+        for lv in sorted(level_ratios.keys()):
+            ratios = [r for r, _ in level_ratios[lv]]
+            bust_ratios = [r for r, b in level_ratios[lv] if b]
+            win_ratios = [r for r, b in level_ratios[lv] if not b]
+            fan_stats.append({
+                'level': lv,
+                'count': len(ratios),
+                'mean': round(float(np.mean(ratios)), 6),
+                'std': round(float(np.std(ratios)), 6),
+                'min': round(float(np.min(ratios)), 6),
+                'max': round(float(np.max(ratios)), 6),
+                'bust_mean': round(float(np.mean(bust_ratios)), 6) if bust_ratios else None,
+                'win_mean': round(float(np.mean(win_ratios)), 6) if win_ratios else None,
+            })
+
+        # Detect collapse boundary: level where bust_mean diverges from win_mean
+        collapse_boundary = None
+        for stat in fan_stats:
+            if (stat['bust_mean'] is not None and stat['win_mean'] is not None
+                    and stat['count'] >= 3):
+                divergence = abs(stat['bust_mean'] - stat['win_mean'])
+                if divergence > stat['std'] * 0.5 and collapse_boundary is None:
+                    collapse_boundary = stat['level']
+
+        depth_fan = {
+            'stats': fan_stats,
+            'traces': fan_traces,
+            'collapse_boundary': collapse_boundary,
+            'n_cycles': len(sessions_with_prices),
+        }
+
     return {
         # Session Performance
         'session_profit_factor': session_profit_factor,
@@ -660,6 +1016,37 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         'l0_win_rate': l0_win_rate,
         # Capital & Costs
         'cost_drag_pct': cost_drag_pct,
+        # P1: Martingale Index (Dimitrov & Shafer 2025)
+        'martingale_index': round(martingale_index, 6),
+        'martingale_contribution_pct': round(martingale_contribution_pct, 2),
+        # P2: Markov Transition Matrix (Chen 2026)
+        'depth_transition_matrix': depth_transition_matrix,
+        'depth_stationary': depth_stationary,
+        # P5: Quadratic Exposure Fit (Chen 2026)
+        'exposure_fit_r2': round(exposure_fit_r2, 4),
+        'exposure_coefficients': exposure_coefficients,
+        # P6: Depth Barrier (Chen 2026)
+        'depth_barrier': depth_barrier,
+        'depth_barrier_details': depth_barrier_details,
+        # P7: Triangular Loss Growth (Taranto & Khan 2020)
+        'loss_growth_validation': loss_growth_validation,
+        # P8: Protective Sell / Profitable Buy (Wilson & Banzhaf 2010)
+        'profitable_buy_pct': round(profitable_buy_pct, 4),
+        'protective_sell_pct': round(protective_sell_pct, 4),
+        # P9: Analytical Ruin Probability (Karathanasopoulos et al. 2021)
+        'analytical_ruin_prob': round(analytical_ruin_prob, 6),
+        'analytical_survival_prob': round(analytical_survival_prob, 6),
+        # P10: Survival Condition
+        'survival_condition_ratio': round(survival_condition_ratio, 6),
+        'survival_condition_met': survival_condition_met,
+        'survival_health': survival_health,
+        # P11: Minimum Account Size
+        'min_account_95': min_account_95,
+        'min_account_99': min_account_99,
+        # P12: Fixed Cost Sensitivity
+        'cost_sensitivity': cost_sensitivity,
+        # P3: NPD-PR Depth Fan (Chen 2025)
+        'depth_fan': depth_fan,
     }
 
 

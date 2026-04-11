@@ -63,6 +63,7 @@ class Observer:
         market_state: dict,
         gate_confidence: Optional[float] = None,
         aria_score: Optional[float] = None,
+        start_bar: Optional[int] = None,
     ) -> None:
         """Capture entry snapshot when a new trading cycle starts.
 
@@ -76,6 +77,8 @@ class Observer:
             P(profitable) from CycleGate, if active.
         aria_score : float or None
             Composite score from MetaEvaluator, if active.
+        start_bar : int or None
+            Bar index at which the cycle opened.
         """
         self._entry_snapshot = {
             'market_state_at_entry': _copy_state(market_state),
@@ -86,6 +89,8 @@ class Observer:
             'equity_at_entry': getattr(strategy, 'balance', 0.0),
             'aria_score_at_entry': aria_score,
             'ruin_probs': [],
+            'start_bar': start_bar,
+            'level_timestamps': [],
         }
 
     def record_ruin_prob(self, prob: float) -> None:
@@ -98,6 +103,15 @@ class Observer:
             self._entry_snapshot.setdefault('ruin_probs', []).append(
                 round(prob, 6)
             )
+
+    def record_level_timestamp(self, bar_index: int) -> None:
+        """Append a bar index when a new hedge level opens.
+
+        Called by the pipeline each time the strategy advances to a new level,
+        building a timeline of level escalation within the cycle.
+        """
+        if self._entry_snapshot:
+            self._entry_snapshot.setdefault('level_timestamps', []).append(bar_index)
 
     def on_cycle_end(
         self,

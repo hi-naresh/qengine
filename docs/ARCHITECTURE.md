@@ -91,7 +91,7 @@ jesse-master/
 |   |   |-- monte_carlo_mode/   # Monte Carlo simulation
 |   |   |   |-- MonteCarloRunner.py
 |   |   |-- import_candles_mode/ # Historical data import
-|   |   |-- forex_live_mode.py  # Live/paper trading for forex/CFD
+|   |   |-- live_mode.py  # Live/paper trading for forex/CFD
 |   |   |-- data_provider.py    # Data feed management
 |   |
 |   |-- strategies/             # Strategy framework
@@ -167,7 +167,7 @@ Dashboard
   |-- POST /live/start (routes, config, broker)
   |     |
   |     v
-  LiveController --> forex_live_mode.run()
+  LiveController --> live_mode.run()
   |     |
   |     |-- Connect to broker API (OANDA/IG/IBKR)
   |     |-- Subscribe to price feeds

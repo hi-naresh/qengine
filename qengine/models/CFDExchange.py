@@ -223,12 +223,35 @@ class CFDExchange(Exchange):
 
         if not order.reduce_only:
             effective_order_size = abs(order.qty * order.price) / self.default_leverage
-            if effective_order_size > self.available_margin:
+            avail = self.available_margin
+
+            # Block if free margin insufficient
+            if effective_order_size > avail:
                 raise InsufficientMargin(
                     f'Cannot submit order worth ${round(order.qty * order.price)} '
-                    f'when available margin is ${round(self.available_margin)}. '
+                    f'when available margin is ${round(avail)}. '
                     f'Current leverage: {self.default_leverage}x'
                 )
+
+            # Block if margin level already at or below stop-out level (default 50%)
+            equity = self.wallet_balance
+            total_used_margin = 0
+            for asset in self.assets:
+                if asset == self.settlement_currency:
+                    continue
+                position = store.positions.get_position(self.name, f"{asset}-{self.settlement_currency}")
+                if position and position.is_open:
+                    equity += position.pnl
+                    total_used_margin += position.margin_used
+
+            if total_used_margin > 0:
+                margin_level = (equity / total_used_margin) * 100
+                stop_out_level = self._bt_cost_settings.get('stop_out_level', 50.0)
+                if margin_level <= stop_out_level:
+                    raise InsufficientMargin(
+                        f'Margin level {round(margin_level, 1)}% is at or below '
+                        f'stop-out level ({stop_out_level}%). Cannot open new trades.'
+                    )
 
         self.available_assets[base_asset] += order.qty
 

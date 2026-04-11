@@ -106,7 +106,7 @@ A complete sub-position (ticket) system enabling MT4/MT5-style independent trade
 - STOP order validation: STOP SELL requires price < current bid, STOP BUY requires price > current ask
 - Symbol conversion: `symbol_to_instrument('EUR-USD')` → `'EUR_USD'`
 
-**Trade Sync** (`modes/forex_live_mode.py`)
+**Trade Sync** (`modes/live_mode.py`)
 - `_sync_trades_with_broker()` — polls `get_open_trades()` every 3s
 - Compares broker trade IDs against internal `ticket.exchange_trade_id`
 - Detects broker-closed trades (TP/SL hit), closes internal tickets, records trades
@@ -146,7 +146,7 @@ A complete sub-position (ticket) system enabling MT4/MT5-style independent trade
 
 ### Live Trading Infrastructure
 
-**Forex Live Mode** (`modes/forex_live_mode.py` — 1,352 lines, NEW)
+**Forex Live Mode** (`modes/live_mode.py` — 1,352 lines, NEW)
 - Replaces external `jesse_live` plugin for native forex/CFD live trading
 - `run()` — main entry: configures driver, syncs account, fetches precisions, enters trading loop
 - Multi-tier broker sync with configurable intervals:

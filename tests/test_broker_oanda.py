@@ -492,7 +492,7 @@ class TestCandleBuilder:
     """Test the live candle builder from tick data."""
 
     def test_first_tick_starts_candle(self):
-        from qengine.modes.forex_live_mode import _CandleBuilder
+        from qengine.modes.live_mode import _CandleBuilder
         cb = _CandleBuilder('1m')
         result = cb.update(1.0850, 1000 * 60 * 1000)  # t=1000min
         assert result is None  # no closed candle yet
@@ -500,7 +500,7 @@ class TestCandleBuilder:
         assert cb._open == 1.0850
 
     def test_same_period_updates_ohlc(self):
-        from qengine.modes.forex_live_mode import _CandleBuilder
+        from qengine.modes.live_mode import _CandleBuilder
         cb = _CandleBuilder('1m')
         ts = 60000  # 1 minute in ms = 60000
 
@@ -516,7 +516,7 @@ class TestCandleBuilder:
         assert candle[4] == 1.0840   # low
 
     def test_new_period_closes_candle(self):
-        from qengine.modes.forex_live_mode import _CandleBuilder
+        from qengine.modes.live_mode import _CandleBuilder
         cb = _CandleBuilder('1m')
 
         # First minute
@@ -531,7 +531,7 @@ class TestCandleBuilder:
         assert closed[3] == 1.0860  # high of first candle
 
     def test_5m_candle_alignment(self):
-        from qengine.modes.forex_live_mode import _CandleBuilder
+        from qengine.modes.live_mode import _CandleBuilder
         cb = _CandleBuilder('5m')
 
         # 5m = 300000ms

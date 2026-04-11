@@ -1511,7 +1511,7 @@ const coreModifications = [
   { file: 'services/exchange_service.py', level: 'mod', desc: 'CFD exchange creation branch. _apply_backtest_cost_settings() for per-broker spread/slippage config.' },
   { file: 'services/candle_service.py', level: 'mod', desc: 'Import optimization: eliminated per-batch DB queries and O(n^2) gap fill. Eager tuple materialization. Timestamp range validation.' },
   { file: 'modes/backtest_mode.py', level: 'major', desc: 'Floating PnL & margin tracking, market hours integration, overnight swaps, margin call stop-out, gap handling, session stats, HTML reports.' },
-  { file: 'modes/forex_live_mode.py', level: 'new', desc: 'Native live trading orchestration (1,352 lines): multi-tier broker sync, Redis state publishing, graceful shutdown, session reports.' },
+  { file: 'modes/live_mode.py', level: 'new', desc: 'Native live trading orchestration (1,352 lines): multi-tier broker sync, Redis state publishing, graceful shutdown, session reports.' },
   { file: 'live_drivers/base.py', level: 'new', desc: 'ForexLiveDriver abstract base class: unified interface for all broker drivers with abstract + optional methods.' },
   { file: 'live_drivers/OANDA/', level: 'new', desc: 'OANDA driver: market/limit/stop orders, per-trade TP/SL, trade sync, order enrichment, symbol conversion.' },
   { file: 'live_drivers/IG/', level: 'new', desc: 'IG Markets driver: Lightstreamer streaming, CFD account detection, deal confirmation, rate limit backoff.' },

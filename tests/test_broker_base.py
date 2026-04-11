@@ -169,10 +169,10 @@ class TestBrokerReducePosition:
 
 
 class TestLiveModeAccountSync:
-    """Test the account sync flow in forex_live_mode."""
+    """Test the account sync flow in live_mode."""
 
     def test_sync_account_balance(self):
-        from qengine.modes.forex_live_mode import _sync_account_balance
+        from qengine.modes.live_mode import _sync_account_balance
 
         mock_driver = MagicMock()
         mock_driver.get_account_summary.return_value = {
@@ -193,7 +193,7 @@ class TestLiveModeAccountSync:
             })
 
     def test_sync_account_balance_handles_error(self):
-        from qengine.modes.forex_live_mode import _sync_account_balance
+        from qengine.modes.live_mode import _sync_account_balance
 
         mock_driver = MagicMock()
         mock_driver.get_account_summary.side_effect = Exception('Network error')
@@ -233,7 +233,7 @@ class TestCandleBuilderEdgeCases:
     """Edge cases for the candle builder."""
 
     def test_hour_candle_alignment(self):
-        from qengine.modes.forex_live_mode import _CandleBuilder
+        from qengine.modes.live_mode import _CandleBuilder
         cb = _CandleBuilder('1h')
         # 1h = 3,600,000 ms
         ts = 3600000 * 5  # 5th hour
@@ -248,7 +248,7 @@ class TestCandleBuilderEdgeCases:
         assert closed[3] == 105.0   # high
 
     def test_daily_candle_alignment(self):
-        from qengine.modes.forex_live_mode import _CandleBuilder
+        from qengine.modes.live_mode import _CandleBuilder
         cb = _CandleBuilder('1D')
         # 1D = 86,400,000 ms
         day_ms = 86400000
@@ -263,7 +263,7 @@ class TestCandleBuilderEdgeCases:
 
     def test_single_tick_candle(self):
         """A candle with only one tick should have O=H=L=C."""
-        from qengine.modes.forex_live_mode import _CandleBuilder
+        from qengine.modes.live_mode import _CandleBuilder
         cb = _CandleBuilder('1m')
 
         cb.update(50.0, 60000)  # one tick in first minute

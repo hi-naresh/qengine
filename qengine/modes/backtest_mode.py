@@ -295,13 +295,25 @@ def _execute_backtest(
             for rk, ps in result['pipeline_stats'].items():
                 pipeline_stats_for_db[rk] = {k: v for k, v in ps.items() if k != 'cycle_hp_log'}
 
+        # Strip 1m candles from chart_data before DB storage — they can be huge
+        # (e.g. 1yr = ~375K candles → hundreds of MB as JSON) and cause PostgreSQL
+        # "invalid memory alloc request size" errors. Frontend handles missing 1m gracefully.
+        chart_data_for_db = None
+        if chart_data:
+            chart_data_for_db = dict(chart_data)
+            if chart_data_for_db.get('candles_chart'):
+                chart_data_for_db['candles_chart'] = [
+                    {k: v for k, v in entry.items() if k != 'candles_1m'}
+                    for entry in chart_data_for_db['candles_chart']
+                ]
+
         update_backtest_session_results(
             id=client_id,
             metrics=result.get('metrics'),
             equity_curve=equity_curve_bundle,
             trades=result.get('trades'),
             hyperparameters=result.get('hyperparameters'),
-            chart_data=chart_data,
+            chart_data=chart_data_for_db,
             execution_duration=result.get('execution_duration'),
             strategy_codes=strategy_codes if strategy_codes else None,
             logs=result.get('logs'),
@@ -737,19 +749,9 @@ def _step_simulator(
                 order_service.update_active_orders(r.exchange, r.symbol)
             except exceptions.InsufficientMargin as e:
                 margin_error = e
-                break
-
-        if margin_error is not None:
-            margin_error_msg = str(margin_error)
-            # Log the margin error and break out of the simulation
-            store.logs.add(f'MARGIN CALL: Backtest stopped early — {margin_error_msg}', 'market')
-            logger.info(f'Backtest stopped early: {margin_error_msg}')
-            if not run_silently:
-                sync_publish('notification', {
-                    'message': f'Insufficient margin — backtest stopped early. {margin_error_msg}',
-                    'type': 'error'
-                })
-            break
+                margin_error_msg = str(e)
+                store.logs.add(f'MARGIN BLOCKED: {margin_error_msg}', 'market')
+                logger.info(f'Trade blocked (insufficient margin): {margin_error_msg}')
 
         # now check to see if there's any MARKET orders waiting to be executed
         order_service.execute_simulated_market_orders()
@@ -1819,18 +1821,9 @@ def _skip_simulator(
                 order_service.update_active_orders(r.exchange, r.symbol)
             except exceptions.InsufficientMargin as e:
                 margin_error = e
-                break
-
-        if margin_error is not None:
-            margin_error_msg = str(margin_error)
-            store.logs.add(f'MARGIN CALL: Backtest stopped early — {margin_error_msg}', 'market')
-            logger.info(f'Backtest stopped early: {margin_error_msg}')
-            if not run_silently:
-                sync_publish('notification', {
-                    'message': f'Insufficient margin — backtest stopped early. {margin_error_msg}',
-                    'type': 'error'
-                })
-            break
+                margin_error_msg = str(e)
+                store.logs.add(f'MARGIN BLOCKED: {margin_error_msg}', 'market')
+                logger.info(f'Trade blocked (insufficient margin): {margin_error_msg}')
 
         # now check to see if there's any MARKET orders waiting to be executed
         order_service.execute_simulated_market_orders()

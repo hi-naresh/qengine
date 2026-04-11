@@ -54,7 +54,7 @@ Tracking QEngine's development phases, current status, and roadmap.
 - Created broker configuration in dashboard Settings
 
 ### Phase 4: Live Trading Infrastructure
-- Created `forex_live_mode.py` for live/paper trading
+- Created `live_mode.py` for live/paper trading
 - Built live session management (start/stop/restart)
 - Implemented Redis-based state management for live sessions
 - Added real-time WebSocket updates for live positions

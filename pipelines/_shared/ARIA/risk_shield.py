@@ -297,6 +297,8 @@ class RiskShield:
         self.survival = MarginSurvival()
         self._max_cycle_bars = int(cfg.get('max_cycle_bars', _MAX_CYCLE_BARS))
         self._danger_abort_threshold = float(cfg.get('danger_abort_threshold', 0.8))
+        self._stress_abort_threshold = float(cfg.get('stress_abort_threshold', 1.5))
+        self._stress_abort_min_level = int(cfg.get('stress_abort_min_level', 2))
 
         # Per-cycle tracking for the Observer
         self._ruin_probs: list[float] = []
@@ -305,7 +307,8 @@ class RiskShield:
 
     # ----- main entry point -----
 
-    def check(self, strategy, market_state: Optional[dict] = None) -> Optional[dict]:
+    def check(self, strategy, market_state: Optional[dict] = None,
+              stress_velocity: float = 0.0) -> Optional[dict]:
         """Evaluate whether to abort the current cycle.
 
         Called every candle while a position is open.
@@ -347,6 +350,11 @@ class RiskShield:
         if level >= 3 and danger > self._danger_abort_threshold:
             self._last_reason = 'danger_abort'
             return {'action': 'close_all', 'reason': f'danger:{danger:.3f}_at_L{level}'}
+
+        # --- Structural stress abort (Chen 2026 R(t)) ---
+        if level >= self._stress_abort_min_level and stress_velocity > self._stress_abort_threshold:
+            self._last_reason = 'structural_stress'
+            return {'action': 'close_all', 'reason': f'structural_stress:{stress_velocity:.3f}_at_L{level}'}
 
         equity = float(getattr(strategy, 'balance', 0.0))
         price = float(getattr(strategy, 'price', 0.0))

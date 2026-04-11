@@ -29,6 +29,7 @@ from .risk_shield import RiskShield
 from .observer import Observer
 from .meta_evaluator import MetaEvaluator
 from .shadow_tracker import ShadowTracker
+from .structural_stress import StructuralStress
 from .config import default_config
 
 _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
@@ -103,6 +104,10 @@ class ARIAPipeline(Pipeline):
             'max_sessions': cfg['max_sessions'],
         })
 
+        # StructuralStress — R(t) accumulator (Chen 2026)
+        self._stress = StructuralStress()
+        self._stress_enabled = cfg.get('stress_enabled', False)
+
         # L6 — MetaEvaluator
         self._meta = MetaEvaluator({
             'window': cfg['meta_window'],
@@ -129,6 +134,8 @@ class ARIAPipeline(Pipeline):
         self._candle_warmup = cfg.get('brain_warmup', 50)
         self._hp_selected_this_cycle = False
         self._preset_forced = False
+        self._last_cycle_end_bar: int = 0
+        self._last_observed_level: int = 0
 
     # ── Observation (every candle) ──
 
@@ -171,6 +178,16 @@ class ARIAPipeline(Pipeline):
         danger = self._market_state.get('danger', 0.5)
         self._stats.record_danger(ts, danger)
 
+        # Track level changes for Observer level_timestamps
+        if self._cycle_active:
+            sv = getattr(strategy, 'vars', {})
+            current_level = int(sv.get('level', 0))
+            if current_level > self._last_observed_level:
+                bar_index = getattr(strategy, 'index', 0)
+                for lvl in range(self._last_observed_level + 1, current_level + 1):
+                    self._observer.record_level_timestamp(bar_index)
+                self._last_observed_level = current_level
+
     # ── Entry Control ──
 
     def gate_entry(self, strategy) -> bool:
@@ -182,8 +199,20 @@ class ARIAPipeline(Pipeline):
         danger = self._market_state.get('danger', 0.5)
         ts = strategy.candles[-1][0] if strategy.candles is not None and len(strategy.candles) > 0 else 0
 
+        stress_features = None
+        if self._stress_enabled:
+            stress_features = {
+                'normalised_rt': self._stress.normalised_rt,
+                'inter_cycle_gap_ratio': self._stress.inter_cycle_gap_ratio(
+                    getattr(strategy, 'index', 0) - self._last_cycle_end_bar
+                    if self._last_cycle_end_bar > 0 else -1
+                ),
+                'recent_stress_rate': self._stress.recent_stress_rate,
+            }
+
         if self._gate_enabled:
-            allowed, confidence = self._gate.gate(self._market_state, strategy)
+            allowed, confidence = self._gate.gate(
+                self._market_state, strategy, stress_features=stress_features)
             self._gate_confidence = confidence
             threshold = self._gate.threshold
         else:
@@ -210,7 +239,10 @@ class ARIAPipeline(Pipeline):
         if not getattr(strategy, 'is_open', False):
             return None
 
-        result = self._shield.check(strategy, self._market_state)
+        result = self._shield.check(
+            strategy, self._market_state,
+            stress_velocity=self._stress.stress_velocity if self._stress_enabled else 0.0,
+        )
         if result is not None:
             # Shadow tracking: record abort for counterfactual analysis
             self._shadow.on_abort(
@@ -250,6 +282,10 @@ class ARIAPipeline(Pipeline):
     def on_open_position(self, strategy) -> None:
         """L5: Observer captures entry snapshot with gate confidence."""
         self._cycle_active = True
+        self._last_observed_level = 0
+
+        sv = getattr(strategy, 'vars', {})
+        start_bar = int(sv.get('session_start_bar', getattr(strategy, 'index', 0)))
 
         # Observer records entry state
         self._observer.on_cycle_open(
@@ -257,7 +293,9 @@ class ARIAPipeline(Pipeline):
             self._market_state,
             gate_confidence=self._gate_confidence,
             aria_score=self._aria_score if self._meta_enabled else None,
+            start_bar=start_bar,
         )
+        self._observer.record_level_timestamp(start_bar)
 
         # Stats
         danger = self._market_state.get('danger', 0.5)
@@ -277,6 +315,43 @@ class ARIAPipeline(Pipeline):
             self._market_state,
             conformal_bound=None,  # TODO: expose from RiskShield
         )
+
+        # StructuralStress: compute R(t) components
+        gap_bars = -1
+        if enriched:
+            hp = getattr(strategy, 'hp', {})
+            sv = getattr(strategy, 'vars', {})
+
+            gap_bars = enriched.get('start_bar', 0) - self._last_cycle_end_bar if self._last_cycle_end_bar > 0 else -1
+
+            # Estimate expected TP
+            levels = enriched.get('levels', 0)
+            base_size = float(hp.get('base_size_value', 1.0))
+            multiplier = float(hp.get('sizing_factor', 1.4142))
+            total_size = sum(base_size * multiplier ** k for k in range(levels + 1))
+            atr = self._shield._estimate_atr(strategy)
+            tp_mult = float(hp.get('tp_value', 1.0))
+            expected_tp = total_size * atr * tp_mult
+
+            if self._stress_enabled:
+                stress_input = {
+                    'levels': enriched.get('levels', 0),
+                    'bars': enriched.get('bars', 0),
+                    'pnl': pnl,
+                    'reason': enriched.get('reason', ''),
+                    'max_levels': int(hp.get('max_levels', 12)),
+                    'multiplier': multiplier,
+                    'expected_tp': expected_tp,
+                    'level_timestamps': enriched.get('level_timestamps', []),
+                    'gap_bars': gap_bars,
+                }
+                stress_result = self._stress.record_cycle(stress_input)
+                enriched['stress_components'] = stress_result
+                enriched['r_t'] = self._stress.r_t
+
+            self._last_cycle_end_bar = getattr(strategy, 'index', 0)
+
+        self._last_observed_level = 0
 
         # RiskShield updates conformal calibration
         level = enriched.get('levels', 0) if enriched else 0
@@ -298,7 +373,15 @@ class ARIAPipeline(Pipeline):
         # L2: CycleGate SGD update
         profitable = pnl > 0
         if self._gate_enabled:
-            self._gate.update(self._market_state, strategy, profitable)
+            stress_features = None
+            if self._stress_enabled:
+                stress_features = {
+                    'normalised_rt': self._stress.normalised_rt,
+                    'inter_cycle_gap_ratio': self._stress.inter_cycle_gap_ratio(gap_bars),
+                    'recent_stress_rate': self._stress.recent_stress_rate,
+                }
+            self._gate.update(self._market_state, strategy, profitable,
+                              stress_features=stress_features)
 
         # L3: HPEngine bandit posterior update
         if self._hp_engine_enabled:
@@ -307,8 +390,20 @@ class ARIAPipeline(Pipeline):
         # L6: MetaEvaluator — compute ARIA score and check for degradation
         if self._meta_enabled:
             initial_capital = self._observer.sessions[0].get('equity_at_entry', 10_000) if self._observer.sessions else 10_000
+            stress_rate = 0.0
+            baseline = 0.0
+            if self._stress_enabled:
+                stresses = self._stress._cycle_stresses
+                if len(stresses) > 50:
+                    baseline = sum(s['total'] for s in stresses[:50]) / 50
+                else:
+                    baseline = self._stress.recent_stress_rate
+                stress_rate = self._stress.recent_stress_rate
+
             self._aria_score = self._meta.evaluate(
-                self._observer.sessions, initial_capital
+                self._observer.sessions, initial_capital,
+                stress_rate=stress_rate,
+                baseline_stress_rate=baseline,
             )
 
             # Exploration boost: if score degraded, reset HP engine bandits
@@ -378,6 +473,16 @@ class ARIAPipeline(Pipeline):
             'calibration_levels': len(self._shield.conformal._calibration),
             'conformal_active': self._shield.conformal._total_cycles >= 20,
             'ruin_probs_this_cycle': self._shield.ruin_probs_this_cycle[-5:],
+        }
+
+        # ── Structural Stress (R(t)) ──
+        stats['structural_stress'] = {
+            'r_t': round(self._stress.r_t, 4),
+            'normalised_rt': round(self._stress.normalised_rt, 4),
+            'recent_stress_rate': round(self._stress.recent_stress_rate, 4),
+            'stress_velocity': round(self._stress.stress_velocity, 4),
+            'n_cycles': len(self._stress._cycle_stresses),
+            'last_cycle_stress': self._stress._cycle_stresses[-1] if self._stress._cycle_stresses else None,
         }
 
         # ── Observer (L5) ──
@@ -497,6 +602,7 @@ class ARIAPipeline(Pipeline):
             'observer': self._observer.state_dict(),
             'meta': self._meta.state_dict(),
             'shadow': self._shadow.state_dict(),
+            'stress': self._stress.state_dict(),
         }
         with open(os.path.join(path, 'aria_state.json'), 'w') as f:
             json.dump(state, f, default=_json_default)
@@ -522,6 +628,8 @@ class ARIAPipeline(Pipeline):
             self._meta.load_state_dict(state['meta'])
         if 'shadow' in state:
             self._shadow.load_state_dict(state['shadow'])
+        if 'stress' in state:
+            self._stress.load_state_dict(state['stress'])
 
     @classmethod
     def default_config(cls) -> dict:

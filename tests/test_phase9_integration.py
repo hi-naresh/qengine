@@ -441,8 +441,8 @@ class TestLiveEnablement:
         config['app']['live_drivers'].update(ld)
         assert len(config['app']['live_drivers']) >= 6
 
-    def test_forex_live_mode_module(self):
-        from qengine.modes.forex_live_mode import run, get_live_logs, get_live_orders
+    def test_live_mode_module(self):
+        from qengine.modes.live_mode import run, get_live_logs, get_live_orders
         assert callable(run)
         assert callable(get_live_logs)
         assert callable(get_live_orders)

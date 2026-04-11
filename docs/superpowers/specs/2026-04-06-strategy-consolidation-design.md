@@ -229,7 +229,7 @@ def set_ticket_tp_sl(self, ticket_id, tp=None, sl=None):
 
 Note: `is_live()` check is in the *engine layer* (`Strategy` base class), not in the concrete strategy. The concrete strategy (`UniversalMartingale`) never checks `is_live()`.
 
-### In `_detect_per_trade_tp_sl_closures()` (`forex_live_mode.py`)
+### In `_detect_per_trade_tp_sl_closures()` (`live_mode.py`)
 
 Extend existing function to fire the new callbacks:
 
@@ -390,7 +390,7 @@ This is manual validation, not a permanent test.
 | `qengine/models/Position.py` | Add `tp_price`, `sl_price` to CFDTicket | ~10 |
 | `qengine/strategies/Strategy.py` | Add `set_ticket_tp_sl()`, `set_all_tickets_tp_sl()`, `on_ticket_tp_hit()`, `on_ticket_sl_hit()` | ~60 |
 | `qengine/modes/backtest_mode.py` | Add `_check_ticket_tp_sl_triggers()`, call it in `_simulate_price_change_effect()` | ~40 |
-| `qengine/modes/forex_live_mode.py` | Fire `on_ticket_tp_hit`/`on_ticket_sl_hit` in `_detect_per_trade_tp_sl_closures()` | ~20 |
+| `qengine/modes/live_mode.py` | Fire `on_ticket_tp_hit`/`on_ticket_sl_hit` in `_detect_per_trade_tp_sl_closures()` | ~20 |
 | `strategies/_admin/UniversalMartingale/__init__.py` | Use `set_ticket_tp_sl()`, add callbacks, track ticket_id on legs | ~80 |
 
 ### Extended test files (1)
@@ -413,7 +413,7 @@ This is manual validation, not a permanent test.
 2. `CFDTicket` model changes (tiny, safe)
 3. `Strategy.py` new API methods (additive, nothing breaks)
 4. `backtest_mode.py` integration (wire ticket checks into simulator)
-5. `forex_live_mode.py` callback wiring (extend existing sync)
+5. `live_mode.py` callback wiring (extend existing sync)
 6. `UniversalMartingale` refactor (use new API, add callbacks)
 7. Integration + parity tests
 8. Delete old strategies

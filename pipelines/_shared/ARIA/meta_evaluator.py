@@ -63,7 +63,9 @@ class MetaEvaluator:
     # ------------------------------------------------------------------
 
     def evaluate(self, enriched_sessions: list,
-                 initial_capital: float = 10_000.0) -> float:
+                 initial_capital: float = 10_000.0,
+                 stress_rate: float = 0.0,
+                 baseline_stress_rate: float = 0.0) -> float:
         """Compute the ARIA score over the most recent window of sessions.
 
         Parameters
@@ -109,10 +111,14 @@ class MetaEvaluator:
         capital = max(initial_capital, 1.0)
         cvar_normalised = cvar_95 / capital
 
+        # 4. Stress rate penalty (Chen 2026 R(t))
+        stress_penalty = min(1.0, max(0.0, stress_rate - baseline_stress_rate))
+
         score = (
-            survival_efficiency * 0.4
-            - bust_penalty * 0.3
-            + cvar_normalised * 0.3
+            survival_efficiency * 0.35
+            - bust_penalty * 0.25
+            + cvar_normalised * 0.25
+            - stress_penalty * 0.15
         )
 
         self._current_score = round(score, 6)
