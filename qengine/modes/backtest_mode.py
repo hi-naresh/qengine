@@ -749,19 +749,9 @@ def _step_simulator(
                 order_service.update_active_orders(r.exchange, r.symbol)
             except exceptions.InsufficientMargin as e:
                 margin_error = e
-                break
-
-        if margin_error is not None:
-            margin_error_msg = str(margin_error)
-            # Log the margin error and break out of the simulation
-            store.logs.add(f'MARGIN CALL: Backtest stopped early — {margin_error_msg}', 'market')
-            logger.info(f'Backtest stopped early: {margin_error_msg}')
-            if not run_silently:
-                sync_publish('notification', {
-                    'message': f'Insufficient margin — backtest stopped early. {margin_error_msg}',
-                    'type': 'error'
-                })
-            break
+                margin_error_msg = str(e)
+                store.logs.add(f'MARGIN BLOCKED: {margin_error_msg}', 'market')
+                logger.info(f'Trade blocked (insufficient margin): {margin_error_msg}')
 
         # now check to see if there's any MARKET orders waiting to be executed
         order_service.execute_simulated_market_orders()
@@ -1831,18 +1821,9 @@ def _skip_simulator(
                 order_service.update_active_orders(r.exchange, r.symbol)
             except exceptions.InsufficientMargin as e:
                 margin_error = e
-                break
-
-        if margin_error is not None:
-            margin_error_msg = str(margin_error)
-            store.logs.add(f'MARGIN CALL: Backtest stopped early — {margin_error_msg}', 'market')
-            logger.info(f'Backtest stopped early: {margin_error_msg}')
-            if not run_silently:
-                sync_publish('notification', {
-                    'message': f'Insufficient margin — backtest stopped early. {margin_error_msg}',
-                    'type': 'error'
-                })
-            break
+                margin_error_msg = str(e)
+                store.logs.add(f'MARGIN BLOCKED: {margin_error_msg}', 'market')
+                logger.info(f'Trade blocked (insufficient margin): {margin_error_msg}')
 
         # now check to see if there's any MARKET orders waiting to be executed
         order_service.execute_simulated_market_orders()

@@ -173,9 +173,8 @@
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
         <div class="card py-2.5 text-center">
-          <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-0.5">Margin Used</div>
-          <div class="text-sm font-semibold text-surface-200 font-mono">{{ fmtCcy(acct.margin_used) }}</div>
-          <div v-if="marginPct !== null" class="text-[10px] mt-0.5" :class="marginPct < 50 ? 'text-green-400' : marginPct < 80 ? 'text-yellow-400' : 'text-red-400'">{{ marginPct.toFixed(1) }}%</div>
+          <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-0.5">Margin Free</div>
+          <div class="text-sm font-semibold font-mono" :class="marginFreePct > 50 ? 'text-green-400' : marginFreePct > 20 ? 'text-amber-400' : 'text-red-400'">{{ marginFreePct !== null ? marginFreePct.toFixed(1) + '%' : '-' }}</div>
         </div>
         <div class="card py-2.5 text-center">
           <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-0.5">Margin Available</div>
@@ -234,7 +233,7 @@
           :class="detailTab === tab ? 'bg-surface-700 text-surface-100' : 'text-surface-500 hover:text-surface-300'">
           {{ tab }}
           <span v-if="tab === 'Orders' && liveState.orders_summary" class="ml-1 text-[10px] text-surface-500">({{ liveState.orders_summary.total }})</span>
-          <span v-if="tab === 'Closed Trades' && liveClosedTrades.length" class="ml-1 text-[10px] text-surface-500">({{ liveClosedTrades.length }})</span>
+          <span v-if="tab === 'History' && liveHedgeSessions.length" class="ml-1 text-[10px] text-surface-500">({{ liveHedgeSessions.length }}S / {{ liveClosedTrades.length }}T)</span>
           <span v-if="tab === 'Report' && report.total_trades" class="ml-1 text-[10px] text-surface-500">({{ report.total_trades }})</span>
         </button>
       </div>
@@ -464,37 +463,106 @@
         </template>
       </div>
 
-      <!-- Closed Trades Tab (Real-time during session) -->
-      <div v-if="detailTab === 'Closed Trades'" class="card">
-        <div v-if="liveClosedTrades.length === 0" class="text-center py-8 text-surface-500 text-sm">No closed trades yet.</div>
-        <div v-else class="overflow-auto max-h-[500px]">
-          <table class="w-full text-sm">
-            <thead class="sticky top-0 bg-surface-850">
-              <tr class="text-surface-500 text-[11px] uppercase tracking-wider border-b border-surface-700">
-                <th class="text-left py-2 px-3">Symbol</th>
-                <th class="text-left py-2 px-3">Side</th>
-                <th class="text-right py-2 px-3">Qty</th>
-                <th class="text-right py-2 px-3">Entry</th>
-                <th class="text-right py-2 px-3">Exit</th>
-                <th class="text-right py-2 px-3">P&L</th>
-                <th class="text-left py-2 px-3">Label</th>
-                <th class="text-right py-2 px-3">Closed</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(t, i) in liveClosedTrades" :key="i" class="border-b border-surface-800/50 hover:bg-surface-800/30">
-                <td class="py-2 px-3 font-mono text-surface-200">{{ t.symbol }}</td>
-                <td class="py-2 px-3"><span :class="t.type === 'long' ? 'text-green-400' : 'text-red-400'">{{ t.type?.toUpperCase() }}</span></td>
-                <td class="py-2 px-3 text-right font-mono text-surface-200">{{ t.qty }}</td>
-                <td class="py-2 px-3 text-right font-mono text-surface-300">{{ fmtPrice(t.entry_price) }}</td>
-                <td class="py-2 px-3 text-right font-mono text-surface-300">{{ fmtPrice(t.exit_price) }}</td>
-                <td class="py-2 px-3 text-right font-mono font-medium" :class="plColor(t.pnl || t.PNL)">{{ fmtPl(t.pnl || t.PNL) }}</td>
-                <td class="py-2 px-3 text-xs"><span class="font-mono text-brand-400">{{ t.meta?.label || '-' }}</span></td>
-                <td class="py-2 px-3 text-right text-surface-500 text-xs">{{ formatTime(t.closed_at) }}</td>
-              </tr>
-            </tbody>
-          </table>
+      <!-- History Tab (Closed Sessions + Closed Trades) -->
+      <div v-if="detailTab === 'History'" class="space-y-4">
+        <!-- Closed Sessions (grouped by hedge session) -->
+        <div v-if="liveHedgeSessions.length" class="card">
+          <h3 class="text-xs font-semibold text-surface-400 uppercase tracking-wider mb-3">
+            Closed Sessions ({{ liveHedgeSessions.length }})
+            <span class="text-surface-600 font-normal normal-case ml-2">
+              {{ liveHedgeSessions.filter(s => s.total_pnl > 0).length }}W / {{ liveHedgeSessions.filter(s => s.total_pnl <= 0).length }}L
+            </span>
+          </h3>
+          <div class="space-y-2">
+            <div v-for="s in liveHedgeSessions" :key="s.session"
+              class="bg-surface-800/50 rounded-lg border border-surface-700/30 overflow-hidden">
+              <!-- Session header (clickable) -->
+              <div class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-surface-800/80"
+                @click="expandedLiveSessions[s.session] = !expandedLiveSessions[s.session]">
+                <svg class="w-3 h-3 text-surface-500 transition-transform flex-shrink-0" :class="expandedLiveSessions[s.session] ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+                <span class="text-xs font-semibold text-brand-400 font-mono w-8">#{{ s.session }}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                  :class="s.outcome === 'tp_hit' || s.outcome === 'bucket_hit' ? 'bg-green-500/10 text-green-400' : s.outcome === 'max_levels' || s.outcome === 'margin_call' || s.outcome === 'bust' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'">
+                  {{ sessionOutcomeLabel(s.outcome) }}
+                </span>
+                <span class="text-[10px] text-surface-500">L{{ s.levels }}</span>
+                <span class="text-xs font-mono font-semibold ml-auto" :class="s.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                  {{ s.total_pnl >= 0 ? '+' : '' }}{{ s.total_pnl.toFixed(2) }}
+                </span>
+                <span class="text-[10px] text-surface-600">{{ s.trades.length }} trades</span>
+                <span class="text-[10px] text-surface-600">{{ formatTime(s.opened_at) }}</span>
+              </div>
+              <!-- Expanded: per-trade table -->
+              <div v-if="expandedLiveSessions[s.session]" class="border-t border-surface-700/30 px-3 py-2">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="text-surface-600 text-[10px] uppercase">
+                      <th class="text-left py-1 px-1">#</th>
+                      <th class="text-left py-1 px-1">Side</th>
+                      <th class="text-left py-1 px-1">Level</th>
+                      <th class="text-right py-1 px-1">Entry</th>
+                      <th class="text-right py-1 px-1">Exit</th>
+                      <th class="text-right py-1 px-1">Qty</th>
+                      <th class="text-right py-1 px-1">P&L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(t, ti) in s.trades" :key="ti" class="border-b border-surface-800/30">
+                      <td class="py-1 px-1 text-surface-500">{{ ti + 1 }}</td>
+                      <td class="py-1 px-1"><span :class="t.type === 'long' ? 'text-green-400' : 'text-red-400'">{{ t.type }}</span></td>
+                      <td class="py-1 px-1 text-surface-400 font-mono">L{{ t.meta?.level || 0 }}</td>
+                      <td class="py-1 px-1 text-right font-mono text-surface-300">{{ fmtPrice(t.entry_price) }}</td>
+                      <td class="py-1 px-1 text-right font-mono text-surface-300">{{ fmtPrice(t.exit_price) }}</td>
+                      <td class="py-1 px-1 text-right font-mono text-surface-300">{{ Math.abs(t.qty) }}</td>
+                      <td class="py-1 px-1 text-right font-mono font-medium" :class="plColor(t.pnl)">{{ fmtPl(t.pnl) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- All Closed Trades (flat list) -->
+        <div class="card">
+          <h3 class="text-xs font-semibold text-surface-400 uppercase tracking-wider mb-3">
+            All Trades ({{ liveClosedTrades.length }})
+          </h3>
+          <div v-if="liveClosedTrades.length === 0" class="text-center py-6 text-surface-500 text-sm">No closed trades yet.</div>
+          <div v-else class="overflow-auto max-h-[400px]">
+            <table class="w-full text-sm">
+              <thead class="sticky top-0 bg-surface-850">
+                <tr class="text-surface-500 text-[11px] uppercase tracking-wider border-b border-surface-700">
+                  <th class="text-left py-2 px-3">Symbol</th>
+                  <th class="text-left py-2 px-3">Side</th>
+                  <th class="text-right py-2 px-3">Qty</th>
+                  <th class="text-right py-2 px-3">Entry</th>
+                  <th class="text-right py-2 px-3">Exit</th>
+                  <th class="text-right py-2 px-3">P&L</th>
+                  <th class="text-left py-2 px-3">Label</th>
+                  <th class="text-right py-2 px-3">Closed</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(t, i) in liveClosedTrades" :key="i" class="border-b border-surface-800/50 hover:bg-surface-800/30">
+                  <td class="py-2 px-3 font-mono text-surface-200">{{ t.symbol }}</td>
+                  <td class="py-2 px-3"><span :class="t.type === 'long' ? 'text-green-400' : 'text-red-400'">{{ t.type?.toUpperCase() }}</span></td>
+                  <td class="py-2 px-3 text-right font-mono text-surface-200">{{ t.qty }}</td>
+                  <td class="py-2 px-3 text-right font-mono text-surface-300">{{ fmtPrice(t.entry_price) }}</td>
+                  <td class="py-2 px-3 text-right font-mono text-surface-300">{{ fmtPrice(t.exit_price) }}</td>
+                  <td class="py-2 px-3 text-right font-mono font-medium" :class="plColor(t.pnl || t.PNL)">{{ fmtPl(t.pnl || t.PNL) }}</td>
+                  <td class="py-2 px-3 text-xs"><span class="font-mono text-brand-400">{{ t.meta?.label || '-' }}</span></td>
+                  <td class="py-2 px-3 text-right text-surface-500 text-xs">{{ formatTime(t.closed_at) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pipeline Tab (Live Intelligence) -->
+      <div v-if="detailTab === 'Pipeline' && liveState.pipeline_stats" class="card">
+        <PipelineIntelligence :stats="livePipelineStats" :key="'live-pipe-' + activeView" />
       </div>
 
       <!-- Report Tab (Post-Execution Analysis) -->
@@ -864,8 +932,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, markRaw } from 'vue'
 import { api, defaultBrokerId, isAdmin, isImpersonating } from '../api'
+import PipelineIntelligence from '../components/PipelineIntelligence.vue'
 
 const showStart = ref(false)
 const starting = ref(false)
@@ -917,6 +986,20 @@ const availablePipelines = ref([])
 const pipelineEnabled = ref(false)
 const livePipelineConfigs = ref([{ name: '' }])
 const hpExpanded = ref(false)
+const _lastPipelineStatsJson = ref('')
+const _cachedPipelineStats = ref(null)
+
+const livePipelineStats = computed(() => {
+  const ps = liveState.value?.pipeline_stats
+  if (!ps || !Object.keys(ps).length) return null
+  // Only re-parse when data actually changes (avoid re-creating markRaw every poll)
+  const psJson = JSON.stringify(ps)
+  if (psJson !== _lastPipelineStatsJson.value) {
+    _lastPipelineStatsJson.value = psJson
+    _cachedPipelineStats.value = markRaw(JSON.parse(psJson))
+  }
+  return _cachedPipelineStats.value
+})
 
 // Hyperparameters (loaded from strategy code)
 const liveHyperParams = ref([])
@@ -983,15 +1066,42 @@ const statusTabs = [
 const logTypes = ['all', 'info', 'warning', 'error']
 
 const acct = computed(() => liveState.value.account || {})
-const marginPct = computed(() => {
+const marginFreePct = computed(() => {
   const a = acct.value
-  if (!a.balance || !a.margin_used) return null
-  return (a.margin_used / a.balance) * 100
+  const eq = a.equity || a.balance
+  if (!eq || !a.margin_used) return null
+  return Math.max(0, ((eq - a.margin_used) / eq) * 100)
 })
+// Group closed trades into hedge sessions
+const liveHedgeSessions = computed(() => {
+  const trades = liveClosedTrades.value
+  if (!trades.length) return []
+  const sessionsMap = {}
+  for (const t of trades) {
+    const sn = t.meta?.session
+    if (sn == null) continue
+    if (!sessionsMap[sn]) {
+      sessionsMap[sn] = { session: sn, trades: [], total_pnl: 0, total_fee: 0, levels: 0, outcome: null, opened_at: t.opened_at, closed_at: null }
+    }
+    const s = sessionsMap[sn]
+    s.trades.push(t)
+    s.total_pnl += (t.pnl || 0)
+    s.total_fee += (t.fee || 0)
+    const level = t.meta?.level || 0
+    if (level > s.levels) s.levels = level
+    s.closed_at = t.closed_at
+    s.outcome = t.meta?.session_exit_reason || t.meta?.exit_reason || s.outcome
+  }
+  return Object.values(sessionsMap).sort((a, b) => (b.opened_at || 0) - (a.opened_at || 0))
+})
+
+const expandedLiveSessions = ref({})
+
 const availableTabs = computed(() => {
   const tabs = ['Positions', 'Orders']
   if (currentSession.value) tabs.push('Session')
-  tabs.push('Closed Trades')
+  tabs.push('History')
+  if (liveState.value.pipeline_stats) tabs.push('Pipeline')
   tabs.push('Logs')
   if (activeMeta.value.status !== 'running' || report.value.total_trades) tabs.push('Report')
   return tabs

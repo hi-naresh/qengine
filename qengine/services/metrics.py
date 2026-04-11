@@ -381,6 +381,7 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
             sessions_map[session_num] = {
                 'pnl': 0.0, 'legs': 0, 'max_level': 0,
                 'exit_reason': None, 'leg_levels': [], 'leg_holdings': [],
+                'leg_entry_prices': [],
             }
             session_order.append(session_num)
 
@@ -396,6 +397,10 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
             s['leg_levels'].append(level)
         else:
             s['leg_levels'].append(0)
+
+        # Capture entry price for depth fan visualization (P3)
+        entry_price = getattr(t, 'entry_price', None)
+        s['leg_entry_prices'].append(float(entry_price) if entry_price else 0.0)
 
         hp = getattr(t, 'holding_period', None)
         s['leg_holdings'].append(hp if hp is not None else 0)
@@ -415,6 +420,7 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
             'holding_seconds': sum(s['leg_holdings']),
             'leg_levels': s['leg_levels'],
             'leg_holdings': s['leg_holdings'],
+            'leg_entry_prices': s['leg_entry_prices'],
         })
     return result
 
@@ -922,6 +928,73 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
             'breakeven_cost': breakeven_cost,
         }
 
+    # --- P3: NPD-PR Depth Fan Visualization (Chen 2025) ---
+    # For each cycle, normalize entry prices by first entry price, keyed by depth.
+    # Returns per-level stats (mean, std, min, max of normalized price) and
+    # individual cycle traces for the fan chart.
+    depth_fan = None
+    bust_outcomes_set = bust_outcomes  # reuse from above
+    # Only build fan if sessions have entry prices
+    sessions_with_prices = [s for s in sessions
+                           if s.get('leg_entry_prices') and len(s['leg_entry_prices']) > 0
+                           and s['leg_entry_prices'][0] > 0 and s['max_level'] >= 1]
+    if len(sessions_with_prices) >= 10:
+        # Per-level normalized price stats
+        level_ratios = {}  # level -> list of (normalized_price, is_bust)
+        fan_traces = []    # individual cycle traces (capped for frontend performance)
+        max_traces = 200
+
+        for s in sessions_with_prices:
+            first_price = s['leg_entry_prices'][0]
+            is_bust = s['exit_reason'] in bust_outcomes_set
+            trace = []
+
+            for lv, ep in zip(s['leg_levels'], s['leg_entry_prices']):
+                if ep > 0:
+                    ratio = ep / first_price
+                    level_ratios.setdefault(lv, []).append((ratio, is_bust))
+                    trace.append({'level': lv, 'ratio': round(ratio, 6)})
+
+            if len(fan_traces) < max_traces:
+                fan_traces.append({
+                    'max_level': s['max_level'],
+                    'is_bust': is_bust,
+                    'points': trace,
+                })
+
+        # Aggregate stats per level
+        fan_stats = []
+        for lv in sorted(level_ratios.keys()):
+            ratios = [r for r, _ in level_ratios[lv]]
+            bust_ratios = [r for r, b in level_ratios[lv] if b]
+            win_ratios = [r for r, b in level_ratios[lv] if not b]
+            fan_stats.append({
+                'level': lv,
+                'count': len(ratios),
+                'mean': round(float(np.mean(ratios)), 6),
+                'std': round(float(np.std(ratios)), 6),
+                'min': round(float(np.min(ratios)), 6),
+                'max': round(float(np.max(ratios)), 6),
+                'bust_mean': round(float(np.mean(bust_ratios)), 6) if bust_ratios else None,
+                'win_mean': round(float(np.mean(win_ratios)), 6) if win_ratios else None,
+            })
+
+        # Detect collapse boundary: level where bust_mean diverges from win_mean
+        collapse_boundary = None
+        for stat in fan_stats:
+            if (stat['bust_mean'] is not None and stat['win_mean'] is not None
+                    and stat['count'] >= 3):
+                divergence = abs(stat['bust_mean'] - stat['win_mean'])
+                if divergence > stat['std'] * 0.5 and collapse_boundary is None:
+                    collapse_boundary = stat['level']
+
+        depth_fan = {
+            'stats': fan_stats,
+            'traces': fan_traces,
+            'collapse_boundary': collapse_boundary,
+            'n_cycles': len(sessions_with_prices),
+        }
+
     return {
         # Session Performance
         'session_profit_factor': session_profit_factor,
@@ -972,6 +1045,8 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         'min_account_99': min_account_99,
         # P12: Fixed Cost Sensitivity
         'cost_sensitivity': cost_sensitivity,
+        # P3: NPD-PR Depth Fan (Chen 2025)
+        'depth_fan': depth_fan,
     }
 
 

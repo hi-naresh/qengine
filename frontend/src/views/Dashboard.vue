@@ -90,29 +90,118 @@
           </div>
         </div>
 
-        <!-- Recent Sessions List -->
-        <div v-if="recentSessions.length" class="mt-4">
-          <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-2">Recent Sessions</div>
-          <div class="space-y-1">
-            <div v-for="s in recentSessions" :key="s.id"
-              class="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-surface-800/60 cursor-pointer transition-colors"
-              @click="navigateTo(s.route)">
-              <div class="flex items-center gap-3">
-                <span class="w-1.5 h-1.5 rounded-full" :class="s.status === 'running' ? 'bg-green-400 animate-pulse' : s.status === 'finished' ? 'bg-surface-500' : 'bg-red-400'"></span>
-                <span class="badge text-[10px]" :class="taskBadgeClass(s.type)">{{ s.type }}</span>
-                <span class="text-sm text-surface-200">{{ s.label }}</span>
+      </div>
+
+      <!-- ═══ Recent Sessions by Category ═══ -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Recent Backtests -->
+        <div v-if="backtestSessions.length" class="card">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full" :class="activityCounts.backtest.running ? 'bg-green-400 animate-pulse' : 'bg-blue-400'"></span>
+              <h3 class="text-xs font-semibold text-surface-300 uppercase tracking-wider">Recent Backtests</h3>
+            </div>
+            <a href="#/backtest" class="text-[10px] text-brand-400 hover:text-brand-300">View All</a>
+          </div>
+          <div class="space-y-1.5">
+            <div v-for="s in backtestSessions.slice(0, 5)" :key="s.id"
+              class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-800/60 cursor-pointer transition-colors"
+              @click="navigateTo('#/backtest')">
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="s.status === 'running' ? 'bg-green-400 animate-pulse' : s.status === 'finished' ? 'bg-surface-600' : 'bg-red-400'"></span>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-surface-200 truncate">{{ s.title || parseRoutes(s) }}</div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <span v-if="s.has_pipeline" class="text-[8px] px-1 py-0.5 rounded bg-purple-500/15 text-purple-400 font-semibold uppercase">Pipeline</span>
+                  <span class="text-[10px] text-surface-600">{{ formatDate(s.created_at) }}</span>
+                </div>
               </div>
-              <div class="flex items-center gap-3 text-xs text-surface-500">
-                <span :class="s.status === 'running' ? 'text-green-400' : s.status === 'finished' ? 'text-surface-400' : 'text-red-400'">{{ s.status }}</span>
-                <span>{{ formatDate(s.created_at) }}</span>
+              <div class="text-right shrink-0">
+                <div v-if="s.net_profit_percentage != null" class="text-xs font-mono font-semibold" :class="s.net_profit_percentage >= 0 ? 'text-green-400' : 'text-red-400'">
+                  {{ s.net_profit_percentage >= 0 ? '+' : '' }}{{ s.net_profit_percentage.toFixed(2) }}%
+                </div>
+                <div class="text-[10px]" :class="s.status === 'running' ? 'text-green-400' : s.status === 'finished' ? 'text-surface-500' : 'text-red-400'">{{ s.status }}</div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Trading Sessions -->
+        <div v-if="liveSessions.length" class="card">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full" :class="activityCounts.live.running ? 'bg-green-400 animate-pulse' : 'bg-green-500'"></span>
+              <h3 class="text-xs font-semibold text-surface-300 uppercase tracking-wider">Live / Paper Trading</h3>
+            </div>
+            <a href="#/live" class="text-[10px] text-brand-400 hover:text-brand-300">View All</a>
+          </div>
+          <div class="space-y-1.5">
+            <div v-for="s in liveSessions.slice(0, 5)" :key="s.id"
+              class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-800/60 cursor-pointer transition-colors"
+              @click="navigateTo('#/live')">
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="s.status === 'running' ? 'bg-green-400 animate-pulse' : 'bg-surface-600'"></span>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-surface-200 truncate">{{ s.title || parseRoutes(s) }}</div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <span class="text-[10px] px-1 py-0.5 rounded" :class="s.session_mode === 'papertrade' ? 'bg-amber-500/15 text-amber-400' : 'bg-green-500/15 text-green-400'">
+                    {{ s.session_mode === 'papertrade' ? 'Paper' : 'Live' }}
+                  </span>
+                  <span class="text-[10px] text-surface-600">{{ formatDate(s.created_at) }}</span>
+                </div>
+              </div>
+              <div class="text-[10px] shrink-0" :class="s.status === 'running' ? 'text-green-400' : s.status === 'stopped' ? 'text-surface-500' : 'text-red-400'">{{ s.status }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Optimizations -->
+        <div v-if="optimizationSessions.length" class="card">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full" :class="activityCounts.optimization.running ? 'bg-green-400 animate-pulse' : 'bg-purple-400'"></span>
+              <h3 class="text-xs font-semibold text-surface-300 uppercase tracking-wider">Recent Optimizations</h3>
+            </div>
+            <a href="#/optimization" class="text-[10px] text-brand-400 hover:text-brand-300">View All</a>
+          </div>
+          <div class="space-y-1.5">
+            <div v-for="s in optimizationSessions.slice(0, 3)" :key="s.id"
+              class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-800/60 cursor-pointer transition-colors"
+              @click="navigateTo('#/optimization')">
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="s.status === 'running' ? 'bg-green-400 animate-pulse' : 'bg-surface-600'"></span>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-surface-200 truncate">{{ s.title || parseRoutes(s) }}</div>
+                <div class="text-[10px] text-surface-600 mt-0.5">{{ formatDate(s.created_at) }}</div>
+              </div>
+              <div class="text-[10px] shrink-0" :class="s.status === 'running' ? 'text-green-400' : 'text-surface-500'">{{ s.status }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Monte Carlo -->
+        <div v-if="montecarloSessions.length" class="card">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full" :class="activityCounts.montecarlo.running ? 'bg-green-400 animate-pulse' : 'bg-amber-400'"></span>
+              <h3 class="text-xs font-semibold text-surface-300 uppercase tracking-wider">Recent Monte Carlo</h3>
+            </div>
+            <a href="#/monte-carlo" class="text-[10px] text-brand-400 hover:text-brand-300">View All</a>
+          </div>
+          <div class="space-y-1.5">
+            <div v-for="s in montecarloSessions.slice(0, 3)" :key="s.id"
+              class="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-surface-800/60 cursor-pointer transition-colors"
+              @click="navigateTo('#/monte-carlo')">
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="s.status === 'running' ? 'bg-green-400 animate-pulse' : 'bg-surface-600'"></span>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-surface-200 truncate">{{ s.title || parseRoutes(s) }}</div>
+                <div class="text-[10px] text-surface-600 mt-0.5">{{ formatDate(s.created_at) }}</div>
+              </div>
+              <div class="text-[10px] shrink-0" :class="s.status === 'running' ? 'text-green-400' : 'text-surface-500'">{{ s.status }}</div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- No Activity -->
-      <div v-else class="card text-center py-8">
+      <div v-if="!hasActivity" class="card text-center py-8">
         <p class="text-surface-500 text-sm mb-3">No recent activity.</p>
         <div class="flex items-center justify-center gap-3">
           <a href="#/backtest" class="btn-sm bg-surface-800 text-brand-400 hover:text-brand-300">Run Backtest</a>

@@ -79,4 +79,25 @@ PRESETS = {
         'cooldown_value': 10,
         'max_daily_loss_pct': 2.0,
     },
+
+    # P4: d'Alembert null-hypothesis baseline (Dimitrov & Shafer 2025)
+    # Random entry with identical sizing/TP to v2.
+    # If SurefireHedge doesn't meaningfully beat this, the EMA crossover adds no value.
+    'dalembert_baseline': {
+        'signal_mode': 'random',
+        'direction_bias': 'both',
+        'sizing_curve': 'sqrt',
+        'sizing_factor': 2.0,
+        'max_levels': 6,
+        'hedge_mode': 'atr_based',
+        'hedge_value': 1.5,
+        'hedge_atr_period': 14,
+        'tp_mode': 'bucket_pct',
+        'tp_value': 0.1,
+        'session_filter': 'london_ny',
+        'cooldown_mode': 'bars',
+        'cooldown_value': 10,
+        'max_daily_loss_pct': 2.0,
+        'max_consec_busts': 3,
+    },
 }

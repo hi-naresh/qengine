@@ -26,9 +26,19 @@
       <div v-else class="border-t border-white/[0.06] my-2"></div>
       <router-link v-for="item in tradingItems" :key="item.to" :to="item.to"
         class="nav-link group" :class="[isActive(item.to) ? 'nav-active' : 'nav-idle', collapsed ? 'justify-center px-0 py-2.5' : '']" :title="collapsed ? item.label : item.hint">
-        <component :is="item.icon" class="w-4 h-4 flex-shrink-0" :class="collapsed ? '' : 'mt-0.5'" />
-        <div v-if="!collapsed" class="min-w-0">
-          <div class="text-sm leading-tight">{{ item.label }}</div>
+        <div class="relative flex-shrink-0">
+          <component :is="item.icon" class="w-4 h-4" :class="collapsed ? '' : 'mt-0.5'" />
+          <span v-if="badgeCount(item.to) && collapsed"
+            class="absolute -top-1.5 -right-1.5 w-[14px] h-[14px] flex items-center justify-center text-[9px] font-bold text-white bg-green-500 rounded-full animate-pulse">
+            {{ badgeCount(item.to) }}
+          </span>
+        </div>
+        <div v-if="!collapsed" class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <span class="text-sm leading-tight">{{ item.label }}</span>
+            <span v-if="badgeCount(item.to)"
+              class="w-2 h-2 rounded-full bg-green-400 animate-pulse flex-shrink-0"></span>
+          </div>
           <div class="text-[10px] leading-tight mt-0.5 transition-colors" :class="isActive(item.to) ? 'text-brand-400/50' : 'text-surface-600 group-hover:text-surface-500'">{{ item.hint }}</div>
         </div>
       </router-link>
@@ -96,14 +106,41 @@ import { useRouter, useRoute } from 'vue-router'
 import { logout, api, isAdmin, getCurrentUser, hasFeature } from '../api'
 import { h, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useSidebar } from '../useSidebar'
+import { useProcessManager } from '../useProcessManager'
 
 const router = useRouter()
 const route = useRoute()
 const { collapsed, toggle: toggleSidebar } = useSidebar()
 
+const pm = useProcessManager()
 const isDark = ref(document.documentElement.classList.contains('dark'))
 const activeIssueCount = ref(0)
 const errorReportCount = ref(0)
+const liveSessionCount = ref(0)
+
+// Running process badges per route
+const runningByRoute = computed(() => {
+  const map = {}
+  for (const p of pm.running.value) {
+    const route = p.routePath || ''
+    map[route] = (map[route] || 0) + 1
+  }
+  return map
+})
+
+function badgeCount(routePath) {
+  if (routePath === '/live') return liveSessionCount.value
+  return runningByRoute.value[routePath] || 0
+}
+
+async function loadLiveSessionCount() {
+  if (!getCurrentUser()) return
+  try {
+    const res = await api.getLiveSessions({ limit: 50 })
+    const sessions = res.sessions || []
+    liveSessionCount.value = sessions.filter(s => s.status === 'running' || s.status === 'starting').length
+  } catch { /* ignore */ }
+}
 const currentUser = ref(getCurrentUser())
 
 let issueCountInterval = null
@@ -127,10 +164,12 @@ async function loadErrorReportCount() {
 onMounted(() => {
   loadActiveIssueCount()
   loadErrorReportCount()
+  loadLiveSessionCount()
   issueCountInterval = setInterval(() => {
     loadActiveIssueCount()
     loadErrorReportCount()
-  }, 30000)
+    loadLiveSessionCount()
+  }, 10000)
 })
 
 onBeforeUnmount(() => {

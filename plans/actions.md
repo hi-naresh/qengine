@@ -36,7 +36,7 @@ Updated: 2026-04-10
 
 ---
 
-## Priority 3: NPD-PR Fan Visualization (Depth-Aligned Price Fan)
+## Priority 3: NPD-PR Fan Visualization (Depth-Aligned Price Fan) ✅ DONE
 **Source**: linear_reward.pdf (Chen, 2025) — Section 3.6, Fig 4
 **Effort**: Medium | **Impact**: Medium
 
@@ -44,19 +44,19 @@ Updated: 2026-04-10
 
 **Why**: Visually identifies the "depth barrier" — the level beyond which price behavior changes qualitatively (fan collapses). In Chen's data this was depth 9; ours may differ per instrument. Directly shows where the strategy's structural assumptions break down.
 
-**Implementation**:
-- For each cycle: collect entry prices at each level
-- Normalize: price_ratio[k] = entry_price[k] / entry_price[0]
-- Plot all cycles overlaid, x-axis = level depth, y-axis = normalized price
-- Highlight cycles that busted vs resolved
-- Add dashed line at detected "collapse boundary"
-- Include in Pipeline Intelligence tab as "Depth Fan" chart
+**Implementation**: Added to `_calculate_martingale_metrics()` and `_parse_sessions()` in `qengine/services/metrics.py`.
+- `_parse_sessions` now captures `leg_entry_prices` per session
+- Returns `depth_fan` dict with:
+  - `stats`: per-level mean/std/min/max of normalized price, separate bust vs win means
+  - `traces`: up to 200 individual cycle traces for frontend fan chart rendering
+  - `collapse_boundary`: auto-detected level where bust vs win price paths diverge
+  - `n_cycles`: number of cycles used
 
-**Files to modify**: Pipeline analysis, frontend chart component
+**TODO**: Render as fan chart in Pipeline Intelligence tab (frontend)
 
 ---
 
-## Priority 4: d'Alembert Null-Hypothesis Baseline
+## Priority 4: d'Alembert Null-Hypothesis Baseline ✅ DONE
 **Source**: martingale_index.pdf (Dimitrov & Shafer, 2025) — Section 3.3
 **Effort**: Low | **Impact**: Medium
 
@@ -64,14 +64,11 @@ Updated: 2026-04-10
 
 **Why**: If SurefireHedge doesn't meaningfully exceed the d'Alembert return, our EMA crossover entry signal adds no value — it's all structural martingale profit. This is the strongest possible test of "does entry quality matter?"
 
-**Implementation**:
-- Create `strategies/DAlembertBaseline/` strategy
-- Entry: random direction each bar (or alternate long/short)
-- Sizing: same sqrt(2) ladder as SurefireHedge
-- TP: same as SurefireHedge
-- Backtest on same EUR-USD data
-- Compare: PF, return, bust rate, Martingale Index M
-- If SurefireHedge M < d'Alembert M with better return, entry signal has genuine value
+**Implementation**: Added `dalembert_baseline` preset to `strategies/_admin/Martingale/presets.py`.
+- Uses `signal_mode: 'random'` with identical sizing/TP/hedge params as v2 preset
+- sqrt(2) sizing, ATR-based hedging, bucket_pct TP, London/NY session filter
+- Run via: backtest with preset=`dalembert_baseline` on same EUR-USD data
+- Compare: PF, return, bust rate, Martingale Index M vs v2 preset
 
 ---
 
@@ -322,3 +319,4 @@ For the general case, invert the Gamma CDF numerically.
 - quantum_fuzzy_agent.pdf — QPL + fuzzy RL sizing, not applicable
 - Quantum-Inspired_AI.pdf — QIAI optimizer for LSTM prediction, not applicable
 - PHD_THESIS_SALMAN.pdf — DC paradigm for entries, idea saved to ideas.md
+- multi_GA.pdf — NSGA-II multi-objective GP trading (Long et al. 2026). Multi-objective autopilot idea saved to ideas.md

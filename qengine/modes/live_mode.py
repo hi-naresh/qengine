@@ -895,6 +895,31 @@ def _publish_state(client_id: str):
                     pass
             strategies.append(strat_info)
 
+        # ── Pipeline stats (if any pipelines attached) ──
+        pipeline_stats = {}
+        for r in router.routes:
+            if getattr(r.strategy, '_pipelines', None):
+                try:
+                    stack = r.strategy._pipelines
+                    stack_stats = stack.get_stats()
+                    route_key = f"{r.exchange}-{r.symbol}"
+                    merged = {}
+                    for pname, pstats in stack_stats.items():
+                        merged.update(pstats)
+                        merged['pipeline_name'] = pname
+                        for p in stack.pipelines:
+                            if p.name == pname:
+                                try:
+                                    merged['_architecture'] = p.architecture()
+                                except Exception:
+                                    pass
+                                break
+                    # Strip cycle_hp_log (too large for polling)
+                    merged.pop('cycle_hp_log', None)
+                    pipeline_stats[route_key] = merged
+                except Exception:
+                    pass
+
         # ── Aggregate state object ──
         total_orders = len(all_orders)
         executed_orders = len([o for o in all_orders if o['status'] == 'EXECUTED'])
@@ -925,6 +950,8 @@ def _publish_state(client_id: str):
             'winning_trades': winning_trades,
             'losing_trades': losing_trades,
         }
+        if pipeline_stats:
+            state['pipeline_stats'] = pipeline_stats
 
         state_key = f'{_REDIS_STATE_KEY}{client_id}'
         sync_redis.set(state_key, json.dumps(state))
