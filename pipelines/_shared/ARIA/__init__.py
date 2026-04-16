@@ -172,15 +172,25 @@ class ARIAPipeline(Pipeline):
             self._stale_count = getattr(self, '_stale_count', 0) + 1
             self._hp_selected_this_cycle = False  # allow re-selection
 
-            # After 2 consecutive stale selections, force safe defaults
-            # and SKIP the bandit re-selection this cycle so the forced
-            # defaults aren't immediately overwritten.
-            if self._stale_count >= 2 and hasattr(strategy, 'hp'):
-                strategy.hp['signal_mode'] = 'random'
-                strategy.hp['session_filter'] = 'any'
-                strategy.hp['day_filter'] = 'any'
-                strategy.hp['entry_on_crossover'] = 'no'
-                strategy.hp['direction_bias'] = 'both'
+            # After 2 consecutive stale selections, use INTELLIGENCE:
+            # find the best-performing config from Observer history and
+            # replay it.  Falls back to high-frequency defaults only if
+            # no history exists.
+            if self._stale_count >= 2:
+                regime_id = self._market_state.get('regime_id', 0)
+                best = self._hp_engine.best_known_config(
+                    self._observer.sessions, regime_id=regime_id
+                )
+                if best:
+                    self._hp_engine.inject_hp(strategy, best)
+                    self._hp_selection = best
+                elif hasattr(strategy, 'hp'):
+                    # No history at all — force minimal high-frequency config
+                    strategy.hp['signal_mode'] = 'random'
+                    strategy.hp['session_filter'] = 'any'
+                    strategy.hp['day_filter'] = 'any'
+                    strategy.hp['entry_on_crossover'] = 'no'
+                    strategy.hp['direction_bias'] = 'both'
                 self._stale_count = 0
                 self._hp_selected_this_cycle = True  # prevent bandit from overwriting
                 self._hp_selected_at_bar = self._candle_count

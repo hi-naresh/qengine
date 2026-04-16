@@ -501,15 +501,15 @@ class TestStaleness:
         assert aria._hp_selected_at_bar > 15, \
             f"HP should have been re-selected, selected_at_bar={aria._hp_selected_at_bar}"
 
-    def test_stale_fallback_forces_defaults(self):
-        """After 2 consecutive stale selections, force safe high-frequency defaults."""
+    def test_stale_fallback_uses_best_known(self):
+        """After 2 consecutive stale selections, replay best observed config."""
         aria = ARIAPipeline({
             'brain_warmup': 5, 'hp_warmup_cycles': 2,
             'gate_warmup_cycles': 2, 'hp_stale_bars': 15,
         })
         s = MockStrategy()
 
-        # Warmup + 3 cycles
+        # Warmup + 3 cycles (Observer accumulates history)
         for _ in range(10):
             aria.on_before(s)
         for c in range(3):
@@ -526,9 +526,8 @@ class TestStaleness:
             s.vars['cycle_active'] = False
             aria.on_cycle_end(5.0, s)
 
-        # Set signal_mode to something restrictive manually
-        s.hp['signal_mode'] = 'adx'
-        s.hp['session_filter'] = 'asian'
+        # Observer now has 3 sessions with hp_used snapshots
+        assert len(aria._observer.sessions) == 3
 
         # First stale cycle: 20 bars with no entry
         aria.on_before(s)  # selects HPs
@@ -539,11 +538,45 @@ class TestStaleness:
         # Second stale cycle: another 20 bars
         for _ in range(20):
             aria.on_before(s)
-        # After 2nd stale, should force defaults
-        assert s.hp['signal_mode'] == 'random', \
-            f"After 2 stale, signal_mode should be forced to 'random', got '{s.hp['signal_mode']}'"
-        assert s.hp['session_filter'] == 'any', \
-            f"After 2 stale, session_filter should be 'any', got '{s.hp['session_filter']}'"
+
+        # After 2nd stale, should use best_known_config from Observer
+        # The Observer has 3 profitable sessions — it should replay one of those
+        assert aria._hp_selected_this_cycle, "Should have set HP from best known"
+        assert aria._stale_count == 0, "Stale count should reset after fallback"
+
+
+    def test_best_known_config_picks_highest_efficiency(self):
+        """best_known_config should pick the config with best pnl/bars ratio."""
+        from pipelines._shared.ARIA.hp_engine import HPEngine
+
+        eng = HPEngine({'warmup_cycles': 2, 'max_arms': 10})
+
+        class S:
+            def hyperparameters(self):
+                return [
+                    {'name': 'preset', 'type': 'categorical', 'options': ['custom'], 'default': 'custom'},
+                    {'name': 'signal_mode', 'type': 'categorical', 'group': 'Entry Signal',
+                     'options': ['random', 'ema_cross', 'rsi'], 'default': 'random'},
+                    {'name': 'hedge_value', 'type': float, 'group': 'Grid / Hedge',
+                     'min': 1.0, 'max': 50.0, 'default': 10.0},
+                ]
+
+        eng.register_strategy(S())
+
+        # Mock observer sessions with different configs and outcomes
+        sessions = [
+            {'hp_used': {'signal_mode': 'random', 'hedge_value': 10.0}, 'pnl': 5.0,
+             'bars': 50, 'regime_id_at_entry': 0},
+            {'hp_used': {'signal_mode': 'ema_cross', 'hedge_value': 15.0}, 'pnl': 20.0,
+             'bars': 30, 'regime_id_at_entry': 0},  # best: 20/30 = 0.67
+            {'hp_used': {'signal_mode': 'rsi', 'hedge_value': 5.0}, 'pnl': -10.0,
+             'bars': 100, 'regime_id_at_entry': 0},
+        ]
+
+        best = eng.best_known_config(sessions, regime_id=0)
+        assert best.get('signal_mode') == 'ema_cross', \
+            f"Should pick ema_cross (best efficiency), got {best.get('signal_mode')}"
+        assert best.get('hedge_value') == 15.0
 
 
 class TestFullPipeline:

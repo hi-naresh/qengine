@@ -524,6 +524,77 @@ class HPEngine:
         self._selected_arms = {}
 
     # ------------------------------------------------------------------
+    # Intelligent fallback — best known config from history
+    # ------------------------------------------------------------------
+
+    def best_known_config(self, observer_sessions: list,
+                          regime_id: int = None) -> dict:
+        """Find the best-performing HP config from Observer history.
+
+        Ranks past cycles by *efficiency* = pnl / max(duration_bars, 1).
+        High PnL in short duration = best.  Filters to the current
+        regime if specified and enough data exists.
+
+        Parameters
+        ----------
+        observer_sessions : list of dict
+            Enriched sessions from Observer, each with ``hp_used``,
+            ``pnl``, ``bars``, ``regime_id_at_entry``.
+        regime_id : int, optional
+            Current regime — prefer configs from matching regime.
+
+        Returns
+        -------
+        dict — the HP config dict from the best session, or ``{}`` if
+        no usable history.
+        """
+        if not observer_sessions:
+            return {}
+
+        # Score each session: efficiency = pnl / max(bars, 1)
+        # Negative PnL or long duration = low score
+        scored = []
+        for sess in observer_sessions:
+            hp_used = sess.get('hp_used')
+            if not hp_used:
+                continue
+            pnl = sess.get('pnl', 0)
+            bars = max(sess.get('bars', 1), 1)
+            regime = sess.get('regime_id_at_entry', 0)
+            efficiency = pnl / bars
+            scored.append((efficiency, regime, hp_used))
+
+        if not scored:
+            return {}
+
+        # Filter to current regime if we have enough matching sessions
+        if regime_id is not None:
+            regime_matches = [(eff, r, hp) for eff, r, hp in scored if r == regime_id]
+            if len(regime_matches) >= 3:
+                scored = regime_matches
+
+        # Pick the best by efficiency
+        scored.sort(key=lambda x: x[0], reverse=True)
+        best_hp = scored[0][2]
+
+        # Filter through safety bounds and return
+        safe_config = {}
+        for name, value in best_hp.items():
+            if name in self._hp_lookup:
+                safe_config[name] = value
+            # Also include params the bandit doesn't manage (like preset)
+            # but skip them — only return bandit-managed params
+
+        # Apply safety bounds
+        for param_name, (safe_lo, safe_hi) in _SAFETY_BOUNDS.items():
+            if param_name in safe_config:
+                v = safe_config[param_name]
+                if isinstance(v, (int, float)):
+                    safe_config[param_name] = type(v)(max(safe_lo, min(safe_hi, v)))
+
+        return safe_config
+
+    # ------------------------------------------------------------------
     # HP injection
     # ------------------------------------------------------------------
 
