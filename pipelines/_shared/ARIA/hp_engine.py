@@ -49,12 +49,23 @@ _N_BINS = 3                         # discretization bins (default ± 1 step)
 # no signal, crash-prone, or require external model).  The bandit must
 # never explore these.
 _EXCLUDED_OPTIONS = {
-    'signal_mode': {'model', 'none'},          # model needs external ML; none enters every bar
+    'signal_mode': {
+        'model',              # needs external ML
+        'none',               # enters every bar — no signal at all
+        'ema_rsi',            # compound: EMA cross + RSI OB/OS — too restrictive
+        'ema_macd',           # compound: EMA + MACD — too restrictive
+        'triple',             # compound: EMA + RSI + MACD — extremely restrictive
+        'indicator',          # generic: depends on ind_name/ind_rule, often restricts entries
+        'dual_indicator',     # compound: two indicators — very restrictive
+    },
     'day_filter': {'skip_mon_fri'},            # removes 40% of trading days
     'sizing_curve': {'fixed', 'anti_martingale'},  # fixed ignores sizing_factor; anti is inverse
     'sizing_custom_sequence': {'1_2_4_8_16', '1_3_6_12_24'},  # insanely aggressive sequences
     'abort_mode': {'none'},                    # RiskShield handles abort; strategy must have one too
     'hedge_mode': {'fibonacci_levels'},        # fibonacci spacing creates stuck cycles
+    'vol_filter': {'atr_range', 'natr_min'},   # volatility filters stack with signals → too few entries
+    'confidence_gate': {'enabled'},            # additional gate on top of ARIA gate → too few entries
+    'equity_curve_filter': {'above_ema'},      # can block entries during drawdowns when recovery is needed
 }
 
 # Safety bounds: min/max overrides applied AFTER bandit selection to
@@ -77,6 +88,16 @@ _ALL_GROUPS = {'General', 'Entry Signal', 'Grid / Hedge', 'Take Profit',
 # BanditState
 # ---------------------------------------------------------------------------
 
+_DEFAULT_SEED = 42
+_RNG = np.random.Generator(np.random.PCG64(seed=_DEFAULT_SEED))
+
+
+def reset_rng(seed: int = _DEFAULT_SEED) -> None:
+    """Reset module RNG to ensure deterministic backtests."""
+    global _RNG
+    _RNG = np.random.Generator(np.random.PCG64(seed=seed))
+
+
 @dataclass
 class BanditState:
     """Per-group, per-regime Thompson Sampling bandit state.
@@ -91,7 +112,7 @@ class BanditState:
 
     def sample_best(self) -> int:
         """Thompson Sampling: draw from each arm's Beta, return index of max."""
-        samples = np.random.beta(self.alpha, self.beta)
+        samples = _RNG.beta(self.alpha, self.beta)
         return int(np.argmax(samples))
 
 
@@ -219,12 +240,12 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
         attempts += 1
         arm = dict(default_arm)
         # Perturb 1-3 params randomly
-        n_perturb = min(len(group_hps), np.random.randint(1, 4))
-        indices = np.random.choice(len(group_hps), n_perturb, replace=False)
+        n_perturb = min(len(group_hps), _RNG.integers(1, 4))
+        indices = _RNG.choice(len(group_hps), n_perturb, replace=False)
         for idx in indices:
             vals = param_vals[idx]
             if vals:
-                arm[param_names[idx]] = vals[np.random.randint(len(vals))]
+                arm[param_names[idx]] = vals[_RNG.integers(len(vals))]
         key = _arm_key(arm, param_names)
         if key not in seen:
             seen.add(key)
@@ -286,6 +307,8 @@ class HPEngine:
         self._warmup: int = config.get('warmup_cycles', 20)
         self._max_arms: int = config.get('max_arms', 30)
         self._k_max: int = config.get('k_max', 5)
+
+        reset_rng(config.get('seed', _DEFAULT_SEED))
 
         self._n_cycles: int = 0
         self._hp_schema: Optional[list] = None
@@ -428,20 +451,32 @@ class HPEngine:
     # Bandit update
     # ------------------------------------------------------------------
 
-    def update(self, profitable: bool) -> None:
+    def update(self, profitable: bool, duration_bars: int = 0) -> None:
         """Update bandit posteriors after cycle end.
 
         Parameters
         ----------
         profitable : bool
             True if the cycle was profitable (PnL > 0).
+        duration_bars : int
+            How many bars the cycle lasted.  Long cycles (>500 bars)
+            get a penalty even if profitable, because a martingale
+            needs high cycle throughput.
         """
         self._n_cycles += 1  # count completed cycles, not select() calls
 
         if not self._selected_arms:
             return
 
+        # Base reward: 1.0 for profit, 0.0 for loss
         reward = 1.0 if profitable else 0.0
+
+        # Duration penalty: long cycles reduce reward even if profitable.
+        # A 500-bar cycle gets ~0.5 penalty, 1000-bar gets ~0.75.
+        if duration_bars > 200:
+            duration_penalty = min(0.8, (duration_bars - 200) / 1000.0)
+            reward = max(0.0, reward - duration_penalty)
+
         regime_id = self._last_regime_id
 
         for group_name, arm_idx in self._selected_arms.items():

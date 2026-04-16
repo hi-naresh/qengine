@@ -383,9 +383,9 @@ class ARIAPipeline(Pipeline):
             self._gate.update(self._market_state, strategy, profitable,
                               stress_features=stress_features)
 
-        # L3: HPEngine bandit posterior update
+        # L3: HPEngine bandit posterior update (with duration penalty)
         if self._hp_engine_enabled:
-            self._hp_engine.update(profitable)
+            self._hp_engine.update(profitable, duration_bars=duration)
 
         # L6: MetaEvaluator — compute ARIA score and check for degradation
         if self._meta_enabled:
