@@ -19,7 +19,7 @@ def default_config() -> dict:
         # Layer 3 — HPEngine
         'hp_engine_enabled': True,
         'hp_warmup_cycles': 5,
-        'hp_max_arms_per_group': 15,
+        'hp_max_arms_per_group': 25,
 
         # Layer 4 — RiskShield
         'conformal_alpha': 0.1,

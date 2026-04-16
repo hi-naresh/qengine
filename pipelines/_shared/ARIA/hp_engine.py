@@ -236,7 +236,25 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
     arms = [default_arm]
     seen = {_arm_key(default_arm, param_names)}
 
-    # Phase 1: single-param variations (change ONE param at a time)
+    # Phase 1: ONE arm per param — guarantees every param is explored.
+    # Pick the MOST DIFFERENT non-default value for each param.
+    for i, hp in enumerate(group_hps):
+        non_defaults = [v for v in param_vals[i] if v != default_arm[hp['name']]]
+        if not non_defaults:
+            continue
+        # Pick the value furthest from default (for categoricals: first non-default)
+        if isinstance(non_defaults[0], (int, float)):
+            best = max(non_defaults, key=lambda v: abs(v - (default_arm[hp['name']] or 0)))
+        else:
+            best = non_defaults[0]
+        arm = dict(default_arm)
+        arm[hp['name']] = best
+        key = _arm_key(arm, param_names)
+        if key not in seen and len(arms) < max_arms:
+            seen.add(key)
+            arms.append(arm)
+
+    # Phase 2: remaining single-param variations (other values)
     for i, hp in enumerate(group_hps):
         for val in param_vals[i]:
             if val == default_arm[hp['name']]:
@@ -248,12 +266,11 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
                 seen.add(key)
                 arms.append(arm)
 
-    # Phase 2: multi-param combos (random local perturbations)
+    # Phase 3: multi-param combos (random local perturbations)
     attempts = 0
     while len(arms) < max_arms and attempts < max_arms * 5:
         attempts += 1
         arm = dict(default_arm)
-        # Perturb 1-3 params randomly
         n_perturb = min(len(group_hps), _RNG.integers(1, 4))
         indices = _RNG.choice(len(group_hps), n_perturb, replace=False)
         for idx in indices:
