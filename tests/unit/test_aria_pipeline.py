@@ -560,7 +560,9 @@ class TestFullPipeline:
 
     def test_gate_blocks_after_learning(self):
         """After enough cycles with losses, gate should block some entries."""
-        # Run with many losses to train gate
+        # Run with many losses to train gate.  Threshold ramps at 0.005/cycle,
+        # needs ~60+ consecutive losses before blocking (threshold ~0.275,
+        # sigmoid after 60 losses ~0.18).
         cfg = {
             'brain_warmup': 5, 'gate_warmup_cycles': 3,
             'hp_warmup_cycles': 3, 'meta_window': 10,
@@ -573,8 +575,8 @@ class TestFullPipeline:
         for _ in range(10):
             aria.on_before(s)
 
-        # Simulate 20 losing cycles to train gate
-        for c in range(20):
+        # Simulate 70 losing cycles to train gate
+        for c in range(70):
             aria.on_before(s)
             aria.gate_entry(s)
             s.is_open = True
