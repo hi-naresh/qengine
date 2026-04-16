@@ -104,14 +104,28 @@ class BanditState:
 
     Each arm is a dict mapping parameter names to values.  Alpha and beta
     arrays hold the Beta distribution parameters (one pair per arm).
+
+    Initial exploration: every arm is tried once (round-robin) before
+    Thompson Sampling takes over.  This prevents the default arm from
+    dominating before alternatives are evaluated.
     """
 
     arms: list                  # list of {param_name: value, ...} dicts
     alpha: np.ndarray           # shape (n_arms,), Beta alpha per arm
     beta: np.ndarray            # shape (n_arms,), Beta beta per arm
+    visit_count: np.ndarray = field(default=None)  # shape (n_arms,)
+
+    def __post_init__(self):
+        if self.visit_count is None:
+            self.visit_count = np.zeros(len(self.arms), dtype=np.int32)
 
     def sample_best(self) -> int:
-        """Thompson Sampling: draw from each arm's Beta, return index of max."""
+        """Select an arm: round-robin until all tried, then Thompson Sampling."""
+        # Phase 1: round-robin — try each arm once
+        unvisited = np.where(self.visit_count == 0)[0]
+        if len(unvisited) > 0:
+            return int(unvisited[_RNG.integers(len(unvisited))])
+        # Phase 2: Thompson Sampling
         samples = _RNG.beta(self.alpha, self.beta)
         return int(np.argmax(samples))
 
@@ -486,6 +500,7 @@ class HPEngine:
                 continue
             bandit.alpha[arm_idx] += reward
             bandit.beta[arm_idx] += (1.0 - reward)
+            bandit.visit_count[arm_idx] += 1
 
         # Clear selection for next cycle
         self._selected_arms = {}
@@ -555,6 +570,7 @@ class HPEngine:
                 bandits_ser[group_name][str(regime_id)] = {
                     'alpha': bandit.alpha.tolist(),
                     'beta': bandit.beta.tolist(),
+                    'visit_count': bandit.visit_count.tolist(),
                 }
 
         return {
@@ -597,10 +613,13 @@ class HPEngine:
                 n_arms = len(arms)
                 alpha = np.array(state['alpha'][:n_arms], dtype=np.float64)
                 beta_arr = np.array(state['beta'][:n_arms], dtype=np.float64)
+                vc = state.get('visit_count')
+                visit_count = np.array(vc[:n_arms], dtype=np.int32) if vc else np.zeros(n_arms, dtype=np.int32)
                 self._bandits[group_name][regime_id] = BanditState(
                     arms=arms,
                     alpha=alpha,
                     beta=beta_arr,
+                    visit_count=visit_count,
                 )
 
     # ------------------------------------------------------------------
