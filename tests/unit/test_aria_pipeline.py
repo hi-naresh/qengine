@@ -455,6 +455,53 @@ class TestL6MetaEvaluator:
             assert isinstance(entry[1], float)
 
 
+class TestStaleness:
+    """HP selection must re-trigger if no entry happens within stale_bars."""
+
+    def test_stale_hp_reselects(self):
+        """If no entry for hp_stale_bars candles, force new HP selection."""
+        aria = ARIAPipeline({
+            'brain_warmup': 5, 'hp_warmup_cycles': 2,
+            'gate_warmup_cycles': 2, 'hp_stale_bars': 20,
+        })
+        s = MockStrategy()
+
+        # Warmup
+        for _ in range(10):
+            aria.on_before(s)
+
+        # Complete 3 cycles to pass warmup
+        for c in range(3):
+            aria.on_before(s)
+            aria.gate_entry(s)
+            s.is_open = True
+            s.vars['cycle_active'] = True
+            aria.on_open_position(s)
+            s.vars['sessions'].append({
+                'number': c, 'direction': 'long', 'levels': 0,
+                'legs': 0, 'pnl': 5.0, 'reason': 'tp_hit', 'bars': 10,
+            })
+            s.is_open = False
+            s.vars['cycle_active'] = False
+            aria.on_cycle_end(5.0, s)
+
+        # Now HP is selected. Record the selection.
+        aria.on_before(s)
+        first_selection = dict(aria._hp_selection)
+        assert aria._hp_selected_this_cycle, "HP should be selected"
+
+        # Simulate 25 candles with NO entry (strategy never fires should_long)
+        for _ in range(25):
+            aria.on_before(s)
+
+        # After 20 bars (stale_bars), _hp_selected_this_cycle should reset
+        # and a NEW selection should happen
+        assert aria._hp_selected_this_cycle, "Should have re-selected after staleness"
+        # The selection may or may not differ (random), but the mechanism fired
+        assert aria._hp_selected_at_bar > 15, \
+            f"HP should have been re-selected, selected_at_bar={aria._hp_selected_at_bar}"
+
+
 class TestFullPipeline:
     """End-to-end tests verifying all layers work together."""
 

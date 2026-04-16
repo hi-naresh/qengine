@@ -136,6 +136,8 @@ class ARIAPipeline(Pipeline):
         self._preset_forced = False
         self._last_cycle_end_bar: int = 0
         self._last_observed_level: int = 0
+        self._hp_selected_at_bar: int = 0  # candle when last HP selection happened
+        self._hp_stale_bars: int = cfg.get('hp_stale_bars', 500)  # re-select if no entry after this many bars
 
     # ── Observation (every candle) ──
 
@@ -156,6 +158,13 @@ class ARIAPipeline(Pipeline):
                 self._hp_engine.register_strategy(strategy)
                 self._hp_registered = True
 
+        # Staleness check: if HPs were selected but no entry happened
+        # for hp_stale_bars candles, the current config is dead — force
+        # re-selection with a different config.
+        if (self._hp_selected_this_cycle
+                and self._candle_count - self._hp_selected_at_bar > self._hp_stale_bars):
+            self._hp_selected_this_cycle = False  # allow re-selection
+
         # L3: select HPs ONCE between cycles (not every candle).
         # Only after candle warmup so brain has market context.
         sv = getattr(strategy, 'vars', {})
@@ -169,6 +178,7 @@ class ARIAPipeline(Pipeline):
             if self._hp_selection:
                 self._hp_engine.inject_hp(strategy, self._hp_selection)
             self._hp_selected_this_cycle = True
+            self._hp_selected_at_bar = self._candle_count
 
         # Update shadow tracker — monitor pending counterfactual sessions
         self._shadow.update(strategy)

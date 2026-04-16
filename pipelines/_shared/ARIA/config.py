@@ -20,6 +20,7 @@ def default_config() -> dict:
         'hp_engine_enabled': True,
         'hp_warmup_cycles': 5,
         'hp_max_arms_per_group': 25,
+        'hp_stale_bars': 500,          # re-select HPs if no entry after 500 bars (~1.7 days)
 
         # Layer 4 — RiskShield
         'conformal_alpha': 0.1,
