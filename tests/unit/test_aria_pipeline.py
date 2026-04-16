@@ -501,6 +501,50 @@ class TestStaleness:
         assert aria._hp_selected_at_bar > 15, \
             f"HP should have been re-selected, selected_at_bar={aria._hp_selected_at_bar}"
 
+    def test_stale_fallback_forces_defaults(self):
+        """After 2 consecutive stale selections, force safe high-frequency defaults."""
+        aria = ARIAPipeline({
+            'brain_warmup': 5, 'hp_warmup_cycles': 2,
+            'gate_warmup_cycles': 2, 'hp_stale_bars': 15,
+        })
+        s = MockStrategy()
+
+        # Warmup + 3 cycles
+        for _ in range(10):
+            aria.on_before(s)
+        for c in range(3):
+            aria.on_before(s)
+            aria.gate_entry(s)
+            s.is_open = True
+            s.vars['cycle_active'] = True
+            aria.on_open_position(s)
+            s.vars['sessions'].append({
+                'number': c, 'direction': 'long', 'levels': 0,
+                'legs': 0, 'pnl': 5.0, 'reason': 'tp_hit', 'bars': 10,
+            })
+            s.is_open = False
+            s.vars['cycle_active'] = False
+            aria.on_cycle_end(5.0, s)
+
+        # Set signal_mode to something restrictive manually
+        s.hp['signal_mode'] = 'adx'
+        s.hp['session_filter'] = 'asian'
+
+        # First stale cycle: 20 bars with no entry
+        aria.on_before(s)  # selects HPs
+        for _ in range(20):
+            aria.on_before(s)
+        assert aria._stale_count >= 1, "First stale should be counted"
+
+        # Second stale cycle: another 20 bars
+        for _ in range(20):
+            aria.on_before(s)
+        # After 2nd stale, should force defaults
+        assert s.hp['signal_mode'] == 'random', \
+            f"After 2 stale, signal_mode should be forced to 'random', got '{s.hp['signal_mode']}'"
+        assert s.hp['session_filter'] == 'any', \
+            f"After 2 stale, session_filter should be 'any', got '{s.hp['session_filter']}'"
+
 
 class TestFullPipeline:
     """End-to-end tests verifying all layers work together."""

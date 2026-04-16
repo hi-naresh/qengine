@@ -138,6 +138,7 @@ class ARIAPipeline(Pipeline):
         self._last_observed_level: int = 0
         self._hp_selected_at_bar: int = 0  # candle when last HP selection happened
         self._hp_stale_bars: int = cfg.get('hp_stale_bars', 500)  # re-select if no entry after this many bars
+        self._stale_count: int = 0  # consecutive stale selections (no entry)
 
     # ── Observation (every candle) ──
 
@@ -159,11 +160,30 @@ class ARIAPipeline(Pipeline):
                 self._hp_registered = True
 
         # Staleness check: if HPs were selected but no entry happened
-        # for hp_stale_bars candles, the current config is dead — force
-        # re-selection with a different config.
+        # for hp_stale_bars candles, the current config is dead.
+        # Penalise the stale arms (they produced no entries) and force
+        # re-selection. After 2 consecutive stale selections, fall back
+        # to a safe high-frequency default config.
         if (self._hp_selected_this_cycle
                 and self._candle_count - self._hp_selected_at_bar > self._hp_stale_bars):
+            # Penalise stale arms — treat as a loss (no entry = failed config)
+            if self._hp_engine_enabled:
+                self._hp_engine.update(profitable=False, duration_bars=self._hp_stale_bars)
+            self._stale_count = getattr(self, '_stale_count', 0) + 1
             self._hp_selected_this_cycle = False  # allow re-selection
+
+            # After 2 consecutive stale selections, force safe defaults
+            # and SKIP the bandit re-selection this cycle so the forced
+            # defaults aren't immediately overwritten.
+            if self._stale_count >= 2 and hasattr(strategy, 'hp'):
+                strategy.hp['signal_mode'] = 'random'
+                strategy.hp['session_filter'] = 'any'
+                strategy.hp['day_filter'] = 'any'
+                strategy.hp['entry_on_crossover'] = 'no'
+                strategy.hp['direction_bias'] = 'both'
+                self._stale_count = 0
+                self._hp_selected_this_cycle = True  # prevent bandit from overwriting
+                self._hp_selected_at_bar = self._candle_count
 
         # L3: select HPs ONCE between cycles (not every candle).
         # Only after candle warmup so brain has market context.
@@ -293,6 +313,7 @@ class ARIAPipeline(Pipeline):
         """L5: Observer captures entry snapshot with gate confidence."""
         self._cycle_active = True
         self._last_observed_level = 0
+        self._stale_count = 0  # entry succeeded, reset staleness
 
         sv = getattr(strategy, 'vars', {})
         start_bar = int(sv.get('session_start_bar', getattr(strategy, 'index', 0)))
