@@ -27,7 +27,7 @@ def default_config() -> dict:
         'conformal_safety': 0.8,
         'fallback_level': 6,
         'max_ruin_prob': 0.5,
-        'max_cycle_bars': 500,           # ~1.7 days at 5m — abort stuck cycles fast
+        'max_cycle_bars': 300,           # ~1 day at 5m — TP hits avg at 164 bars, abort at 2x
         'danger_abort_threshold': 0.8,   # abort at L3+ when danger > 0.8
         'stress_enabled': False,             # R(t) structural stress — disabled pending param research
         'stress_abort_threshold': 1.5,    # stress velocity above which to abort

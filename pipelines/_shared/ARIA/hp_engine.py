@@ -63,7 +63,7 @@ _EXCLUDED_OPTIONS = {
     'sizing_custom_sequence': {'1_2_4_8_16', '1_3_6_12_24'},  # insanely aggressive sequences
     'abort_mode': {'none'},                    # RiskShield handles abort; strategy must have one too
     'hedge_mode': {'fibonacci_levels'},        # fibonacci spacing creates stuck cycles
-    'tp_mode': {'trailing'},                   # trailing TP chases price forever — never closes
+    'tp_mode': {'trailing', 'bucket_pct', 'risk_reward'},  # trailing chases forever; bucket_pct/risk_reward produce unreachable TPs with spread
     'vol_filter': {'atr_range', 'natr_min'},   # volatility filters stack with signals → too few entries
     'confidence_gate': {'enabled'},            # additional gate on top of ARIA gate → too few entries
     'equity_curve_filter': {'above_ema'},      # can block entries during drawdowns when recovery is needed
