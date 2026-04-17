@@ -76,6 +76,8 @@ _SAFETY_BOUNDS = {
     'base_size_value': (0.1, 3.0),  # 0.1% to 3% equity max
     'max_daily_loss_pct': (0, 5.0), # cap daily loss
     'max_exposure_pct': (0, 80),    # never above 80% margin
+    'tp_value': (1.0, 30.0),       # TP must be reachable — 30 pips max for FX scalping
+    'hedge_value': (3.0, 30.0),    # hedge distance 3-30 pips — not too tight, not too wide
 }
 
 # All HP groups are injected on strategy.hp between cycles.

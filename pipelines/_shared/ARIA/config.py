@@ -20,14 +20,14 @@ def default_config() -> dict:
         'hp_engine_enabled': True,
         'hp_warmup_cycles': 5,
         'hp_max_arms_per_group': 25,
-        'hp_stale_bars': 500,          # re-select HPs if no entry after 500 bars (~1.7 days)
+        'hp_stale_bars': 200,          # re-select HPs if no entry after 200 bars (~17 hours)
 
         # Layer 4 — RiskShield
         'conformal_alpha': 0.1,
         'conformal_safety': 0.8,
         'fallback_level': 6,
         'max_ruin_prob': 0.5,
-        'max_cycle_bars': 2000,          # ~7 days at 5m — abort stuck cycles
+        'max_cycle_bars': 500,           # ~1.7 days at 5m — abort stuck cycles fast
         'danger_abort_threshold': 0.8,   # abort at L3+ when danger > 0.8
         'stress_enabled': False,             # R(t) structural stress — disabled pending param research
         'stress_abort_threshold': 1.5,    # stress velocity above which to abort
