@@ -625,6 +625,67 @@ class HPEngine:
                 strategy.hp[name] = value
 
     # ------------------------------------------------------------------
+    # Reactive adjustments
+    # ------------------------------------------------------------------
+
+    def reactive_adjustments(self, hp_config: dict, observer_sessions: list) -> dict:
+        """Post-selection adjustments based on recent cycle outcomes.
+
+        Tightens max_levels and widens hedge after recent busts.
+        Loosens after sustained win streaks.
+
+        Parameters
+        ----------
+        hp_config : dict
+            HP config from ``select()`` (already safety-bounded).
+        observer_sessions : list of dict
+            Enriched sessions from Observer.
+
+        Returns
+        -------
+        dict — modified HP config.
+        """
+        if not hp_config or not observer_sessions:
+            return hp_config
+
+        config = dict(hp_config)  # don't mutate original
+        bust_reasons = {'max_level_bust', 'margin_bust', 'margin_call'}
+
+        last_5 = observer_sessions[-5:]
+        last_10 = observer_sessions[-10:]
+
+        busts_in_last_5 = [s for s in last_5 if s.get('reason') in bust_reasons]
+        busts_in_last_10 = [s for s in last_10 if s.get('reason') in bust_reasons]
+
+        # --- Rule 1: Bust cooldown — cap max_levels ---
+        if busts_in_last_5 and 'max_levels' in config:
+            # Last cycle was a bust → cap at 3
+            last_reason = observer_sessions[-1].get('reason')
+            if last_reason in bust_reasons:
+                config['max_levels'] = min(config['max_levels'], 3)
+            else:
+                config['max_levels'] = min(config['max_levels'], 4)
+
+        # --- Rule 2: Hedge widening after busts ---
+        if busts_in_last_5 and 'hedge_value' in config:
+            config['hedge_value'] = min(config['hedge_value'] * 1.5, 30.0)
+
+        # --- Rule 3: Win streak bonus ---
+        if len(last_10) >= 10 and all(s.get('reason') == 'tp_hit' for s in last_10):
+            if 'max_levels' in config:
+                # Relax cap up to 6 (don't exceed safety bound)
+                config['max_levels'] = min(config['max_levels'], 6)
+
+        # --- Rule 4: Sizing reduction after repeated busts ---
+        if len(busts_in_last_10) >= 2 and 'base_size_value' in config:
+            config['base_size_value'] = round(config['base_size_value'] * 0.7, 6)
+            # Enforce safety lower bound
+            lo = _SAFETY_BOUNDS.get('base_size_value', (0.1, 3.0))[0]
+            config['base_size_value'] = max(config['base_size_value'], lo)
+
+        return config
+
+    # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
 

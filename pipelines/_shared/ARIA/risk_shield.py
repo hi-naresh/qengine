@@ -304,6 +304,7 @@ class RiskShield:
         self._ruin_probs: list[float] = []
         self._last_reason: str = ''
         self._cycle_bar_count: int = 0
+        self._total_checks: int = 0
 
     # ----- main entry point -----
 
@@ -339,6 +340,7 @@ class RiskShield:
             return None
 
         self._cycle_bar_count += 1
+        self._total_checks += 1
 
         # --- Duration abort: kill stuck cycles ONLY if losing ---
         # Aborting profitable positions destroys edge.  Shadow data showed
@@ -352,12 +354,19 @@ class RiskShield:
             if total_pnl <= 0:
                 self._last_reason = 'duration_abort'
                 return {'action': 'close_all', 'reason': f'duration:{self._cycle_bar_count}_bars_pnl_{total_pnl:.0f}'}
+            # Profitable — extend, but hard-cap at 2x to prevent infinite runs
+            elif self._cycle_bar_count > self._max_cycle_bars * 2:
+                self._last_reason = 'duration_max'
+                return {'action': 'close_all', 'reason': f'duration_max:{self._cycle_bar_count}_bars'}
 
         # --- High danger abort: kill at extreme danger when deep in levels ---
+        # Level-proportional threshold: deeper levels get stricter thresholds
+        # L3: base, L4: base-0.10, L5: base-0.20, L6+: max(0.35, ...)
         danger = (market_state or {}).get('danger', 0.5)
-        if level >= 3 and danger > self._danger_abort_threshold:
+        level_threshold = max(0.35, self._danger_abort_threshold - (level - 3) * 0.10)
+        if level >= 3 and danger > level_threshold:
             self._last_reason = 'danger_abort'
-            return {'action': 'close_all', 'reason': f'danger:{danger:.3f}_at_L{level}'}
+            return {'action': 'close_all', 'reason': f'danger:{danger:.3f}_at_L{level}_thresh_{level_threshold:.2f}'}
 
         # --- Structural stress abort (Chen 2026 R(t)) ---
         if level >= self._stress_abort_min_level and stress_velocity > self._stress_abort_threshold:
@@ -421,6 +430,7 @@ class RiskShield:
         self.conformal.record_cycle(level_reached, pnl)
         self._ruin_probs = []
         self._cycle_bar_count = 0
+        self._total_checks = 0
 
     @property
     def ruin_probs_this_cycle(self) -> list[float]:

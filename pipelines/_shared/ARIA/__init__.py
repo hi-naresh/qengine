@@ -206,6 +206,9 @@ class ARIAPipeline(Pipeline):
             regime_id = self._market_state.get('regime_id', 0)
             self._hp_selection = self._hp_engine.select(regime_id)
             if self._hp_selection:
+                self._hp_selection = self._hp_engine.reactive_adjustments(
+                    self._hp_selection, self._observer.sessions
+                )
                 self._hp_engine.inject_hp(strategy, self._hp_selection)
             self._hp_selected_this_cycle = True
             self._hp_selected_at_bar = self._candle_count
