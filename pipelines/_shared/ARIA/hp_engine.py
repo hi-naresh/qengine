@@ -72,7 +72,7 @@ _EXCLUDED_OPTIONS = {
 # Safety bounds: min/max overrides applied AFTER bandit selection to
 # prevent configurations that blow up the account.
 _SAFETY_BOUNDS = {
-    'max_levels': (2, 10),          # never 0 (no hedging) or >10 (guaranteed bust)
+    'max_levels': (2, 6),           # L0-L2 profitable, L3+ catastrophic — cap at 6
     'base_size_value': (0.1, 3.0),  # 0.1% to 3% equity max
     'max_daily_loss_pct': (0, 5.0), # cap daily loss
     'max_exposure_pct': (0, 80),    # never above 80% margin

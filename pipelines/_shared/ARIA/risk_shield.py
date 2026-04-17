@@ -340,10 +340,18 @@ class RiskShield:
 
         self._cycle_bar_count += 1
 
-        # --- Duration abort: kill stuck cycles ---
+        # --- Duration abort: kill stuck cycles ONLY if losing ---
+        # Aborting profitable positions destroys edge.  Shadow data showed
+        # 62% of aborts killed cycles that would have recovered to TP.
         if self._cycle_bar_count > self._max_cycle_bars:
-            self._last_reason = 'duration_abort'
-            return {'action': 'close_all', 'reason': f'duration:{self._cycle_bar_count}_bars'}
+            session_pnl = float(getattr(strategy, 'balance', 0)) - \
+                          float(sv.get('session_start_balance', getattr(strategy, 'balance', 0)))
+            floating = getattr(strategy, 'position', None)
+            floating_pnl = float(getattr(floating, 'pnl', 0)) if floating else 0
+            total_pnl = session_pnl + floating_pnl
+            if total_pnl <= 0:
+                self._last_reason = 'duration_abort'
+                return {'action': 'close_all', 'reason': f'duration:{self._cycle_bar_count}_bars_pnl_{total_pnl:.0f}'}
 
         # --- High danger abort: kill at extreme danger when deep in levels ---
         danger = (market_state or {}).get('danger', 0.5)

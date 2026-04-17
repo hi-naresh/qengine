@@ -28,7 +28,7 @@ def default_config() -> dict:
         'fallback_level': 6,
         'max_ruin_prob': 0.5,
         'max_cycle_bars': 300,           # ~1 day at 5m — TP hits avg at 164 bars, abort at 2x
-        'danger_abort_threshold': 0.8,   # abort at L3+ when danger > 0.8
+        'danger_abort_threshold': 0.65,  # abort at L3+ when danger > 0.65 (L3+ is catastrophic)
         'stress_enabled': False,             # R(t) structural stress — disabled pending param research
         'stress_abort_threshold': 1.5,    # stress velocity above which to abort
         'stress_abort_min_level': 2,      # min depth before stress abort activates
