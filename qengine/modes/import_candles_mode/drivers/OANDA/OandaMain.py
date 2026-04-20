@@ -155,11 +155,12 @@ class OandaMain(CandleExchange):
         # OANDA uses RFC3339 timestamps or unix seconds
         from_time = arrow.get(start_timestamp / 1000).isoformat()
 
+        # Fetch bid+ask candles in one request (price='BA') to get real spread
         params = {
             'from': from_time,
             'granularity': oanda_granularity,
             'count': self.count,
-            'price': 'M',  # midpoint candles
+            'price': 'BA',  # bid AND ask candles in same response
         }
 
         response = self._make_request(
@@ -173,13 +174,32 @@ class OandaMain(CandleExchange):
         raw_candles = []
         for c in data.get('candles', []):
             if c.get('complete', True):
+                bid = c.get('bid', {})
+                ask = c.get('ask', {})
+                if not bid or not ask:
+                    continue
+                # Mid prices from (bid + ask) / 2
+                bid_o, ask_o = float(bid['o']), float(ask['o'])
+                bid_c, ask_c = float(bid['c']), float(ask['c'])
+                bid_h, ask_h = float(bid['h']), float(ask['h'])
+                bid_l, ask_l = float(bid['l']), float(ask['l'])
+
+                mid_o = (bid_o + ask_o) / 2
+                mid_c = (bid_c + ask_c) / 2
+                mid_h = (bid_h + ask_h) / 2
+                mid_l = (bid_l + ask_l) / 2
+
+                # Spread at candle open (ask - bid) in price units
+                spread = ask_o - bid_o
+
                 raw_candles.append({
                     'timestamp': arrow.get(c['time']).int_timestamp * 1000,
-                    'open': float(c['mid']['o']),
-                    'close': float(c['mid']['c']),
-                    'high': float(c['mid']['h']),
-                    'low': float(c['mid']['l']),
+                    'open': mid_o,
+                    'close': mid_c,
+                    'high': mid_h,
+                    'low': mid_l,
                     'volume': int(c.get('volume', 0)),
+                    'spread': spread,
                 })
 
         if not raw_candles:
@@ -200,6 +220,7 @@ class OandaMain(CandleExchange):
                 'high': c['high'],
                 'low': c['low'],
                 'volume': c['volume'],
+                'spread': c.get('spread'),
             } for c in raw_candles]
 
         return candles
@@ -217,6 +238,7 @@ class OandaMain(CandleExchange):
                     'low': c['low'],
                     'close': c['close'],
                     'volume': c['volume'],
+                    'spread': c.get('spread'),  # spread at minute open
                 }
             else:
                 b = buckets[minute_ts]
@@ -239,6 +261,7 @@ class OandaMain(CandleExchange):
                 'high': b['high'],
                 'low': b['low'],
                 'volume': b['volume'],
+                'spread': b.get('spread'),
             })
         return candles
 
@@ -251,7 +274,7 @@ class OandaMain(CandleExchange):
         params = {
             'granularity': 'W',
             'count': 5000,
-            'price': 'M',
+            'price': 'M',  # midpoint is fine for just getting start time
         }
 
         response = self._make_request(

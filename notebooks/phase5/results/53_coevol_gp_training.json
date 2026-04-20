@@ -1,0 +1,34 @@
+{
+  "start": "2022-01-01",
+  "end": "2023-12-31",
+  "smoke": false,
+  "hmmlearn_available": true,
+  "hmm_backend": "hmmlearn_gmmhmm",
+  "selected_features": [
+    "rsi_14",
+    "day_of_week",
+    "hl_range_norm",
+    "rsi_28",
+    "close_position"
+  ],
+  "mi_scores": [
+    0.04458663168695298,
+    0.04178521662855306,
+    0.041765814875685425,
+    0.038003365763644714,
+    0.03720548575399252
+  ],
+  "generations": 10,
+  "population_size": 20,
+  "n_states": 3,
+  "state_usage": {
+    "s0": 0.3002077450173404,
+    "s1": 0.3515123353709948,
+    "s2": 0.3482799196127029
+  },
+  "best_fitness": {
+    "s0": 59.1534312103682,
+    "s1": 67.81437369836749,
+    "s2": 179.89537417845924
+  }
+}

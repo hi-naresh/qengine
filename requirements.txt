@@ -31,6 +31,7 @@ optuna~=4.2.0
 ray
 msgpack~=1.1.0
 jesse-rust==1.0.1
+# stable-baselines3 torch
 # LLM providers (install the one you use)
 google-genai
 anthropic>=0.39.0

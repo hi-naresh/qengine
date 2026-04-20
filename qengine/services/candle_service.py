@@ -308,13 +308,23 @@ def _get_candles_from_db(
     # Always materialize the database results immediately
     candles_tuple = list(Candle.select(
         Candle.timestamp, Candle.open, Candle.close, Candle.high, Candle.low,
-        Candle.volume
+        Candle.volume, Candle.spread
     ).where(
         Candle.exchange == exchange,
         Candle.symbol == symbol,
         (Candle.timeframe == '1m') | (Candle.timeframe.is_null()),
         Candle.timestamp.between(start_date_timestamp, finish_date_timestamp)
     ).order_by(Candle.timestamp.asc()).tuples())
+
+    # Extract and store real spread data (column index 6) in a global lookup.
+    # The cost model uses this to apply per-candle spread instead of a fixed value.
+    from qengine.services import spread_data
+    for row in candles_tuple:
+        if len(row) > 6 and row[6] is not None:
+            spread_data.set_spread(exchange, symbol, int(row[0]), row[6])
+
+    # Strip spread column from the tuple (keep 6-element format for numpy array)
+    candles_tuple = [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in candles_tuple]
 
     # Check if we got any candles
     if not candles_tuple:
@@ -346,21 +356,40 @@ def _get_candles_from_db(
 
 
 def _get_generated_candles(timeframe, trading_candles) -> np.ndarray:
-    # generate candles for the requested timeframe
+    """Generate higher-timeframe candles from 1m bars.
+
+    Groups by timestamp alignment (not array index), so gaps in data
+    (weekends, market-closed periods) are handled correctly without
+    requiring fake gap-fill candles.
+    """
+    num = jh.timeframe_to_one_minutes(timeframe)
+    tf_ms = num * 60_000  # timeframe duration in ms
+
     generated_candles = []
-    for i in range(len(trading_candles)):
-        num = jh.timeframe_to_one_minutes(timeframe)
+    bucket = []
 
-        if (i + 1) % num == 0:
-            generated_candles.append(
-                generate_candle_from_one_minutes(
-                    timeframe,
-                    trading_candles[(i - (num - 1)):(i + 1)],
-                    True
+    for candle in trading_candles:
+        ts = int(candle[0])
+        # Which higher-TF bucket does this 1m candle belong to?
+        bucket_start = (ts // tf_ms) * tf_ms
+
+        if bucket and int(bucket[0][0]) // tf_ms * tf_ms != bucket_start:
+            # New bucket - finalize previous one if it has any candles
+            if len(bucket) > 0:
+                generated_candles.append(
+                    generate_candle_from_one_minutes(timeframe, np.array(bucket), True)
                 )
-            )
+            bucket = []
 
-    return np.array(generated_candles)
+        bucket.append(candle)
+
+    # Final bucket
+    if len(bucket) > 0:
+        generated_candles.append(
+            generate_candle_from_one_minutes(timeframe, np.array(bucket), True)
+        )
+
+    return np.array(generated_candles) if generated_candles else np.empty((0, 6))
 
 
 def generate_new_candles_loop() -> None:

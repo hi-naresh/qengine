@@ -73,3 +73,7 @@ However, Phase 2 found entry quality matters less than structural parameters, so
 **When**: Entry signal refinement research (after autopilot optimizer)
 
 ---
+
+## Screener to detect momentum from list of instruments and select where our strategy would shine and take profits
+**Source** : personal idea
+

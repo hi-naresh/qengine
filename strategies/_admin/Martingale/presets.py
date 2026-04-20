@@ -10,7 +10,7 @@ PRESETS = {
         'direction_bias': 'long_only',
         'sizing_curve': 'geometric',
         'sizing_factor': 2.0,
-        'max_levels': 7,
+        'max_levels': 6,
         'hedge_mode': 'fixed_pips',
         'hedge_value': 10.0,
         'tp_mode': 'fixed_pips',

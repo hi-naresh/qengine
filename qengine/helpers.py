@@ -474,9 +474,22 @@ def insert_list(index: int, item, arr: list) -> list:
     return arr[:index] + [item] + arr[index:]
 
 
+_cached_trading_mode = None
+
+def _get_trading_mode() -> str:
+    global _cached_trading_mode
+    if _cached_trading_mode is None:
+        from qengine.config import config
+        _cached_trading_mode = config['app']['trading_mode']
+    return _cached_trading_mode
+
+def reset_mode_cache():
+    """Call when trading_mode changes (e.g., between test runs)."""
+    global _cached_trading_mode
+    _cached_trading_mode = None
+
 def is_backtesting() -> bool:
-    from qengine.config import config
-    return config['app']['trading_mode'] == 'backtest'
+    return _get_trading_mode() == 'backtest'
 
 
 def is_debuggable(debug_item) -> bool:
@@ -498,22 +511,20 @@ def is_importing_candles() -> bool:
 
 
 def is_live() -> bool:
-    return is_livetrading() or is_paper_trading()
+    m = _get_trading_mode()
+    return m == 'livetrade' or m == 'papertrade'
 
 
 def is_livetrading() -> bool:
-    from qengine.config import config
-    return config['app']['trading_mode'] == 'livetrade'
+    return _get_trading_mode() == 'livetrade'
 
 
 def is_optimizing() -> bool:
-    from qengine.config import config
-    return config['app']['trading_mode'] == 'optimize'
+    return _get_trading_mode() == 'optimize'
 
 
 def is_paper_trading() -> bool:
-    from qengine.config import config
-    return config['app']['trading_mode'] == 'papertrade'
+    return _get_trading_mode() == 'papertrade'
 
 
 def is_unit_testing() -> bool:

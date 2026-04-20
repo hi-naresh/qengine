@@ -469,6 +469,13 @@ class Martingale(Strategy):
         # Use pre-entry balance (captured before order fill) for accurate session PnL
         self.vars['session_start_balance'] = self.vars.pop('_pre_entry_balance', self.balance)
 
+        # Cap max_levels to what margin can actually fund
+        affordable, exposure_table = self._max_affordable_levels()
+        configured_max = self.hp.get('max_levels', 6)
+        effective_max = min(configured_max, affordable)
+        self.vars['effective_max_levels'] = effective_max
+        self.vars['exposure_table'] = exposure_table
+
         leg = {
             'level': 0,
             'dir': direction,
@@ -683,8 +690,7 @@ class Martingale(Strategy):
             return
         self._cancel_hedge_stop()
         # Use 'max_level_bust' when at the last allowed level (SL = bust trigger)
-        # max_levels=6 means levels 0-5 (6 levels). Level 5 is the last → bust.
-        max_levels = self.hp.get('max_levels', 6)
+        max_levels = self.vars.get('effective_max_levels', self.hp.get('max_levels', 6))
         at_max = self.vars.get('level', 0) >= max_levels - 1
         reason = 'max_level_bust' if at_max else 'sl_hit'
         self._tag_last_trade_with_session(ticket, reason)
@@ -1098,6 +1104,39 @@ class Martingale(Strategy):
             return base / (m ** level) if level > 0 else base
         return base
 
+    def _max_affordable_levels(self):
+        """Compute maximum number of hedge levels that can be fully funded
+        by current balance given the sizing curve and leverage.
+
+        Returns (max_levels, exposure_table) where exposure_table is a list of
+        dicts with per-level margin and cumulative margin for diagnostics.
+        """
+        price = self.price if self.price > 0 else 1.0
+        lev = self.leverage if hasattr(self, 'leverage') else 1
+        available = self.balance
+        configured_max = self.hp.get('max_levels', 6)
+
+        exposure_table = []
+        cumul_margin = 0.0
+        affordable = 0
+
+        for level in range(configured_max):
+            qty = self._calc_size(level)
+            margin = qty * price / lev
+            cumul_margin += margin
+            entry = {
+                'level': level,
+                'qty': round(qty, 2),
+                'margin': round(margin, 2),
+                'cumul_margin': round(cumul_margin, 2),
+                'affordable': cumul_margin <= available,
+            }
+            exposure_table.append(entry)
+            if cumul_margin <= available:
+                affordable = level + 1
+
+        return affordable, exposure_table
+
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                    GRID / HEDGE MODULE                              ║
     # ╚═══════════════════════════════════════════════════════════════════════╝
@@ -1153,18 +1192,15 @@ class Martingale(Strategy):
             return
 
         level = self.vars['level'] + 1
-        max_levels = self.hp.get('max_levels', 6)
+        max_levels = self.vars.get('effective_max_levels', self.hp.get('max_levels', 6))
         if level >= max_levels:
             # At max level — set SL on last leg's ticket at the bust price.
-            # Bust SL = TP distance AGAINST the last leg (mirrors TP but opposite).
-            # E.g., TP is 20 pips in favor, SL is 20 pips against.
-            # This means: for L5 short @ P-10, TP = P-30, SL = P+10.
-            # Shorts lose 20p, longs gain 10p per the standard surefire bust.
+            # Bust SL = one hedge distance AGAINST the last leg (the would-be
+            # next hedge trigger price). This is where the next hedge WOULD have
+            # been placed if more levels were available.
             last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
             if last_leg and last_leg.get('ticket_id'):
-                tp_dist = self._hedge_distance_pips(self.vars['level'])
-                tp_val = self.hp.get('tp_value', 20.0)
-                bust_dist = self.pips_to_price(tp_val) if hasattr(self, 'pips_to_price') else tp_val * 0.0001
+                bust_dist = self.pips_to_price(self._hedge_distance_pips(self.vars['level']))
                 if last_leg['dir'] == 'long':
                     bust_price = last_leg['entry'] - bust_dist
                 else:
@@ -1184,8 +1220,29 @@ class Martingale(Strategy):
                 self.exchange, self.symbol, abs(qty), trigger, side, reduce_only=False
             )
         except Exception:
-            # Insufficient margin or other error — can't place hedge, session
-            # will end via TP or terminate. This is normal at deep levels.
+            # Insufficient margin — can't place hedge.  On a real broker this
+            # means the account can't support the next level.  Close all tickets
+            # at the BUST PRICE (one hedge distance against last leg) rather than
+            # current price, to correctly model the loss that would occur if the
+            # session reached this point with no hedge available.
+            import qengine.services.logger as _logger
+            _logger.info(
+                f'Hedge order at level {level} failed (insufficient margin). '
+                f'Force-closing session as margin_bust at bust price.'
+            )
+            self._cancel_hedge_stop()
+            # Compute bust price: last leg entry +/- hedge distance against direction
+            last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
+            if last_leg:
+                bust_dist = self.pips_to_price(self._hedge_distance_pips(self.vars['level']))
+                if last_leg['dir'] == 'long':
+                    bust_price = last_leg['entry'] - bust_dist
+                else:
+                    bust_price = last_leg['entry'] + bust_dist
+                self._close_remaining_tickets(bust_price, 'margin_bust')
+            else:
+                self._close_remaining_tickets(self.price, 'margin_bust')
+            self._end_cycle('margin_bust')
             return
         if order:
             self.vars['hedge_stop_order_id'] = order.id
@@ -1473,6 +1530,15 @@ class Martingale(Strategy):
                 if self.balance < ema:
                     return False  # Equity below its EMA — pause trading
 
+        # Pre-entry margin feasibility: verify the account can support the
+        # full hedge ladder through max_levels.  On a real broker you'd be
+        # liquidated mid-session if margin runs out, so don't enter a session
+        # you can't afford to finish.  This prevents zombie-trading on a
+        # depleted account where pct_equity sizing creates infinitely
+        # shrinking micro-positions.
+        if not self._can_afford_full_session():
+            return False
+
         return True
 
     def _exposure_ok(self):
@@ -1489,6 +1555,64 @@ class Martingale(Strategy):
             return True
         exposure_pct = (total_qty * self.price) / self.balance * 100
         return exposure_pct < max_exp
+
+    def _can_afford_full_session(self):
+        """Check if account has enough margin to support the hedge ladder.
+
+        A Martingale session opens positions at increasing sizes through
+        max_levels.  On a real broker, if margin runs out mid-session the
+        account gets liquidated.  This pre-flight check finds the deepest
+        level the account can actually support and blocks entry if it can't
+        reach at least level 2 (entry + one hedge).  With fewer than 2
+        levels the strategy has no hedging protection and is just a naked
+        directional bet.
+
+        Also halts trading entirely when the account is so depleted that
+        the base position size falls below the broker's minimum order qty.
+        """
+        if self.balance <= 0:
+            return False
+
+        max_levels = self.hp.get('max_levels', 6)
+        curve = self.hp.get('sizing_curve', 'geometric')
+        factor = self.hp.get('sizing_factor', 2.0)
+        base_qty = self._base_size()
+
+        if base_qty <= 0:
+            return False
+
+        # Check broker minimum order size
+        try:
+            exchange = self.position.exchange
+            min_qty = exchange._bt_cost_settings.get('min_order_qty', 0) if hasattr(exchange, '_bt_cost_settings') else 0
+            if min_qty > 0 and base_qty < min_qty:
+                return False
+        except Exception:
+            pass
+
+        # Find how many levels the account can actually support
+        leverage = getattr(self.position, 'leverage', 30) if hasattr(self, 'position') else 30
+        total_margin = 0.0
+        affordable_levels = 0
+        for lvl in range(max_levels):
+            if curve == 'geometric':
+                qty = base_qty * (factor ** lvl)
+            elif curve == 'sqrt':
+                qty = base_qty * (factor ** 0.5) ** lvl
+            elif curve == 'linear':
+                qty = base_qty * (1 + lvl)
+            elif curve == 'fibonacci':
+                _fib = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144]
+                qty = base_qty * _fib[min(lvl, len(_fib) - 1)]
+            else:
+                qty = base_qty
+            total_margin += qty * self.price / leverage
+            if total_margin > self.balance:
+                break
+            affordable_levels += 1
+
+        # Need at least 2 levels (entry + one hedge) for Martingale to work
+        return affordable_levels >= 2
 
     def _cooldown_ok(self):
         mode = self.hp.get('cooldown_mode', 'none')
@@ -1604,7 +1728,7 @@ class Martingale(Strategy):
         """Record session, update bust tracking, set cooldown, reset state.
         Called by _close_cycle (manual exit) and on_ticket_tp_hit/on_ticket_sl_hit (engine exit).
         """
-        is_bust = reason in ('abort', 'terminate', 'max_level_sl', 'max_level_bust', 'sl_hit', 'margin_call')
+        is_bust = reason in ('abort', 'terminate', 'max_level_sl', 'max_level_bust', 'sl_hit', 'margin_call', 'margin_bust')
         level = self.vars.get('level', 0)
 
         # Record session

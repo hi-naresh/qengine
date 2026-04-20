@@ -306,6 +306,11 @@ class BacktestSettingsRequestJson(BaseModel):
     slippage_randomness: float = 0.0  # 0.0 = fixed slippage, 1.0 = 0 to 2x
     swap_enabled: bool = True
     commission_per_lot: float = 0.0
+    min_order_qty: float = 0         # 0 = use broker default; otherwise broker units (e.g. 1 for OANDA, 10000 for IG)
+    stop_out_level: float = 50.0     # margin level % at which broker force-closes positions (OANDA=50, IG=50)
+    stop_out_order: str = 'largest_margin'  # fifo, lifo, winner_first, loser_first, largest_margin
+    swap_long: float = -10.0         # overnight swap for long positions ($/lot/night). Negative = charge.
+    swap_short: float = -0.9         # overnight swap for short positions ($/lot/night). Negative = charge.
 
 
 @router.get("/backtest/{broker_id}")
@@ -314,6 +319,27 @@ def get_backtest_settings(broker_id: str, current_user: CurrentUser = Depends(ge
     settings = _get_settings_with_fallback(current_user, section='backtest_brokers')
     bt_all = settings.get('backtest_brokers', {})
     bt = bt_all.get(broker_id, settings.get('backtest', _default_backtest_settings()))
+
+    # Check if real spread data exists in imported candles for this broker
+    spread_available = False
+    spread_candle_count = 0
+    try:
+        from qengine.models.Candle import Candle
+        count = Candle.select().where(
+            Candle.exchange == broker_id,
+            Candle.spread.is_null(False),
+        ).limit(1).count()
+        if count > 0:
+            spread_available = True
+            spread_candle_count = Candle.select().where(
+                Candle.exchange == broker_id,
+                Candle.spread.is_null(False),
+            ).count()
+    except Exception:
+        pass
+
+    bt['_spread_in_data'] = spread_available
+    bt['_spread_candle_count'] = spread_candle_count
     return JSONResponse({'data': bt}, status_code=200)
 
 
@@ -335,6 +361,13 @@ def save_backtest_settings(
         'slippage_randomness': max(0.0, min(1.0, request_json.slippage_randomness)),
         'swap_enabled': request_json.swap_enabled,
         'commission_per_lot': request_json.commission_per_lot,
+        'min_order_qty': max(0, request_json.min_order_qty),
+        'stop_out_level': max(0.0, min(100.0, request_json.stop_out_level)),
+        'stop_out_order': request_json.stop_out_order if request_json.stop_out_order in (
+            'fifo', 'lifo', 'winner_first', 'loser_first', 'largest_margin'
+        ) else 'largest_margin',
+        'swap_long': request_json.swap_long,
+        'swap_short': request_json.swap_short,
     }
     _save_settings_to_db(settings, uid)
 
@@ -348,8 +381,42 @@ def _default_backtest_settings() -> dict:
         'slippage_pips': 0.0,
         'slippage_randomness': 0.0,
         'swap_enabled': True,
+        'swap_long': -10.0,
+        'swap_short': -0.9,
         'commission_per_lot': 0.0,
+        'min_order_qty': 0,
+        'stop_out_level': 50.0,
+        'stop_out_order': 'largest_margin',
     }
+
+
+# Broker-specific defaults for CFD execution parameters.
+# Applied when the DB doesn't have a value for the broker.
+# These represent real broker specs and are used even when cost_model=False
+# for structural correctness (min order size, margin rules).
+_BROKER_DEFAULTS = {
+    'OANDA': {
+        'min_order_qty': 1,              # OANDA minimum is 1 unit
+        'stop_out_level': 50.0,          # OANDA stop-out at 50% margin level
+        'stop_out_order': 'largest_margin',  # OANDA closes largest exposure first
+        'spread_pips': 2.0,              # typical EUR-USD spread
+    },
+    'IG': {
+        'min_order_qty': 10_000,         # IG CFD minimum is 0.1 lots = 10,000 units for major FX
+        'stop_out_level': 50.0,          # IG stop-out at 50%
+        'stop_out_order': 'loser_first', # IG closes most-losing position first
+        'spread_pips': 0.6,              # IG EUR-USD typical
+    },
+    'IBKR': {
+        'min_order_qty': 1,              # IBKR minimum is 1 unit for forex
+        'stop_out_level': 25.0,          # IBKR maintenance margin ~25%
+        'stop_out_order': 'largest_margin',  # IBKR closes largest margin position
+        'spread_pips': 0.3,              # IBKR ECN-style
+    },
+}
+
+# Legacy compat
+_BROKER_MIN_ORDER_QTY = {k: v['min_order_qty'] for k, v in _BROKER_DEFAULTS.items()}
 
 
 def get_backtest_cost_settings(broker_id: str = None, user_id: str = None) -> dict:
@@ -359,11 +426,21 @@ def get_backtest_cost_settings(broker_id: str = None, user_id: str = None) -> di
         if broker_id:
             bt_all = settings.get('backtest_brokers', {})
             if broker_id in bt_all:
-                return bt_all[broker_id]
+                result = bt_all[broker_id]
+                # Inject broker-specific min_order_qty if not set by user
+                if not result.get('min_order_qty') and broker_id in _BROKER_MIN_ORDER_QTY:
+                    result['min_order_qty'] = _BROKER_MIN_ORDER_QTY[broker_id]
+                return result
         # Fallback to legacy global settings, then defaults
-        return settings.get('backtest', _default_backtest_settings())
+        result = settings.get('backtest', _default_backtest_settings())
+        if broker_id and broker_id in _BROKER_MIN_ORDER_QTY and not result.get('min_order_qty'):
+            result['min_order_qty'] = _BROKER_MIN_ORDER_QTY[broker_id]
+        return result
     except Exception:
-        return _default_backtest_settings()
+        result = _default_backtest_settings()
+        if broker_id and broker_id in _BROKER_MIN_ORDER_QTY:
+            result['min_order_qty'] = _BROKER_MIN_ORDER_QTY[broker_id]
+        return result
 
 
 def _mask_key(key: str) -> str:

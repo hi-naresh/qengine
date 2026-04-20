@@ -116,6 +116,7 @@
                 <th class="text-left py-2">To</th>
                 <th class="text-left py-2">Timeframes</th>
                 <th class="text-right py-2">Candles</th>
+                <th class="text-center py-2">Spread</th>
                 <th class="text-right py-2"></th>
               </tr>
             </thead>
@@ -133,7 +134,16 @@
                   </div>
                 </td>
                 <td class="py-2 text-right font-mono text-surface-300">{{ d.count ? d.count.toLocaleString() : '-' }}</td>
+                <td class="py-2 text-center">
+                  <span v-if="d.has_spread" class="text-xs text-green-400">{{ d.spread_coverage }}%</span>
+                  <span v-else class="text-xs text-surface-600">-</span>
+                </td>
                 <td class="py-2 text-right space-x-2">
+                  <button
+                    @click="previewData(d)"
+                    class="text-xs text-emerald-400 hover:text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity">
+                    Preview
+                  </button>
                   <button
                     @click="openDownload(d)"
                     class="text-xs text-brand-400 hover:text-brand-300 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -211,6 +221,73 @@
         <p v-if="downloadError" class="text-xs text-red-400 mt-2">{{ downloadError }}</p>
       </div>
     </div>
+
+    <!-- Data Preview Modal -->
+    <div v-if="previewItem" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="previewItem = null">
+      <div class="card w-full max-w-4xl mx-4 max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-semibold">
+            Data Preview: <span class="text-brand-400">{{ previewItem.exchange }} / {{ previewItem.symbol }}</span>
+          </h2>
+          <button @click="previewItem = null" class="text-surface-400 hover:text-surface-200 text-lg">&times;</button>
+        </div>
+
+        <!-- Summary -->
+        <div v-if="previewSummary" class="grid grid-cols-4 gap-3 mb-3 text-xs">
+          <div class="bg-surface-800 rounded p-2">
+            <div class="text-surface-500">Total Candles</div>
+            <div class="text-surface-100 font-mono">{{ previewSummary.total_candles?.toLocaleString() }}</div>
+            <div class="text-surface-600 mt-0.5">{{ previewSummary.market_open_candles?.toLocaleString() }} market + {{ previewSummary.gap_fill_candles?.toLocaleString() }} gap-fill</div>
+          </div>
+          <div class="bg-surface-800 rounded p-2">
+            <div class="text-surface-500">Date Range</div>
+            <div class="text-surface-100 font-mono text-xs">{{ previewSummary.first_candle }}</div>
+            <div class="text-surface-400 font-mono text-xs">{{ previewSummary.last_candle }}</div>
+          </div>
+          <div class="bg-surface-800 rounded p-2">
+            <div class="text-surface-500">Spread Coverage</div>
+            <div class="font-mono" :class="previewSummary.spread_coverage > 0 ? 'text-green-400' : 'text-surface-500'">
+              {{ previewSummary.spread_coverage }}%
+            </div>
+            <div class="text-surface-600 mt-0.5">{{ previewSummary.spread_candles?.toLocaleString() }} / {{ previewSummary.market_open_candles?.toLocaleString() }} market candles</div>
+          </div>
+          <div class="bg-surface-800 rounded p-2">
+            <div class="text-surface-500">Volume Coverage</div>
+            <div class="font-mono" :class="previewSummary.volume_coverage > 0 ? 'text-blue-400' : 'text-surface-500'">
+              {{ previewSummary.volume_coverage }}%
+            </div>
+            <div class="text-surface-600 mt-0.5">{{ previewSummary.volume_candles?.toLocaleString() }} candles with real volume</div>
+          </div>
+        </div>
+
+        <!-- Toggle Head/Tail -->
+        <div class="flex gap-2 mb-2">
+          <button @click="loadPreview('head')" class="btn-sm" :class="previewPos === 'head' ? 'bg-brand-500 text-white' : 'bg-surface-700 text-surface-400'">Head (First 20)</button>
+          <button @click="loadPreview('tail')" class="btn-sm" :class="previewPos === 'tail' ? 'bg-brand-500 text-white' : 'bg-surface-700 text-surface-400'">Tail (Last 20)</button>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-auto flex-1" v-if="previewRows.length > 0">
+          <table class="w-full text-xs font-mono">
+            <thead class="sticky top-0 bg-surface-900">
+              <tr class="text-surface-400 border-b border-surface-700">
+                <th v-for="col in previewColumns" :key="col" class="px-2 py-1.5 text-left whitespace-nowrap">{{ col }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, i) in previewRows" :key="i" class="border-b border-surface-800/50 hover:bg-surface-800/30">
+                <td v-for="(val, j) in row" :key="j" class="px-2 py-1 whitespace-nowrap"
+                    :class="previewColumns[j] === 'spread_pips' && val !== null ? 'text-green-400' : 'text-surface-300'">
+                  {{ val !== null ? val : '-' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else-if="previewLoading" class="text-surface-500 text-sm py-8 text-center">Loading...</div>
+        <div v-else class="text-surface-500 text-sm py-8 text-center">No data</div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -232,6 +309,14 @@ const loadingExisting = ref(true)
 const currentTaskId = ref(null)
 const progress = ref({ current: 0, eta: 0 })
 const importInfo = ref(null)
+
+// Data Preview
+const previewItem = ref(null)
+const previewColumns = ref([])
+const previewRows = ref([])
+const previewSummary = ref(null)
+const previewLoading = ref(false)
+const previewPos = ref('head')
 
 // Delete state
 const deletingItem = ref(null)
@@ -409,6 +494,29 @@ async function doDownload() {
     downloadError.value = e.message
   } finally {
     downloading.value = false
+  }
+}
+
+async function previewData(d) {
+  previewItem.value = d
+  previewPos.value = 'head'
+  await loadPreview('head')
+}
+
+async function loadPreview(position) {
+  previewPos.value = position
+  previewLoading.value = true
+  previewRows.value = []
+  try {
+    const res = await api.previewCandles(previewItem.value.exchange, previewItem.value.symbol, position, 20)
+    previewColumns.value = res.columns || []
+    previewRows.value = res.rows || []
+    previewSummary.value = res.summary || null
+  } catch (e) {
+    console.error(e)
+    previewRows.value = []
+  } finally {
+    previewLoading.value = false
   }
 }
 

@@ -1,6 +1,7 @@
 from typing import List, Dict, Optional, Tuple, Any, TypedDict
-import ray
 from multiprocessing import cpu_count
+
+ray = None  # lazy-loaded when monte carlo runs
 import math
 import numpy as np
 import os
@@ -43,7 +44,6 @@ class MonteCarloCandlesReturn(TypedDict):
     total_requested: int
 
 
-@ray.remote
 def _ray_run_scenario_monte_carlo_candles(
     config: dict,
     routes: List[Dict[str, str]],
@@ -122,6 +122,12 @@ def monte_carlo_candles(
     else:
         available_cores = cpu_count()
         cpu_cores = max(MIN_CPU_CORES, min(cpu_cores, available_cores))
+    global ray, _ray_run_scenario_monte_carlo_candles
+    if ray is None:
+        import ray as _ray
+        ray = _ray
+        _ray_run_scenario_monte_carlo_candles = ray.remote(_ray_run_scenario_monte_carlo_candles)
+
     ray_started_here = False
     if not ray.is_initialized():
         try:

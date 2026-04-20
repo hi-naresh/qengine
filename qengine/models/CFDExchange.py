@@ -1,4 +1,4 @@
-import random
+import random as _random_module
 
 import numpy as np
 from numba import njit
@@ -42,9 +42,13 @@ class CFDExchange(Exchange):
         self._overnight_charges = 0.0
         # accumulated spread+commission costs
         self._total_spread_cost = 0.0
+        # accumulated slippage costs
+        self._total_slippage_cost = 0.0
 
         # Backtest cost/randomness settings (set by exchange_service)
         self._bt_cost_settings = {}
+        # Seeded RNG for deterministic backtest spread/slippage randomness
+        self._rng = _random_module.Random(42)
 
         # live-trading only
         self._available_margin = 0
@@ -96,7 +100,23 @@ class CFDExchange(Exchange):
     def set_spread(self, symbol: str, spread: float) -> None:
         self._spread_config[symbol] = spread
 
-    def get_spread(self, symbol: str) -> float:
+    def get_spread(self, symbol: str, timestamp_ms: int = None) -> float:
+        """Get spread for a symbol. Uses real per-candle spread from imported data
+        when available, falls back to fixed/randomized spread from settings.
+
+        Args:
+            symbol: Trading pair (e.g. 'EUR-USD')
+            timestamp_ms: Current candle timestamp. If provided and real spread
+                         data exists for this candle, returns the actual broker spread.
+        """
+        # Try real spread data first (from OANDA bid/ask import)
+        if timestamp_ms is not None and not jh.is_livetrading():
+            from qengine.services import spread_data
+            real_spread = spread_data.get_spread(self.name, symbol, timestamp_ms)
+            if real_spread is not None:
+                return real_spread
+
+        # Fallback to configured fixed spread
         if symbol in self._spread_config:
             base_spread = self._spread_config[symbol]
         else:
@@ -106,7 +126,7 @@ class CFDExchange(Exchange):
         # Apply randomness during backtesting
         randomness = self._bt_cost_settings.get('spread_randomness', 0.0)
         if randomness > 0 and not jh.is_livetrading():
-            factor = 1.0 + random.uniform(-randomness, randomness)
+            factor = 1.0 + self._rng.uniform(-randomness, randomness)
             return max(0.0, base_spread * factor)
         return base_spread
 
@@ -119,7 +139,7 @@ class CFDExchange(Exchange):
         base_slippage = pip_size * slippage_pips
         randomness = self._bt_cost_settings.get('slippage_randomness', 0.0)
         if randomness > 0:
-            factor = random.uniform(1.0 - randomness, 1.0 + randomness)
+            factor = self._rng.uniform(1.0 - randomness, 1.0 + randomness)
             return max(0.0, base_slippage * factor)
         return base_slippage
 
@@ -152,10 +172,18 @@ class CFDExchange(Exchange):
         return spread_cost
 
     def charge_overnight_swap(self, symbol: str, qty: float, position_type: str) -> float:
+        """Apply OANDA-style overnight financing charge.
+
+        OANDA formula for FX: Charge = Size × (Rate / 365) × Conversion_Rate
+        Where Rate = per-lot per-night rate (already includes benchmark + admin fee).
+
+        Our stored rate is per standard lot (100,000 units) per night in account
+        currency. Negative = trader pays. Wednesday night = 3x (FX T+2 settlement
+        covers Saturday + Sunday).
+        """
         if jh.is_livetrading():
             return 0.0
 
-        # Check if swap is disabled in backtest settings
         if not self._bt_cost_settings.get('swap_enabled', True):
             return 0.0
 
@@ -164,25 +192,28 @@ class CFDExchange(Exchange):
         if rate == 0.0:
             return 0.0
 
-        # Swap rate is per-lot annual (e.g., -$5/lot/night = cost, +$3/lot/night = credit).
-        # Negative rate → charge (deduct), Positive rate → credit (add).
-        # Forex swaps are charged per trading day (~252/year). Wednesday nights
-        # incur 3x to cover the weekend (Sat+Sun settlement).
+        # Convert qty to lots (1 lot = 100,000 units for FX)
         contract_size = instrument_registry.get_contract_size(symbol)
-        lots = abs(qty) / contract_size if contract_size > 0 else abs(qty)
-        # Determine day-of-week for triple-Wednesday swap
-        try:
-            import arrow
-            dow = arrow.Arrow.fromtimestamp(jh.now_to_timestamp() / 1000).weekday()
-        except Exception:
-            dow = 2  # default to non-Wednesday
-        multiplier = 3 if dow == 2 else 1  # Wednesday = 3x (covers Sat+Sun)
-        swap_amount = rate * lots * multiplier / 252  # per trading day
-        self.assets[self.settlement_currency] += swap_amount  # add (negative subtracts)
-        self._overnight_charges += abs(swap_amount)  # track total magnitude
+        lots = abs(qty) / contract_size if contract_size > 0 else abs(qty) / 100_000
+
+        # Wednesday = 3x for FX (T+2 settlement covers Sat+Sun)
+        # Day-of-week from timestamp using integer math (no datetime/arrow needed)
+        # Unix epoch (1970-01-01) was a Thursday (day 3). Days since epoch mod 7:
+        # 0=Thu, 1=Fri, 2=Sat, 3=Sun, 4=Mon, 5=Tue, 6=Wed
+        days_since_epoch = int(jh.now_to_timestamp() // 86_400_000)
+        dow = (days_since_epoch + 3) % 7  # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+        multiplier = 3 if dow == 2 else 1  # Wednesday = index 2
+
+        # Rate is per-lot per-night. Apply directly (no /365 needed since
+        # rate is already the nightly charge, not an annual percentage).
+        swap_amount = rate * lots * multiplier
+        self.assets[self.settlement_currency] += swap_amount
+        self._overnight_charges += abs(swap_amount)
+
         action = 'Charged' if swap_amount < 0 else 'Credited'
         swap_msg = (
-            f'{action} {round(abs(swap_amount), 4)} overnight swap for {symbol} ({position_type}). '
+            f'{action} {round(abs(swap_amount), 4)} overnight swap for {symbol} '
+            f'({position_type}, {lots:.3f} lots, {multiplier}x). '
             f'Total overnight charges: {round(self._overnight_charges, 2)}'
         )
         if jh.is_backtesting():
@@ -222,6 +253,16 @@ class CFDExchange(Exchange):
         base_asset = jh.base_asset(order.symbol)
 
         if not order.reduce_only:
+            # Block if order qty is below broker minimum.
+            # Use broker-specific minimum from settings (injected via
+            # _apply_backtest_cost_settings). Default 0 = no minimum.
+            min_qty = self._bt_cost_settings.get('min_order_qty', 0)
+            if abs(order.qty) < min_qty:
+                raise InsufficientMargin(
+                    f'Order qty {abs(order.qty):.2f} is below broker minimum of '
+                    f'{min_qty} units for {order.symbol}.'
+                )
+
             effective_order_size = abs(order.qty * order.price) / self.default_leverage
             avail = self.available_margin
 

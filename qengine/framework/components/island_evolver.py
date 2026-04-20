@@ -23,9 +23,9 @@ import numpy as np
 # Strategy-specific genes are added dynamically from strategy.hyperparameters()
 # by the IslandPilot pipeline during training — see _build_gene_bounds().
 GENE_BOUNDS: Dict[str, Tuple[float, float, type]] = {
-    "gate_confidence_min":    (0.0, 0.8, float),    # min regime confidence to allow entry
+    "gate_confidence_min":    (0.0, 0.5, float),    # min regime confidence to allow entry (was 0.8 — too restrictive, blocks most entries)
     "abort_aggressiveness":   (0.0, 0.4, float),    # 0=never abort, 0.4=abort at danger>0.6 (conservative)
-    "base_size_pct":          (0.5, 5.0, float),    # base position scale as % of equity
+    "base_size_pct":          (0.5, 3.0, float),    # base position scale as % of equity (was 5.0, causes ruin at high levels)
     "hysteresis_margin":      (0.05, 0.30, float),  # margin needed to switch regime
     "confidence_sensitivity": (0.5, 2.0, float),    # how aggressively confidence scales size
     "recovery_aggression":    (0.3, 1.0, float),    # how aggressively drawdown reduces size
@@ -49,17 +49,24 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
     except Exception:
         return bounds
 
-    _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit', 'Entry Signal'}
+    # Entry Signal excluded — pipeline controls execution, not signal timing.
+    _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
 
     # Tighter bounds for params that cause margin blowups when extreme.
-    # Strategy declares wide ranges for optimizer flexibility, but the GA
-    # simulator has no margin model — these keep values realistic.
+    # Bounds are set so that the worst-case total exposure across all
+    # curve/factor/level combos stays under ~100x base, which keeps
+    # bust losses within 15% of equity at reasonable base sizes.
+    #
+    # Key constraint: geometric 2.0 @ 6 levels = 127x (borderline).
+    # Capping factor at 2.0 and levels at 6 ensures all curves stay safe.
+    # The SimConfig.from_genome() method applies a second equity-aware
+    # cap at runtime, reducing levels further if the account cannot afford them.
     _BOUND_OVERRIDES = {
-        'max_levels': (2, 8, int),
-        'sizing_factor': (1.2, 2.5, float),
-        'hedge_value': (5, 50, float),
-        'tp_value': (5, 50, float),
-        'base_size_value': (0.5, 5.0, float),  # as pct_equity this is 0.5-5%
+        'max_levels': (2, 6, int),            # was (2,8) — geo 2.0 @ 8 = 511x exposure
+        'sizing_factor': (1.2, 2.0, float),   # was (1.2,2.5) — 2.5^8 = 1526x per ticket
+        'hedge_value': (8, 40, float),         # pips — narrower to avoid tiny/huge grids
+        'tp_value': (8, 40, float),            # pips
+        'base_size_value': (0.5, 3.0, float),  # was (0.5,5.0) — 5% base + geo 2.0 @ 6 = ruin
     }
     # Skip params that shouldn't be evolved (meta/structural)
     _SKIP_PARAMS = {'preset', 'sizing_custom_sequence', 'max_bust_dd_pct', 'model_lookback'}
@@ -179,7 +186,6 @@ class Genome:
             d["sizing_curve"] = SIZING_CURVE_MAP.get(d["sizing_curve"], d["sizing_curve"])
         return {"id": self.id, "genes": d, "fitness": self.fitness}
 
-    @classmethod
     @classmethod
     def from_dict(cls, d: dict, bounds: Optional[Dict] = None) -> "Genome":
         """Deserialise genome. Accepts any gene set — missing genes filled from bounds."""

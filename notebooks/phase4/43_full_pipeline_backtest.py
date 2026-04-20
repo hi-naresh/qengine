@@ -250,7 +250,7 @@ def main():
             continue
 
         # Build SimConfig from genome
-        cfg = SimConfig.from_genome(genes)
+        cfg = SimConfig.from_genome(genes, equity=equity)
 
         # Adaptive sizing
         base_qty = calc_size(0, cfg)

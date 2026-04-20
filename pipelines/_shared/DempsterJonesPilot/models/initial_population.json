@@ -1,0 +1,431 @@
+{
+  "meta": {
+    "train_start": "2022-01-01",
+    "train_end": "2023-12-31",
+    "pop_size": 20,
+    "generations": 10,
+    "seed": 42
+  },
+  "population": [
+    {
+      "id": "1baa84ce",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "c9d99446",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "7022316a",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "4e29b10b",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "1839c4ae",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "0336eea3",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "e57ffb1b",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "a475784f",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "b8d56117",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "088f70c2",
+      "genes": {
+        "base_size_pct": 3.781784164132334,
+        "abort_aggressiveness": 0.2730226084447205,
+        "sizing_curve": 2,
+        "sizing_factor": 1.915144601135912,
+        "base_size_mode": 1,
+        "base_size_value": 2.79221669783611,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.161158659357762,
+        "hedge_atr_period": 30,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9599135001977446,
+        "tp_mode": 1,
+        "tp_value": 14.719801155004753,
+        "tp_atr_period": 21
+      },
+      "fitness": 52.82642623335607
+    },
+    {
+      "id": "945e03dd",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "41c93edc",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "aff4d246",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "e13be09f",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "8a0f7eb9",
+      "genes": {
+        "base_size_pct": 3.9683567838585727,
+        "abort_aggressiveness": 0.24138865247072933,
+        "sizing_curve": 2,
+        "sizing_factor": 1.921066005095351,
+        "base_size_mode": 1,
+        "base_size_value": 2.7597676529417354,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9907550974530654,
+        "tp_mode": 1,
+        "tp_value": 12.182746538263673,
+        "tp_atr_period": 21
+      },
+      "fitness": 55.70566787558402
+    },
+    {
+      "id": "8d0e6335",
+      "genes": {
+        "base_size_pct": 3.9009194028986394,
+        "abort_aggressiveness": 0.27879232561055445,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9665325173540136,
+        "base_size_mode": 1,
+        "base_size_value": 2.7509833254644778,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.508971917325498,
+        "hedge_atr_period": 30,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9544409928064626,
+        "tp_mode": 1,
+        "tp_value": 14.780454419876818,
+        "tp_atr_period": 22
+      },
+      "fitness": 51.87592804390439
+    },
+    {
+      "id": "631bf7e0",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "321cf3c8",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "3da99d21",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    },
+    {
+      "id": "0d53b647",
+      "genes": {
+        "base_size_pct": 4.009439956359308,
+        "abort_aggressiveness": 0.25681265846171514,
+        "sizing_curve": 2,
+        "sizing_factor": 1.9485079953767581,
+        "base_size_mode": 1,
+        "base_size_value": 2.7463854713176983,
+        "max_levels": 5,
+        "hedge_mode": 1,
+        "hedge_value": 8.294305651732149,
+        "hedge_atr_period": 29,
+        "hedge_expand": 0,
+        "hedge_expand_factor": 1.9736638367553172,
+        "tp_mode": 1,
+        "tp_value": 13.145857645359957,
+        "tp_atr_period": 22
+      },
+      "fitness": 55.362067602986244
+    }
+  ]
+}

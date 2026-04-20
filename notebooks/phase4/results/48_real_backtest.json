@@ -1,0 +1,5798 @@
+{
+  "baseline": {
+    "metrics": {
+      "is_martingale": true,
+      "total_sessions": 265,
+      "session_win_rate": 0.9019,
+      "avg_session_win": 12.58,
+      "avg_session_loss": -168.9,
+      "ev_per_session": -5.23,
+      "avg_legs_per_session": 3.13,
+      "max_legs_in_session": 6,
+      "sessions_with_1_leg": 67,
+      "max_consecutive_session_wins": 29,
+      "max_consecutive_session_losses": 2,
+      "total_busts": 25,
+      "worst_bust_pnl": -187.82,
+      "total_losing_sessions": 26,
+      "depth_breakdown": [
+        {
+          "depth": 0,
+          "count": 67,
+          "wins": 67,
+          "losses": 0,
+          "pnl": 356.2
+        },
+        {
+          "depth": 1,
+          "count": 57,
+          "wins": 57,
+          "losses": 0,
+          "pnl": 128.61
+        },
+        {
+          "depth": 2,
+          "count": 35,
+          "wins": 34,
+          "losses": 1,
+          "pnl": 331.61
+        },
+        {
+          "depth": 3,
+          "count": 34,
+          "wins": 34,
+          "losses": 0,
+          "pnl": 388.29
+        },
+        {
+          "depth": 4,
+          "count": 25,
+          "wins": 25,
+          "losses": 0,
+          "pnl": 723.75
+        },
+        {
+          "depth": 5,
+          "count": 47,
+          "wins": 22,
+          "losses": 25,
+          "pnl": -3313.8
+        }
+      ],
+      "session_profit_factor": 0.6845314407336097,
+      "median_session_pnl": 5.518121406029767,
+      "bust_rate": 0.09433962264150944,
+      "bust_count": 25,
+      "wins_to_recover": 13.950787037490652,
+      "geometric_growth_rate": -0.000562711736764421,
+      "survival_100": 4.972064770162091e-05,
+      "survival_500": 3.038672443293677e-22,
+      "survival_half_life": 6.995063745140893,
+      "avg_bust_loss": -175.46543787984083,
+      "bust_severity_std": 9.45633557046521,
+      "level_transitions": [
+        {
+          "level": 0,
+          "entries": 265,
+          "wins": 67,
+          "escalations": 198,
+          "p_win": 0.2528301886792453,
+          "p_escalate": 0.7471698113207547
+        },
+        {
+          "level": 1,
+          "entries": 198,
+          "wins": 57,
+          "escalations": 141,
+          "p_win": 0.2878787878787879,
+          "p_escalate": 0.7121212121212122
+        },
+        {
+          "level": 2,
+          "entries": 141,
+          "wins": 34,
+          "escalations": 106,
+          "p_win": 0.24113475177304963,
+          "p_escalate": 0.75177304964539
+        },
+        {
+          "level": 3,
+          "entries": 106,
+          "wins": 34,
+          "escalations": 72,
+          "p_win": 0.32075471698113206,
+          "p_escalate": 0.6792452830188679
+        },
+        {
+          "level": 4,
+          "entries": 72,
+          "wins": 25,
+          "escalations": 47,
+          "p_win": 0.3472222222222222,
+          "p_escalate": 0.6527777777777778
+        },
+        {
+          "level": 5,
+          "entries": 47,
+          "wins": 22,
+          "escalations": 0,
+          "p_win": 0.46808510638297873,
+          "p_escalate": 0.0
+        }
+      ],
+      "ev_by_depth": {
+        "1": {
+          "count": 57,
+          "total_pnl": 128.61382507219778,
+          "wins": 57,
+          "avg_pnl": 2.25638289600347,
+          "win_rate": 1.0
+        },
+        "0": {
+          "count": 67,
+          "total_pnl": 356.1954338286577,
+          "wins": 67,
+          "avg_pnl": 5.316349758636682,
+          "win_rate": 1.0
+        },
+        "2": {
+          "count": 35,
+          "total_pnl": 331.6122083795087,
+          "wins": 34,
+          "avg_pnl": 9.474634525128819,
+          "win_rate": 0.9714285714285714
+        },
+        "4": {
+          "count": 25,
+          "total_pnl": 723.7549054874933,
+          "wins": 25,
+          "avg_pnl": 28.95019621949973,
+          "win_rate": 1.0
+        },
+        "5": {
+          "count": 47,
+          "total_pnl": -3313.796159583227,
+          "wins": 22,
+          "avg_pnl": -70.50630126772823,
+          "win_rate": 0.46808510638297873
+        },
+        "3": {
+          "count": 34,
+          "total_pnl": 388.2890871899176,
+          "wins": 34,
+          "avg_pnl": 11.420267270291694,
+          "win_rate": 1.0
+        }
+      },
+      "time_at_depth": {
+        "1": 10908360.0,
+        "0": 15600000.0,
+        "2": 7271940.0,
+        "4": 2652780.0,
+        "3": 5130420.0,
+        "5": 1904400.0
+      },
+      "l0_win_rate": 0.2528301886792453,
+      "cost_drag_pct": 7.813838506416013,
+      "martingale_index": 3.367239,
+      "martingale_contribution_pct": 57.05,
+      "depth_transition_matrix": [
+        [
+          0.2537,
+          0.2537,
+          0.1045,
+          0.1194,
+          0.1045,
+          0.1642
+        ],
+        [
+          0.2807,
+          0.193,
+          0.1404,
+          0.1404,
+          0.0526,
+          0.193
+        ],
+        [
+          0.1471,
+          0.3529,
+          0.2059,
+          0.0882,
+          0.0882,
+          0.1176
+        ],
+        [
+          0.2059,
+          0.1471,
+          0.2059,
+          0.2059,
+          0.0882,
+          0.1471
+        ],
+        [
+          0.28,
+          0.12,
+          0.0,
+          0.16,
+          0.16,
+          0.28
+        ],
+        [
+          0.3191,
+          0.1702,
+          0.1277,
+          0.0851,
+          0.1064,
+          0.1915
+        ]
+      ],
+      "depth_stationary": [
+        0.2533,
+        0.2127,
+        0.1328,
+        0.1286,
+        0.0948,
+        0.1778
+      ],
+      "exposure_fit_r2": 1.0,
+      "exposure_coefficients": [
+        -0.0,
+        1.0,
+        1.0
+      ],
+      "depth_barrier": 5,
+      "depth_barrier_details": [
+        {
+          "depth": 0,
+          "count": 67,
+          "win_rate": 1.0,
+          "avg_pnl": 5.32
+        },
+        {
+          "depth": 1,
+          "count": 57,
+          "win_rate": 1.0,
+          "avg_pnl": 2.26
+        },
+        {
+          "depth": 2,
+          "count": 35,
+          "win_rate": 0.9714,
+          "avg_pnl": 9.47
+        },
+        {
+          "depth": 3,
+          "count": 34,
+          "win_rate": 1.0,
+          "avg_pnl": 11.42
+        },
+        {
+          "depth": 4,
+          "count": 25,
+          "win_rate": 1.0,
+          "avg_pnl": 28.95
+        },
+        {
+          "depth": 5,
+          "count": 47,
+          "win_rate": 0.4681,
+          "avg_pnl": -70.51
+        }
+      ],
+      "loss_growth_validation": {
+        "triangular_r2": 0.9441,
+        "exponential_r2": 0.9056,
+        "quadratic_r2": 1.0,
+        "best_fit": "quadratic",
+        "n_sessions_used": 25,
+        "max_level_observed": 5
+      },
+      "profitable_buy_pct": 0.9019,
+      "protective_sell_pct": 0.0,
+      "analytical_ruin_prob": 1.0,
+      "analytical_survival_prob": 0.0,
+      "survival_condition_ratio": -0.001627,
+      "survival_condition_met": false,
+      "survival_health": "red",
+      "min_account_95": null,
+      "min_account_99": null,
+      "cost_sensitivity": null,
+      "depth_fan": {
+        "stats": [
+          {
+            "level": 0,
+            "count": 198,
+            "mean": 1.000011,
+            "std": 0.000867,
+            "min": 0.998867,
+            "max": 1.001116,
+            "bust_mean": 0.999799,
+            "win_mean": 1.000041
+          },
+          {
+            "level": 1,
+            "count": 198,
+            "mean": 0.999977,
+            "std": 0.000575,
+            "min": 0.998826,
+            "max": 1.001112,
+            "bust_mean": 1.000004,
+            "win_mean": 0.999973
+          },
+          {
+            "level": 2,
+            "count": 141,
+            "mean": 0.99997,
+            "std": 0.000784,
+            "min": 0.998841,
+            "max": 1.001094,
+            "bust_mean": 0.999785,
+            "win_mean": 1.00001
+          },
+          {
+            "level": 3,
+            "count": 106,
+            "mean": 1.000025,
+            "std": 0.000506,
+            "min": 0.998913,
+            "max": 1.001083,
+            "bust_mean": 0.999992,
+            "win_mean": 1.000035
+          },
+          {
+            "level": 4,
+            "count": 72,
+            "mean": 1.000009,
+            "std": 0.00084,
+            "min": 0.998903,
+            "max": 1.00109,
+            "bust_mean": 0.999785,
+            "win_mean": 1.000128
+          },
+          {
+            "level": 5,
+            "count": 47,
+            "mean": 1.0,
+            "std": 0.0,
+            "min": 1.0,
+            "max": 1.0,
+            "bust_mean": 1.0,
+            "win_mean": 1.0
+          }
+        ],
+        "traces": [
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001001
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999971
+              },
+              {
+                "level": 1,
+                "ratio": 1.001053
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999957
+              },
+              {
+                "level": 1,
+                "ratio": 1.000995
+              },
+              {
+                "level": 2,
+                "ratio": 0.999971
+              },
+              {
+                "level": 3,
+                "ratio": 1.001046
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998938
+              },
+              {
+                "level": 1,
+                "ratio": 0.999999
+              },
+              {
+                "level": 2,
+                "ratio": 0.998946
+              },
+              {
+                "level": 3,
+                "ratio": 0.999976
+              },
+              {
+                "level": 4,
+                "ratio": 0.998954
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000059
+              },
+              {
+                "level": 1,
+                "ratio": 0.998964
+              },
+              {
+                "level": 2,
+                "ratio": 1.000042
+              },
+              {
+                "level": 3,
+                "ratio": 0.998988
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998933
+              },
+              {
+                "level": 1,
+                "ratio": 0.999998
+              },
+              {
+                "level": 2,
+                "ratio": 0.99896
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001011
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999924
+              },
+              {
+                "level": 1,
+                "ratio": 1.000972
+              },
+              {
+                "level": 2,
+                "ratio": 0.999982
+              },
+              {
+                "level": 3,
+                "ratio": 1.001051
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000049
+              },
+              {
+                "level": 1,
+                "ratio": 1.0011
+              },
+              {
+                "level": 2,
+                "ratio": 1.00003
+              },
+              {
+                "level": 3,
+                "ratio": 1.001083
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998975
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998971
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001056
+              },
+              {
+                "level": 1,
+                "ratio": 1.000026
+              },
+              {
+                "level": 2,
+                "ratio": 1.001025
+              },
+              {
+                "level": 3,
+                "ratio": 1.000032
+              },
+              {
+                "level": 4,
+                "ratio": 1.00109
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000997
+              },
+              {
+                "level": 1,
+                "ratio": 0.999976
+              },
+              {
+                "level": 2,
+                "ratio": 1.001019
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998926
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001055
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000932
+              },
+              {
+                "level": 1,
+                "ratio": 0.999924
+              },
+              {
+                "level": 2,
+                "ratio": 1.000984
+              },
+              {
+                "level": 3,
+                "ratio": 0.999969
+              },
+              {
+                "level": 4,
+                "ratio": 1.000991
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998867
+              },
+              {
+                "level": 1,
+                "ratio": 0.999923
+              },
+              {
+                "level": 2,
+                "ratio": 0.998932
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999992
+              },
+              {
+                "level": 1,
+                "ratio": 1.001032
+              },
+              {
+                "level": 2,
+                "ratio": 1.000012
+              },
+              {
+                "level": 3,
+                "ratio": 1.001051
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001095
+              },
+              {
+                "level": 1,
+                "ratio": 1.000063
+              },
+              {
+                "level": 2,
+                "ratio": 1.001053
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998958
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000007
+              },
+              {
+                "level": 1,
+                "ratio": 1.001022
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000036
+              },
+              {
+                "level": 1,
+                "ratio": 0.999003
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000008
+              },
+              {
+                "level": 1,
+                "ratio": 0.998993
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00105
+              },
+              {
+                "level": 1,
+                "ratio": 1.000012
+              },
+              {
+                "level": 2,
+                "ratio": 1.001049
+              },
+              {
+                "level": 3,
+                "ratio": 0.999986
+              },
+              {
+                "level": 4,
+                "ratio": 1.001028
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000041
+              },
+              {
+                "level": 1,
+                "ratio": 0.998993
+              },
+              {
+                "level": 2,
+                "ratio": 0.999974
+              },
+              {
+                "level": 3,
+                "ratio": 0.998929
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000053
+              },
+              {
+                "level": 1,
+                "ratio": 1.001069
+              },
+              {
+                "level": 2,
+                "ratio": 1.000038
+              },
+              {
+                "level": 3,
+                "ratio": 1.00105
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001088
+              },
+              {
+                "level": 1,
+                "ratio": 1.000026
+              },
+              {
+                "level": 2,
+                "ratio": 1.001069
+              },
+              {
+                "level": 3,
+                "ratio": 0.999997
+              },
+              {
+                "level": 4,
+                "ratio": 1.001037
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000987
+              },
+              {
+                "level": 1,
+                "ratio": 0.999919
+              },
+              {
+                "level": 2,
+                "ratio": 1.000967
+              },
+              {
+                "level": 3,
+                "ratio": 0.999966
+              },
+              {
+                "level": 4,
+                "ratio": 1.001024
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999023
+              },
+              {
+                "level": 1,
+                "ratio": 1.000081
+              },
+              {
+                "level": 2,
+                "ratio": 0.999015
+              },
+              {
+                "level": 3,
+                "ratio": 1.000032
+              },
+              {
+                "level": 4,
+                "ratio": 0.998992
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999017
+              },
+              {
+                "level": 1,
+                "ratio": 1.000032
+              },
+              {
+                "level": 2,
+                "ratio": 0.998967
+              },
+              {
+                "level": 3,
+                "ratio": 0.999965
+              },
+              {
+                "level": 4,
+                "ratio": 0.998942
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99896
+              },
+              {
+                "level": 1,
+                "ratio": 1.000028
+              },
+              {
+                "level": 2,
+                "ratio": 0.99894
+              },
+              {
+                "level": 3,
+                "ratio": 0.999942
+              },
+              {
+                "level": 4,
+                "ratio": 0.998934
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001039
+              },
+              {
+                "level": 1,
+                "ratio": 1.000017
+              },
+              {
+                "level": 2,
+                "ratio": 1.001045
+              },
+              {
+                "level": 3,
+                "ratio": 1.000006
+              },
+              {
+                "level": 4,
+                "ratio": 1.00105
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999977
+              },
+              {
+                "level": 1,
+                "ratio": 0.998981
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001021
+              },
+              {
+                "level": 1,
+                "ratio": 0.999947
+              },
+              {
+                "level": 2,
+                "ratio": 1.000978
+              },
+              {
+                "level": 3,
+                "ratio": 0.999985
+              },
+              {
+                "level": 4,
+                "ratio": 1.001058
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001054
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001109
+              },
+              {
+                "level": 1,
+                "ratio": 1.000043
+              },
+              {
+                "level": 2,
+                "ratio": 1.001075
+              },
+              {
+                "level": 3,
+                "ratio": 1.000006
+              },
+              {
+                "level": 4,
+                "ratio": 1.001039
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998952
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999029
+              },
+              {
+                "level": 1,
+                "ratio": 1.000013
+              },
+              {
+                "level": 2,
+                "ratio": 0.998976
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001056
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00002
+              },
+              {
+                "level": 1,
+                "ratio": 1.001053
+              },
+              {
+                "level": 2,
+                "ratio": 1.000003
+              },
+              {
+                "level": 3,
+                "ratio": 1.001034
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999971
+              },
+              {
+                "level": 1,
+                "ratio": 1.001006
+              },
+              {
+                "level": 2,
+                "ratio": 0.999927
+              },
+              {
+                "level": 3,
+                "ratio": 1.000998
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001054
+              },
+              {
+                "level": 1,
+                "ratio": 1.000012
+              },
+              {
+                "level": 2,
+                "ratio": 1.00105
+              },
+              {
+                "level": 3,
+                "ratio": 0.99999
+              },
+              {
+                "level": 4,
+                "ratio": 1.001063
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998969
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001002
+              },
+              {
+                "level": 1,
+                "ratio": 0.999949
+              },
+              {
+                "level": 2,
+                "ratio": 1.000987
+              },
+              {
+                "level": 3,
+                "ratio": 0.999962
+              },
+              {
+                "level": 4,
+                "ratio": 1.001062
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000019
+              },
+              {
+                "level": 1,
+                "ratio": 1.001047
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998928
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998949
+              },
+              {
+                "level": 1,
+                "ratio": 1.000025
+              },
+              {
+                "level": 2,
+                "ratio": 0.99897
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000046
+              },
+              {
+                "level": 1,
+                "ratio": 1.001058
+              },
+              {
+                "level": 2,
+                "ratio": 0.999981
+              },
+              {
+                "level": 3,
+                "ratio": 1.001019
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999007
+              },
+              {
+                "level": 1,
+                "ratio": 1.000054
+              },
+              {
+                "level": 2,
+                "ratio": 0.998958
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000017
+              },
+              {
+                "level": 1,
+                "ratio": 1.001027
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00003
+              },
+              {
+                "level": 1,
+                "ratio": 1.001015
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999031
+              },
+              {
+                "level": 1,
+                "ratio": 1.000062
+              },
+              {
+                "level": 2,
+                "ratio": 0.998995
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998885
+              },
+              {
+                "level": 1,
+                "ratio": 0.999907
+              },
+              {
+                "level": 2,
+                "ratio": 0.998841
+              },
+              {
+                "level": 3,
+                "ratio": 0.999903
+              },
+              {
+                "level": 4,
+                "ratio": 0.998911
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999983
+              },
+              {
+                "level": 1,
+                "ratio": 0.998917
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99994
+              },
+              {
+                "level": 1,
+                "ratio": 0.998864
+              },
+              {
+                "level": 2,
+                "ratio": 0.999954
+              },
+              {
+                "level": 3,
+                "ratio": 0.998921
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998935
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000998
+              },
+              {
+                "level": 1,
+                "ratio": 0.999951
+              },
+              {
+                "level": 2,
+                "ratio": 1.001018
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000998
+              },
+              {
+                "level": 1,
+                "ratio": 0.999973
+              },
+              {
+                "level": 2,
+                "ratio": 1.001026
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000983
+              },
+              {
+                "level": 1,
+                "ratio": 0.999974
+              },
+              {
+                "level": 2,
+                "ratio": 1.001025
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000057
+              },
+              {
+                "level": 1,
+                "ratio": 1.001086
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999819
+              },
+              {
+                "level": 1,
+                "ratio": 0.998826
+              },
+              {
+                "level": 2,
+                "ratio": 0.999917
+              },
+              {
+                "level": 3,
+                "ratio": 0.998925
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999056
+              },
+              {
+                "level": 1,
+                "ratio": 1.00008
+              },
+              {
+                "level": 2,
+                "ratio": 0.998986
+              },
+              {
+                "level": 3,
+                "ratio": 1.000024
+              },
+              {
+                "level": 4,
+                "ratio": 0.998956
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001062
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998969
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998956
+              },
+              {
+                "level": 1,
+                "ratio": 0.999988
+              },
+              {
+                "level": 2,
+                "ratio": 0.998922
+              },
+              {
+                "level": 3,
+                "ratio": 1.000006
+              },
+              {
+                "level": 4,
+                "ratio": 0.998965
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998998
+              },
+              {
+                "level": 1,
+                "ratio": 1.000056
+              },
+              {
+                "level": 2,
+                "ratio": 0.99895
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001043
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000066
+              },
+              {
+                "level": 1,
+                "ratio": 0.998975
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998969
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999982
+              },
+              {
+                "level": 1,
+                "ratio": 1.001052
+              },
+              {
+                "level": 2,
+                "ratio": 1.000016
+              },
+              {
+                "level": 3,
+                "ratio": 1.001062
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998933
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998962
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000001
+              },
+              {
+                "level": 1,
+                "ratio": 1.001057
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000066
+              },
+              {
+                "level": 1,
+                "ratio": 0.998971
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999945
+              },
+              {
+                "level": 1,
+                "ratio": 0.99891
+              },
+              {
+                "level": 2,
+                "ratio": 0.999982
+              },
+              {
+                "level": 3,
+                "ratio": 0.99896
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999991
+              },
+              {
+                "level": 1,
+                "ratio": 1.001031
+              },
+              {
+                "level": 2,
+                "ratio": 0.999984
+              },
+              {
+                "level": 3,
+                "ratio": 1.001012
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998893
+              },
+              {
+                "level": 1,
+                "ratio": 0.999929
+              },
+              {
+                "level": 2,
+                "ratio": 0.998914
+              },
+              {
+                "level": 3,
+                "ratio": 0.999941
+              },
+              {
+                "level": 4,
+                "ratio": 0.998924
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998971
+              },
+              {
+                "level": 1,
+                "ratio": 1.000045
+              },
+              {
+                "level": 2,
+                "ratio": 0.998963
+              },
+              {
+                "level": 3,
+                "ratio": 1.00004
+              },
+              {
+                "level": 4,
+                "ratio": 0.999009
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99996
+              },
+              {
+                "level": 1,
+                "ratio": 1.001014
+              },
+              {
+                "level": 2,
+                "ratio": 0.999998
+              },
+              {
+                "level": 3,
+                "ratio": 1.001054
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999991
+              },
+              {
+                "level": 1,
+                "ratio": 0.999
+              },
+              {
+                "level": 2,
+                "ratio": 0.999999
+              },
+              {
+                "level": 3,
+                "ratio": 0.99899
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000965
+              },
+              {
+                "level": 1,
+                "ratio": 0.999877
+              },
+              {
+                "level": 2,
+                "ratio": 1.000914
+              },
+              {
+                "level": 3,
+                "ratio": 0.999902
+              },
+              {
+                "level": 4,
+                "ratio": 1.000991
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99902
+              },
+              {
+                "level": 1,
+                "ratio": 1.000056
+              },
+              {
+                "level": 2,
+                "ratio": 0.998966
+              },
+              {
+                "level": 3,
+                "ratio": 1.000007
+              },
+              {
+                "level": 4,
+                "ratio": 0.998919
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998914
+              },
+              {
+                "level": 1,
+                "ratio": 0.999947
+              },
+              {
+                "level": 2,
+                "ratio": 0.9989
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998932
+              },
+              {
+                "level": 1,
+                "ratio": 0.999957
+              },
+              {
+                "level": 2,
+                "ratio": 0.998947
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000057
+              },
+              {
+                "level": 1,
+                "ratio": 0.998988
+              },
+              {
+                "level": 2,
+                "ratio": 0.999997
+              },
+              {
+                "level": 3,
+                "ratio": 0.998932
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001007
+              },
+              {
+                "level": 1,
+                "ratio": 0.999979
+              },
+              {
+                "level": 2,
+                "ratio": 1.001018
+              },
+              {
+                "level": 3,
+                "ratio": 1.000005
+              },
+              {
+                "level": 4,
+                "ratio": 1.000976
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000066
+              },
+              {
+                "level": 1,
+                "ratio": 0.998999
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999004
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999025
+              },
+              {
+                "level": 1,
+                "ratio": 1.000067
+              },
+              {
+                "level": 2,
+                "ratio": 0.999031
+              },
+              {
+                "level": 3,
+                "ratio": 1.000031
+              },
+              {
+                "level": 4,
+                "ratio": 0.998964
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001079
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999031
+              },
+              {
+                "level": 1,
+                "ratio": 1.000008
+              },
+              {
+                "level": 2,
+                "ratio": 0.998974
+              },
+              {
+                "level": 3,
+                "ratio": 0.999971
+              },
+              {
+                "level": 4,
+                "ratio": 0.99891
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998969
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000002
+              },
+              {
+                "level": 1,
+                "ratio": 1.001035
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001059
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001005
+              },
+              {
+                "level": 1,
+                "ratio": 0.999947
+              },
+              {
+                "level": 2,
+                "ratio": 1.000964
+              },
+              {
+                "level": 3,
+                "ratio": 0.999953
+              },
+              {
+                "level": 4,
+                "ratio": 1.001033
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001023
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00105
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998899
+              },
+              {
+                "level": 1,
+                "ratio": 1.000006
+              },
+              {
+                "level": 2,
+                "ratio": 0.998914
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999005
+              },
+              {
+                "level": 1,
+                "ratio": 1.000046
+              },
+              {
+                "level": 2,
+                "ratio": 0.998951
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000069
+              },
+              {
+                "level": 1,
+                "ratio": 0.998984
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001034
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000052
+              },
+              {
+                "level": 1,
+                "ratio": 1.001069
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001066
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000033
+              },
+              {
+                "level": 1,
+                "ratio": 0.99895
+              },
+              {
+                "level": 2,
+                "ratio": 1.000034
+              },
+              {
+                "level": 3,
+                "ratio": 0.998998
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001052
+              },
+              {
+                "level": 1,
+                "ratio": 0.999986
+              },
+              {
+                "level": 2,
+                "ratio": 1.000996
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001045
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000028
+              },
+              {
+                "level": 1,
+                "ratio": 0.998942
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001057
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999974
+              },
+              {
+                "level": 1,
+                "ratio": 0.998976
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999973
+              },
+              {
+                "level": 1,
+                "ratio": 0.998979
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998962
+              },
+              {
+                "level": 1,
+                "ratio": 0.999981
+              },
+              {
+                "level": 2,
+                "ratio": 0.998987
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998934
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999844
+              },
+              {
+                "level": 1,
+                "ratio": 1.000931
+              },
+              {
+                "level": 2,
+                "ratio": 0.999919
+              },
+              {
+                "level": 3,
+                "ratio": 1.000991
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999892
+              },
+              {
+                "level": 1,
+                "ratio": 0.998878
+              },
+              {
+                "level": 2,
+                "ratio": 0.99998
+              },
+              {
+                "level": 3,
+                "ratio": 0.998978
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001111
+              },
+              {
+                "level": 1,
+                "ratio": 1.000067
+              },
+              {
+                "level": 2,
+                "ratio": 1.00105
+              },
+              {
+                "level": 3,
+                "ratio": 0.999966
+              },
+              {
+                "level": 4,
+                "ratio": 1.001036
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000989
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001053
+              },
+              {
+                "level": 1,
+                "ratio": 0.999965
+              },
+              {
+                "level": 2,
+                "ratio": 1.001016
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001085
+              },
+              {
+                "level": 1,
+                "ratio": 1.000031
+              },
+              {
+                "level": 2,
+                "ratio": 1.001065
+              },
+              {
+                "level": 3,
+                "ratio": 0.999956
+              },
+              {
+                "level": 4,
+                "ratio": 1.001041
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001067
+              },
+              {
+                "level": 1,
+                "ratio": 1.000012
+              },
+              {
+                "level": 2,
+                "ratio": 1.001093
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00098
+              },
+              {
+                "level": 1,
+                "ratio": 0.999945
+              },
+              {
+                "level": 2,
+                "ratio": 1.000983
+              },
+              {
+                "level": 3,
+                "ratio": 0.999958
+              },
+              {
+                "level": 4,
+                "ratio": 1.001024
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000026
+              },
+              {
+                "level": 1,
+                "ratio": 0.998968
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000976
+              },
+              {
+                "level": 1,
+                "ratio": 0.999903
+              },
+              {
+                "level": 2,
+                "ratio": 1.001008
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000045
+              },
+              {
+                "level": 1,
+                "ratio": 0.998944
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001035
+              },
+              {
+                "level": 1,
+                "ratio": 0.999933
+              },
+              {
+                "level": 2,
+                "ratio": 1.001033
+              },
+              {
+                "level": 3,
+                "ratio": 0.999984
+              },
+              {
+                "level": 4,
+                "ratio": 1.001021
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999005
+              },
+              {
+                "level": 1,
+                "ratio": 1.000061
+              },
+              {
+                "level": 2,
+                "ratio": 0.998955
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99998
+              },
+              {
+                "level": 1,
+                "ratio": 1.001053
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001095
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001001
+              },
+              {
+                "level": 1,
+                "ratio": 0.999938
+              },
+              {
+                "level": 2,
+                "ratio": 1.000983
+              },
+              {
+                "level": 3,
+                "ratio": 0.999892
+              },
+              {
+                "level": 4,
+                "ratio": 1.001007
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999011
+              },
+              {
+                "level": 1,
+                "ratio": 1.000103
+              },
+              {
+                "level": 2,
+                "ratio": 0.999041
+              },
+              {
+                "level": 3,
+                "ratio": 1.000041
+              },
+              {
+                "level": 4,
+                "ratio": 0.99895
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998984
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.9989
+              },
+              {
+                "level": 1,
+                "ratio": 0.999976
+              },
+              {
+                "level": 2,
+                "ratio": 0.998936
+              },
+              {
+                "level": 3,
+                "ratio": 1.000035
+              },
+              {
+                "level": 4,
+                "ratio": 0.998963
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998915
+              },
+              {
+                "level": 1,
+                "ratio": 0.999978
+              },
+              {
+                "level": 2,
+                "ratio": 0.998908
+              },
+              {
+                "level": 3,
+                "ratio": 0.999984
+              },
+              {
+                "level": 4,
+                "ratio": 0.998903
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998965
+              },
+              {
+                "level": 1,
+                "ratio": 1.000023
+              },
+              {
+                "level": 2,
+                "ratio": 0.999004
+              },
+              {
+                "level": 3,
+                "ratio": 1.000037
+              },
+              {
+                "level": 4,
+                "ratio": 0.998999
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999967
+              },
+              {
+                "level": 1,
+                "ratio": 0.998917
+              },
+              {
+                "level": 2,
+                "ratio": 0.999952
+              },
+              {
+                "level": 3,
+                "ratio": 0.998913
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998952
+              },
+              {
+                "level": 1,
+                "ratio": 0.99998
+              },
+              {
+                "level": 2,
+                "ratio": 0.998906
+              },
+              {
+                "level": 3,
+                "ratio": 0.999991
+              },
+              {
+                "level": 4,
+                "ratio": 0.998945
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001018
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998912
+              },
+              {
+                "level": 1,
+                "ratio": 1.000015
+              },
+              {
+                "level": 2,
+                "ratio": 0.999
+              },
+              {
+                "level": 3,
+                "ratio": 1.000073
+              },
+              {
+                "level": 4,
+                "ratio": 0.998988
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001019
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998918
+              },
+              {
+                "level": 1,
+                "ratio": 0.99994
+              },
+              {
+                "level": 2,
+                "ratio": 0.998931
+              },
+              {
+                "level": 3,
+                "ratio": 0.999995
+              },
+              {
+                "level": 4,
+                "ratio": 0.998904
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001032
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998902
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998984
+              },
+              {
+                "level": 1,
+                "ratio": 0.999981
+              },
+              {
+                "level": 2,
+                "ratio": 0.998911
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99999
+              },
+              {
+                "level": 1,
+                "ratio": 1.001061
+              },
+              {
+                "level": 2,
+                "ratio": 1.000005
+              },
+              {
+                "level": 3,
+                "ratio": 1.001061
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998943
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998955
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00103
+              },
+              {
+                "level": 1,
+                "ratio": 0.999949
+              },
+              {
+                "level": 2,
+                "ratio": 1.000941
+              },
+              {
+                "level": 3,
+                "ratio": 0.999926
+              },
+              {
+                "level": 4,
+                "ratio": 1.001012
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001017
+              },
+              {
+                "level": 1,
+                "ratio": 0.999965
+              },
+              {
+                "level": 2,
+                "ratio": 1.00102
+              },
+              {
+                "level": 3,
+                "ratio": 0.999948
+              },
+              {
+                "level": 4,
+                "ratio": 1.001021
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001116
+              },
+              {
+                "level": 1,
+                "ratio": 1.000043
+              },
+              {
+                "level": 2,
+                "ratio": 1.001056
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99897
+              },
+              {
+                "level": 1,
+                "ratio": 1.000011
+              },
+              {
+                "level": 2,
+                "ratio": 0.998922
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99898
+              },
+              {
+                "level": 1,
+                "ratio": 1.000004
+              },
+              {
+                "level": 2,
+                "ratio": 0.998951
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000003
+              },
+              {
+                "level": 1,
+                "ratio": 1.001027
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999975
+              },
+              {
+                "level": 1,
+                "ratio": 0.998895
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999998
+              },
+              {
+                "level": 1,
+                "ratio": 1.001014
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998996
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00106
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998965
+              },
+              {
+                "level": 1,
+                "ratio": 1.000019
+              },
+              {
+                "level": 2,
+                "ratio": 0.998984
+              },
+              {
+                "level": 3,
+                "ratio": 1.00004
+              },
+              {
+                "level": 4,
+                "ratio": 0.998965
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001058
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999007
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001071
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00007
+              },
+              {
+                "level": 1,
+                "ratio": 0.999012
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998951
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001063
+              },
+              {
+                "level": 1,
+                "ratio": 0.99999
+              },
+              {
+                "level": 2,
+                "ratio": 1.001027
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00099
+              },
+              {
+                "level": 1,
+                "ratio": 0.999997
+              },
+              {
+                "level": 2,
+                "ratio": 1.001044
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999941
+              },
+              {
+                "level": 1,
+                "ratio": 0.998924
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999973
+              },
+              {
+                "level": 1,
+                "ratio": 0.998976
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998998
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001036
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99895
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999977
+              },
+              {
+                "level": 1,
+                "ratio": 0.998976
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999988
+              },
+              {
+                "level": 1,
+                "ratio": 1.00099
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001065
+              },
+              {
+                "level": 1,
+                "ratio": 1.000079
+              },
+              {
+                "level": 2,
+                "ratio": 1.001088
+              },
+              {
+                "level": 3,
+                "ratio": 1.000054
+              },
+              {
+                "level": 4,
+                "ratio": 1.00107
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998868
+              },
+              {
+                "level": 1,
+                "ratio": 0.999913
+              },
+              {
+                "level": 2,
+                "ratio": 0.998928
+              },
+              {
+                "level": 3,
+                "ratio": 0.999979
+              },
+              {
+                "level": 4,
+                "ratio": 0.99894
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000087
+              },
+              {
+                "level": 1,
+                "ratio": 1.001103
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001045
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00104
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001081
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998999
+              },
+              {
+                "level": 1,
+                "ratio": 1.000053
+              },
+              {
+                "level": 2,
+                "ratio": 0.998969
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99994
+              },
+              {
+                "level": 1,
+                "ratio": 0.998932
+              },
+              {
+                "level": 2,
+                "ratio": 1.000035
+              },
+              {
+                "level": 3,
+                "ratio": 0.998984
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001034
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000964
+              },
+              {
+                "level": 1,
+                "ratio": 0.999936
+              },
+              {
+                "level": 2,
+                "ratio": 1.001015
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001032
+              },
+              {
+                "level": 1,
+                "ratio": 1.000002
+              },
+              {
+                "level": 2,
+                "ratio": 1.001019
+              },
+              {
+                "level": 3,
+                "ratio": 0.999978
+              },
+              {
+                "level": 4,
+                "ratio": 1.000995
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001114
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001032
+              },
+              {
+                "level": 1,
+                "ratio": 0.999988
+              },
+              {
+                "level": 2,
+                "ratio": 1.001046
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999052
+              },
+              {
+                "level": 1,
+                "ratio": 1.000126
+              },
+              {
+                "level": 2,
+                "ratio": 0.999059
+              },
+              {
+                "level": 3,
+                "ratio": 1.000085
+              },
+              {
+                "level": 4,
+                "ratio": 0.999002
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000002
+              },
+              {
+                "level": 1,
+                "ratio": 0.999
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.998938
+              },
+              {
+                "level": 1,
+                "ratio": 0.999958
+              },
+              {
+                "level": 2,
+                "ratio": 0.99892
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001022
+              },
+              {
+                "level": 1,
+                "ratio": 0.999987
+              },
+              {
+                "level": 2,
+                "ratio": 1.001055
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999032
+              },
+              {
+                "level": 1,
+                "ratio": 1.000049
+              },
+              {
+                "level": 2,
+                "ratio": 0.998991
+              },
+              {
+                "level": 3,
+                "ratio": 1.000079
+              },
+              {
+                "level": 4,
+                "ratio": 0.998982
+              }
+            ]
+          },
+          {
+            "max_level": 4,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 4,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.000026
+              },
+              {
+                "level": 1,
+                "ratio": 1.001112
+              },
+              {
+                "level": 2,
+                "ratio": 1.000011
+              },
+              {
+                "level": 3,
+                "ratio": 1.001037
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99891
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001018
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001102
+              },
+              {
+                "level": 1,
+                "ratio": 1.000051
+              },
+              {
+                "level": 2,
+                "ratio": 1.001094
+              },
+              {
+                "level": 3,
+                "ratio": 1.00001
+              },
+              {
+                "level": 4,
+                "ratio": 1.001074
+              }
+            ]
+          },
+          {
+            "max_level": 5,
+            "is_bust": true,
+            "points": [
+              {
+                "level": 5,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.00101
+              },
+              {
+                "level": 1,
+                "ratio": 0.999994
+              },
+              {
+                "level": 2,
+                "ratio": 1.00104
+              },
+              {
+                "level": 3,
+                "ratio": 0.999944
+              },
+              {
+                "level": 4,
+                "ratio": 1.001001
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 2,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.999971
+              },
+              {
+                "level": 1,
+                "ratio": 0.998914
+              }
+            ]
+          },
+          {
+            "max_level": 1,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 1,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 1.001097
+              }
+            ]
+          },
+          {
+            "max_level": 3,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 3,
+                "ratio": 1.0
+              },
+              {
+                "level": 0,
+                "ratio": 0.99889
+              },
+              {
+                "level": 1,
+                "ratio": 0.999966
+              },
+              {
+                "level": 2,
+                "ratio": 0.998928
+              }
+            ]
+          },
+          {
+            "max_level": 2,
+            "is_bust": false,
+            "points": [
+              {
+                "level": 0,
+                "ratio": 1.0
+              },
+              {
+                "level": 1,
+                "ratio": 0.998938
+              },
+              {
+                "level": 2,
+                "ratio": 0.999991
+              }
+            ]
+          }
+        ],
+        "collapse_boundary": null,
+        "n_cycles": 198
+      },
+      "net_profit": -1385.330699625445,
+      "net_profit_percentage": -13.85330699625445,
+      "annual_return": -26.218980404809844,
+      "starting_balance": 10000.0,
+      "finishing_balance": 8614.669300374555,
+      "gross_pnl": -1385.330699625452,
+      "gross_profit": 12631.563849055203,
+      "gross_loss": -14016.894548680655,
+      "max_drawdown": -17.30427581314007,
+      "margin_closeouts": 0,
+      "account_blown": false,
+      "worst_floating_pnl": -144.48453190087102,
+      "peak_margin_used": 6475.579953183435,
+      "peak_equity_usage_pct": 64.05148838676566,
+      "fee": 0.0,
+      "profit_factor": 0.9011670741465451,
+      "total_pips": -1439.7,
+      "avg_pips_per_trade": -1.7,
+      "total_swap_cost": 0.0,
+      "total_spread_cost": 987.01,
+      "raw_trade_stats": {
+        "total": 829,
+        "total_winning_trades": 478,
+        "total_losing_trades": 351,
+        "win_rate": 0.5765983112183354,
+        "longs_count": 414,
+        "shorts_count": 415,
+        "largest_winning_trade": 182.05449802648147,
+        "largest_losing_trade": -183.88135212452636,
+        "winning_streak": 5,
+        "losing_streak": 2,
+        "average_win": 26.425865793002515,
+        "average_loss": 39.93417250336369,
+        "average_holding_period": 52434.13751507841
+      },
+      "total_open_trades": 0,
+      "open_pl": 0.0,
+      "total": 829
+    }
+  },
+  "pipeline": {
+    "metrics": {
+      "is_martingale": true,
+      "total_sessions": 2,
+      "session_win_rate": 0.5,
+      "avg_session_win": 0.0,
+      "avg_session_loss": -147.99,
+      "ev_per_session": -73.99,
+      "avg_legs_per_session": 1.0,
+      "max_legs_in_session": 1,
+      "sessions_with_1_leg": 2,
+      "max_consecutive_session_wins": 1,
+      "max_consecutive_session_losses": 1,
+      "total_busts": 0,
+      "worst_bust_pnl": 0.0,
+      "total_losing_sessions": 1,
+      "depth_breakdown": [
+        {
+          "depth": 0,
+          "count": 2,
+          "wins": 1,
+          "losses": 1,
+          "pnl": -147.99
+        }
+      ],
+      "session_profit_factor": 1.9783535826883295e-08,
+      "median_session_pnl": -73.99410802322525,
+      "bust_rate": 0.0,
+      "bust_count": 0,
+      "wins_to_recover": 0.0,
+      "geometric_growth_rate": -0.00745470831943509,
+      "survival_100": 1.0,
+      "survival_500": 1.0,
+      "survival_half_life": Infinity,
+      "avg_bust_loss": 0.0,
+      "bust_severity_std": 0.0,
+      "level_transitions": [
+        {
+          "level": 0,
+          "entries": 2,
+          "wins": 1,
+          "escalations": 0,
+          "p_win": 0.5,
+          "p_escalate": 0.0
+        }
+      ],
+      "ev_by_depth": {
+        "0": {
+          "count": 2,
+          "total_pnl": -147.9882160464505,
+          "wins": 1,
+          "avg_pnl": -73.99410802322525,
+          "win_rate": 0.5
+        }
+      },
+      "time_at_depth": {
+        "0": 15492960.0
+      },
+      "l0_win_rate": 0.5,
+      "cost_drag_pct": 15370268.58132423,
+      "martingale_index": 0.0,
+      "martingale_contribution_pct": 0.0,
+      "depth_transition_matrix": null,
+      "depth_stationary": null,
+      "exposure_fit_r2": 0.0,
+      "exposure_coefficients": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "depth_barrier": null,
+      "depth_barrier_details": [
+        {
+          "depth": 0,
+          "count": 2,
+          "win_rate": 0.5,
+          "avg_pnl": -73.99
+        }
+      ],
+      "loss_growth_validation": null,
+      "profitable_buy_pct": 0.5,
+      "protective_sell_pct": 0.0,
+      "analytical_ruin_prob": 1.0,
+      "analytical_survival_prob": 0.0,
+      "survival_condition_ratio": 0.0,
+      "survival_condition_met": false,
+      "survival_health": "red",
+      "min_account_95": null,
+      "min_account_99": null,
+      "cost_sensitivity": null,
+      "depth_fan": null,
+      "net_profit": -147.98821604644945,
+      "net_profit_percentage": -1.4798821604644945,
+      "annual_return": -2.9944393743770115,
+      "starting_balance": 10000.0,
+      "finishing_balance": 9852.01178395355,
+      "gross_pnl": -147.9882160464505,
+      "gross_profit": 2.927730232032355e-06,
+      "gross_loss": -147.98821897418074,
+      "max_drawdown": -1.9710342562399674,
+      "margin_closeouts": 0,
+      "account_blown": false,
+      "worst_floating_pnl": -196.83953273724958,
+      "peak_margin_used": 200.972090301641,
+      "peak_equity_usage_pct": 2.0096668024091433,
+      "fee": 0.0,
+      "profit_factor": 1.9783535826883295e-08,
+      "total_pips": -257.5,
+      "avg_pips_per_trade": -128.7,
+      "total_swap_cost": 0.0,
+      "total_spread_cost": 0.45,
+      "raw_trade_stats": {
+        "total": 2,
+        "total_winning_trades": 1,
+        "total_losing_trades": 1,
+        "win_rate": 0.5,
+        "longs_count": 2,
+        "shorts_count": 0,
+        "largest_winning_trade": 2.927730232032355e-06,
+        "largest_losing_trade": -147.98821897418074,
+        "winning_streak": 1,
+        "losing_streak": 1,
+        "average_win": 2.927730232032355e-06,
+        "average_loss": 147.98821897418074,
+        "average_holding_period": 7746480.0
+      },
+      "total_open_trades": 0,
+      "open_pl": 0.0,
+      "total": 2
+    },
+    "pipeline_stats": {
+      "OANDA-EUR-USD": {
+        "active_regime": 70,
+        "active_confidence": 0.4719,
+        "candle_count": 37416,
+        "cycle_count": 2,
+        "entries_allowed": 2,
+        "entries_blocked": 294,
+        "total_gate_checks": 296,
+        "block_rate": 0.9932,
+        "aborts_triggered": 0,
+        "has_genome": true,
+        "n_leaves": 73,
+        "leaf_ids": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          43,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76
+        ],
+        "regime_counts": {
+          "5": 398,
+          "50": 823,
+          "73": 1938,
+          "48": 1331,
+          "76": 1929,
+          "72": 982,
+          "1": 249,
+          "49": 1687,
+          "69": 2155,
+          "6": 309,
+          "75": 3247,
+          "65": 191,
+          "14": 58,
+          "9": 217,
+          "13": 630,
+          "62": 110,
+          "36": 383,
+          "28": 196,
+          "30": 233,
+          "23": 336,
+          "11": 354,
+          "68": 240,
+          "32": 484,
+          "61": 356,
+          "8": 818,
+          "67": 470,
+          "35": 795,
+          "12": 168,
+          "31": 990,
+          "7": 403,
+          "47": 846,
+          "70": 2300,
+          "52": 380,
+          "4": 203,
+          "71": 2736,
+          "64": 136,
+          "17": 153,
+          "21": 33,
+          "26": 767,
+          "66": 77,
+          "15": 34,
+          "25": 92,
+          "37": 126,
+          "46": 1141,
+          "24": 42,
+          "2": 626,
+          "3": 384,
+          "53": 1154,
+          "29": 113,
+          "16": 61,
+          "59": 35,
+          "22": 55,
+          "0": 114,
+          "38": 15,
+          "51": 1403,
+          "74": 1316,
+          "27": 20,
+          "34": 32,
+          "19": 62,
+          "33": 41,
+          "40": 73,
+          "10": 18,
+          "39": 10,
+          "43": 29,
+          "63": 10,
+          "60": 11
+        },
+        "n_transitions": 5693,
+        "fitness_summary": {
+          "0": {
+            "best": 1727.7864186611162,
+            "worst": 913.3297250996253,
+            "mean": 1320.5580718803708,
+            "std": 407.2283467807454,
+            "n": 2
+          },
+          "1": {
+            "best": 301.8628510098933,
+            "worst": 301.8628510098933,
+            "mean": 301.8628510098933,
+            "std": 0.0,
+            "n": 2
+          },
+          "2": {
+            "best": 303.8711049021147,
+            "worst": 295.7080880622068,
+            "mean": 299.78959648216073,
+            "std": 4.081508419953963,
+            "n": 2
+          },
+          "3": {
+            "best": 172.96813570873567,
+            "worst": 124.04139820361752,
+            "mean": 148.50476695617658,
+            "std": 24.463368752559077,
+            "n": 2
+          },
+          "4": {
+            "best": 13648785248495.047,
+            "worst": 12479947986302.535,
+            "mean": 13064366617398.791,
+            "std": 584418631096.2559,
+            "n": 2
+          },
+          "5": {
+            "best": 10341800360794.77,
+            "worst": 4764183294394.342,
+            "mean": 7552991827594.556,
+            "std": 2788808533200.214,
+            "n": 2
+          },
+          "6": {
+            "best": 439.28820134540985,
+            "worst": 417.30989791138984,
+            "mean": 428.29904962839987,
+            "std": 10.989151717010003,
+            "n": 2
+          },
+          "7": {
+            "best": 63.38873328591818,
+            "worst": 53.53693139137298,
+            "mean": 58.46283233864558,
+            "std": 4.9259009472725985,
+            "n": 2
+          },
+          "8": {
+            "best": 352.31682367739415,
+            "worst": 108.17083521798433,
+            "mean": 230.24382944768925,
+            "std": 122.07299422970492,
+            "n": 2
+          },
+          "9": {
+            "best": 6235374092097.79,
+            "worst": 4650718735697.581,
+            "mean": 5443046413897.686,
+            "std": 792327678200.1045,
+            "n": 2
+          },
+          "10": {
+            "best": 52495051152542.586,
+            "worst": 34998725717728.355,
+            "mean": 43746888435135.47,
+            "std": 8748162717407.115,
+            "n": 2
+          },
+          "11": {
+            "best": 4509807640906.907,
+            "worst": 3233450848766.0186,
+            "mean": 3871629244836.463,
+            "std": 638178396070.4443,
+            "n": 2
+          },
+          "12": {
+            "best": 189.56581698244935,
+            "worst": 189.10834034440023,
+            "mean": 189.3370786634248,
+            "std": 0.22873831902455777,
+            "n": 2
+          },
+          "13": {
+            "best": 49402894066552.54,
+            "worst": 34528531619647.32,
+            "mean": 41965712843099.93,
+            "std": 7437181223452.609,
+            "n": 2
+          },
+          "14": {
+            "best": 36468839617347.21,
+            "worst": 31347207990180.375,
+            "mean": 33908023803763.793,
+            "std": 2560815813583.418,
+            "n": 2
+          },
+          "16": {
+            "best": 37675614449146.305,
+            "worst": 34067797224296.883,
+            "mean": 35871705836721.59,
+            "std": 1803908612424.711,
+            "n": 2
+          },
+          "17": {
+            "best": 159.9031338167306,
+            "worst": 154.57824731293823,
+            "mean": 157.2406905648344,
+            "std": 2.6624432518961783,
+            "n": 2
+          },
+          "18": {
+            "best": 43975040724882.36,
+            "worst": 43975040724882.28,
+            "mean": 43975040724882.32,
+            "std": 0.0390625,
+            "n": 2
+          },
+          "19": {
+            "best": 223.08662979037143,
+            "worst": 133.96579294412172,
+            "mean": 178.52621136724656,
+            "std": 44.56041842312486,
+            "n": 2
+          },
+          "20": {
+            "best": 32289547826625.664,
+            "worst": 12013666955402.57,
+            "mean": 22151607391014.117,
+            "std": 10137940435611.547,
+            "n": 2
+          },
+          "21": {
+            "best": 108.78697311077615,
+            "worst": 72.10153983298515,
+            "mean": 90.44425647188065,
+            "std": 18.342716638895496,
+            "n": 2
+          },
+          "22": {
+            "best": 700.575394868896,
+            "worst": 678.3870783539973,
+            "mean": 689.4812366114465,
+            "std": 11.094158257449351,
+            "n": 2
+          },
+          "23": {
+            "best": 490.14638617957144,
+            "worst": 468.5593590853705,
+            "mean": 479.35287263247096,
+            "std": 10.793513547100474,
+            "n": 2
+          },
+          "24": {
+            "best": 317.72377197517136,
+            "worst": 309.96034776659525,
+            "mean": 313.8420598708833,
+            "std": 3.881712104288056,
+            "n": 2
+          },
+          "25": {
+            "best": 634.6964581354032,
+            "worst": 634.6964581354032,
+            "mean": 634.6964581354032,
+            "std": 0.0,
+            "n": 2
+          },
+          "26": {
+            "best": 395.30969080761383,
+            "worst": 380.32084765509876,
+            "mean": 387.8152692313563,
+            "std": 7.494421576257537,
+            "n": 2
+          },
+          "27": {
+            "best": 489.42174667774304,
+            "worst": 489.42174667774304,
+            "mean": 489.42174667774304,
+            "std": 0.0,
+            "n": 2
+          },
+          "28": {
+            "best": 19608479947416.79,
+            "worst": 19608479947416.79,
+            "mean": 19608479947416.79,
+            "std": 0.0,
+            "n": 2
+          },
+          "29": {
+            "best": 894078881909.6422,
+            "worst": 894078881909.6422,
+            "mean": 894078881909.6422,
+            "std": 0.0,
+            "n": 2
+          },
+          "30": {
+            "best": 129440719235792.1,
+            "worst": 129440719235792.1,
+            "mean": 129440719235792.1,
+            "std": 0.0,
+            "n": 2
+          },
+          "31": {
+            "best": 179.10208319914705,
+            "worst": 114.6052722401641,
+            "mean": 146.85367771965556,
+            "std": 32.248405479491474,
+            "n": 2
+          },
+          "32": {
+            "best": 2635936727779.169,
+            "worst": 2365.51022223215,
+            "mean": 1317968365072.3396,
+            "std": 1317968362706.8293,
+            "n": 2
+          },
+          "33": {
+            "best": 7577440538828.997,
+            "worst": 2392224212.7382307,
+            "mean": 3789916381520.8677,
+            "std": 3787524157308.1294,
+            "n": 2
+          },
+          "34": {
+            "best": 444.121223402519,
+            "worst": 354.46156001276086,
+            "mean": 399.29139170763995,
+            "std": 44.82983169487906,
+            "n": 2
+          },
+          "35": {
+            "best": 243.8435572555174,
+            "worst": 180.08398881335475,
+            "mean": 211.9637730344361,
+            "std": 31.879784221081323,
+            "n": 2
+          },
+          "36": {
+            "best": 348.16751083321265,
+            "worst": 345.25898555923726,
+            "mean": 346.713248196225,
+            "std": 1.4542626369876928,
+            "n": 2
+          },
+          "37": {
+            "best": 215.5993133423257,
+            "worst": 182.9340427974131,
+            "mean": 199.26667806986939,
+            "std": 16.3326352724563,
+            "n": 2
+          },
+          "38": {
+            "best": 646.3585715718904,
+            "worst": 646.3585715718903,
+            "mean": 646.3585715718903,
+            "std": 8.038873388460929e-14,
+            "n": 2
+          },
+          "43": {
+            "best": 267.0086887488875,
+            "worst": 257.42198249074784,
+            "mean": 262.21533561981767,
+            "std": 4.793353129069828,
+            "n": 2
+          },
+          "46": {
+            "best": 23512120960640.78,
+            "worst": 21527430778795.85,
+            "mean": 22519775869718.316,
+            "std": 992345090922.4648,
+            "n": 2
+          },
+          "47": {
+            "best": 196.239192487445,
+            "worst": 158.4296743791344,
+            "mean": 177.3344334332897,
+            "std": 18.904759054155292,
+            "n": 2
+          },
+          "48": {
+            "best": 1006120298701.5114,
+            "worst": 861050395691.9597,
+            "mean": 933585347196.7356,
+            "std": 72534951504.77582,
+            "n": 2
+          },
+          "49": {
+            "best": 13570120913048.973,
+            "worst": 858411550381.4434,
+            "mean": 7214266231715.208,
+            "std": 6355854681333.765,
+            "n": 2
+          },
+          "50": {
+            "best": 9073852217577.002,
+            "worst": 219.06742601717082,
+            "mean": 4536926108898.035,
+            "std": 4536926108678.968,
+            "n": 2
+          },
+          "51": {
+            "best": 17582028129341.744,
+            "worst": 91.0634864621397,
+            "mean": 8791014064716.404,
+            "std": 8791014064625.341,
+            "n": 2
+          },
+          "52": {
+            "best": 1381611485432.5854,
+            "worst": 2541.3392773011383,
+            "mean": 690805743986.9624,
+            "std": 690805741445.623,
+            "n": 2
+          },
+          "53": {
+            "best": 47.71419075415719,
+            "worst": 36.5668448377949,
+            "mean": 42.140517795976045,
+            "std": 5.573672958181142,
+            "n": 2
+          },
+          "54": {
+            "best": 143.1945220885639,
+            "worst": 143.1945220885639,
+            "mean": 143.1945220885639,
+            "std": 0.0,
+            "n": 2
+          },
+          "59": {
+            "best": 307.65916447755933,
+            "worst": 307.65916447755933,
+            "mean": 307.65916447755933,
+            "std": 0.0,
+            "n": 2
+          },
+          "61": {
+            "best": 99.56798662153511,
+            "worst": 87.49281689034116,
+            "mean": 93.53040175593813,
+            "std": 6.037584865596976,
+            "n": 2
+          },
+          "62": {
+            "best": 391.9786493067876,
+            "worst": 317.331099738607,
+            "mean": 354.6548745226973,
+            "std": 37.32377478409029,
+            "n": 2
+          },
+          "63": {
+            "best": 40499514843486.03,
+            "worst": 40499514843486.03,
+            "mean": 40499514843486.03,
+            "std": 0.0,
+            "n": 2
+          },
+          "64": {
+            "best": 215.05349493270882,
+            "worst": 200.3443937658373,
+            "mean": 207.69894434927306,
+            "std": 7.354550583435753,
+            "n": 2
+          },
+          "65": {
+            "best": 23024405488336.68,
+            "worst": 10108396881993.395,
+            "mean": 16566401185165.037,
+            "std": 6458004303171.643,
+            "n": 2
+          },
+          "66": {
+            "best": 275.79598827410143,
+            "worst": 265.68654800497734,
+            "mean": 270.7412681395394,
+            "std": 5.0547201345620465,
+            "n": 2
+          },
+          "67": {
+            "best": 45.32984417010886,
+            "worst": 44.428614480277815,
+            "mean": 44.879229325193336,
+            "std": 0.45061484491552406,
+            "n": 2
+          },
+          "68": {
+            "best": 14803573089072.521,
+            "worst": 281.3618902674053,
+            "mean": 7401786544676.941,
+            "std": 7401786544395.579,
+            "n": 2
+          },
+          "69": {
+            "best": 230.97146627324645,
+            "worst": 198.7681429276298,
+            "mean": 214.86980460043813,
+            "std": 16.10166167280832,
+            "n": 2
+          },
+          "70": {
+            "best": 110.97596497627805,
+            "worst": 110.47978649237037,
+            "mean": 110.72787573432421,
+            "std": 0.24808924195384208,
+            "n": 2
+          },
+          "71": {
+            "best": 2863523476928.7607,
+            "worst": 255.240012154285,
+            "mean": 1431761738592.0005,
+            "std": 1431761738336.7603,
+            "n": 2
+          },
+          "72": {
+            "best": 6667919755771.606,
+            "worst": 3842006355572.6665,
+            "mean": 5254963055672.137,
+            "std": 1412956700099.47,
+            "n": 2
+          },
+          "73": {
+            "best": 53807131564408.44,
+            "worst": 8579577743468.672,
+            "mean": 31193354653938.555,
+            "std": 22613776910469.883,
+            "n": 2
+          },
+          "74": {
+            "best": 396.55376036829483,
+            "worst": 174.0640229262665,
+            "mean": 285.3088916472807,
+            "std": 111.24486872101417,
+            "n": 2
+          },
+          "75": {
+            "best": 10211293214945.781,
+            "worst": 3760693894992.074,
+            "mean": 6985993554968.928,
+            "std": 3225299659976.8535,
+            "n": 2
+          },
+          "76": {
+            "best": 5356364881466.24,
+            "worst": 2613861392741.645,
+            "mean": 3985113137103.9424,
+            "std": 1371251744362.2976,
+            "n": 2
+          }
+        },
+        "diversity": {
+          "n_islands": 65,
+          "mean_gene_diversity": 5.82524,
+          "min_diversity_island": "38",
+          "max_diversity_island": "5",
+          "min_diversity": 1.338407,
+          "max_diversity": 13.320798
+        },
+        "n_migrations": 195,
+        "sizer": {
+          "calls": 0,
+          "avg_confidence_scale": 0.0,
+          "avg_drawdown_factor": 0.0,
+          "avg_combined": 0.0
+        },
+        "cycle_hp_log": [
+          {
+            "cycle": 1,
+            "regime": 17,
+            "confidence": 0.6444,
+            "genes": {
+              "gate_confidence_min": 0.8,
+              "abort_aggressiveness": 0.2056,
+              "base_size_pct": 1.2659,
+              "hysteresis_margin": 0.2622,
+              "confidence_sensitivity": 1.7538,
+              "recovery_aggression": 0.873,
+              "sizing_curve": "fibonacci",
+              "sizing_factor": 1.2994,
+              "base_size_mode": 0,
+              "base_size_value": 1.4808,
+              "max_levels": 4,
+              "signal_mode": 8,
+              "direction_bias": 2,
+              "entry_on_crossover": 0,
+              "ema_fast": 13,
+              "ema_slow": 79,
+              "rsi_period": 12,
+              "rsi_ob": 70.8549,
+              "rsi_os": 23.5481,
+              "macd_fast": 6,
+              "macd_slow": 25,
+              "macd_signal": 12,
+              "st_period": 16,
+              "st_factor": 3.6319,
+              "stoch_k": 8,
+              "stoch_d": 4,
+              "stoch_ob": 74.4252,
+              "stoch_os": 26.9474,
+              "cci_period": 22,
+              "cci_ob": 167.1599,
+              "cci_os": -181.9667,
+              "adx_period": 10,
+              "adx_threshold": 22.6495,
+              "bb_period": 14,
+              "bb_std": 2.7146,
+              "ind_name": 36,
+              "ind_period": 11,
+              "ind_rule": 2,
+              "ind_long_threshold": 279.1387,
+              "ind_short_threshold": -15.7144,
+              "ind2_name": 19,
+              "ind2_period": 100,
+              "ind2_rule": 0,
+              "hedge_mode": 2,
+              "hedge_value": 35.8856,
+              "hedge_atr_period": 29,
+              "hedge_expand": 0,
+              "hedge_expand_factor": 1.6604,
+              "tp_mode": 0,
+              "tp_value": 8.9035,
+              "tp_atr_period": 10
+            }
+          },
+          {
+            "cycle": 2,
+            "regime": 70,
+            "confidence": 0.4719,
+            "genes": {
+              "gate_confidence_min": 0.7359,
+              "abort_aggressiveness": 0.1042,
+              "base_size_pct": 2.5192,
+              "hysteresis_margin": 0.1322,
+              "confidence_sensitivity": 1.0192,
+              "recovery_aggression": 0.409,
+              "sizing_curve": "geometric",
+              "sizing_factor": 2.0,
+              "base_size_mode": 1,
+              "base_size_value": 0.7493,
+              "max_levels": 3,
+              "signal_mode": 3,
+              "direction_bias": 2,
+              "entry_on_crossover": 1,
+              "ema_fast": 40,
+              "ema_slow": 138,
+              "rsi_period": 24,
+              "rsi_ob": 61.2598,
+              "rsi_os": 15,
+              "macd_fast": 5,
+              "macd_slow": 21,
+              "macd_signal": 11,
+              "st_period": 8,
+              "st_factor": 3.664,
+              "stoch_k": 5,
+              "stoch_d": 7,
+              "stoch_ob": 81.768,
+              "stoch_os": 27.694,
+              "cci_period": 17,
+              "cci_ob": 116.3466,
+              "cci_os": -250,
+              "adx_period": 10,
+              "adx_threshold": 30.5823,
+              "bb_period": 19,
+              "bb_std": 1.0,
+              "ind_name": 5,
+              "ind_period": 21,
+              "ind_rule": 3,
+              "ind_long_threshold": 240.3626,
+              "ind_short_threshold": 66.8328,
+              "ind2_name": 15,
+              "ind2_period": 93,
+              "ind2_rule": 0,
+              "hedge_mode": 0,
+              "hedge_value": 20.2555,
+              "hedge_atr_period": 24,
+              "hedge_expand": 1,
+              "hedge_expand_factor": 1.3977,
+              "tp_mode": 2,
+              "tp_value": 14.0749,
+              "tp_atr_period": 12
+            }
+          }
+        ],
+        "_ui": {
+          "badges": [
+            {
+              "label": "IslandPilot",
+              "color": "brand"
+            },
+            {
+              "label": "Regime: 70",
+              "color": "amber"
+            },
+            {
+              "label": "73 islands",
+              "color": "surface"
+            },
+            {
+              "label": "Genome active",
+              "color": "green"
+            }
+          ],
+          "metric_cards": [
+            {
+              "label": "Active Regime",
+              "key": "active_regime",
+              "format": "text",
+              "icon": "chart",
+              "tooltip": "Current detected market regime island"
+            },
+            {
+              "label": "Confidence",
+              "key": "active_confidence",
+              "format": "pct",
+              "threshold": [
+                0.5,
+                0.7
+              ],
+              "icon": "shield",
+              "tooltip": "Regime classification confidence"
+            },
+            {
+              "label": "Entries Blocked",
+              "key": "block_rate",
+              "format": "pct",
+              "color": "amber",
+              "sub_template": "{entries_blocked} / {total_gate_checks}",
+              "icon": "block",
+              "tooltip": "% of entries blocked by low-confidence gate"
+            },
+            {
+              "label": "Islands",
+              "key": "n_leaves",
+              "format": "int",
+              "icon": "chart",
+              "tooltip": "Total regime islands discovered"
+            },
+            {
+              "label": "Migrations",
+              "key": "n_migrations",
+              "format": "int",
+              "icon": "chart",
+              "tooltip": "Cross-island genome migrations"
+            },
+            {
+              "label": "Cycles",
+              "key": "cycle_count",
+              "format": "int",
+              "icon": "chart",
+              "tooltip": "Total completed trading cycles"
+            }
+          ],
+          "sections": [
+            {
+              "type": "bar_breakdown",
+              "title": "Regime Distribution",
+              "data_key": "regime_counts",
+              "empty_message": "No regime data yet. Inferencer is still warming up.",
+              "label_prefix": "R",
+              "mode": "count_only",
+              "max_items": 20,
+              "sort_by_value": true
+            },
+            {
+              "type": "kv_table",
+              "title": "Fitness Summary by Island",
+              "data_key": "fitness_summary",
+              "show_if": "fitness_summary",
+              "empty_message": "No fitness data. Evolver needs more cycles.",
+              "columns": [
+                {
+                  "key": "island",
+                  "label": "Island"
+                },
+                {
+                  "key": "best",
+                  "label": "Best Fitness",
+                  "format": "dec4"
+                },
+                {
+                  "key": "mean",
+                  "label": "Mean Fitness",
+                  "format": "dec4"
+                },
+                {
+                  "key": "std",
+                  "label": "Std",
+                  "format": "dec4"
+                },
+                {
+                  "key": "n",
+                  "label": "Samples",
+                  "format": "int"
+                }
+              ],
+              "max_items": 20,
+              "sort_key": "best",
+              "sort_desc": true,
+              "hide_empty": true
+            },
+            {
+              "type": "kv_pairs",
+              "title": "Genetic Diversity",
+              "data_key": "diversity",
+              "show_if": "diversity",
+              "empty_message": "No diversity data yet.",
+              "auto_items": true,
+              "grid": "full"
+            },
+            {
+              "type": "kv_pairs",
+              "title": "Adaptive Sizer",
+              "data_key": "sizer",
+              "show_if": "sizer",
+              "auto_items": true,
+              "grid": "full"
+            }
+          ]
+        },
+        "pipeline_name": "IslandPilot",
+        "_architecture": {
+          "name": "IslandPilot",
+          "summary": "Multi-island evolutionary pipeline that discovers market regimes, evolves per-regime execution configs via genetic algorithm, and applies them at runtime with adaptive position sizing.",
+          "designed_for": [
+            "Martingale strategies",
+            "SurefireHedge variants",
+            "Martingale"
+          ],
+          "research_basis": "Phase4 research: hierarchical GMM regime discovery + island-model GA",
+          "requires_training": true,
+          "training_status": "trained",
+          "training_description": "Discovers market regimes from 5yr data, then evolves optimal execution configs per regime using genetic algorithm (~5-15 min).",
+          "training_steps": [
+            "Compute 25 market features across 5 categories",
+            "Select top features via mutual information",
+            "Build hierarchical regime tree (GMM + BIC)",
+            "Evolve per-regime configs via island-model GA (100 generations)",
+            "Save trained models for runtime use"
+          ],
+          "layers": [
+            {
+              "name": "FeaturePool",
+              "order": 1,
+              "type": "feature_extractor",
+              "hook": "on_before()",
+              "description": "Computes ~25 market features across volatility, trend, chop, momentum, and structure categories",
+              "algorithm": "Indicator-based feature extraction (NATR, ADX, EMA slopes, Hurst, RSI, etc.)",
+              "output": "Feature vector per candle"
+            },
+            {
+              "name": "RegimeTree",
+              "order": 2,
+              "type": "classifier",
+              "hook": "on_before()",
+              "description": "Hierarchical GMM clustering \u2014 macro regimes split into sub-regimes",
+              "algorithm": "Gaussian Mixture Model with BIC model selection at both levels",
+              "output": "Probability distribution over 15-80 regime islands",
+              "config_keys": {
+                "max_macro": "Max macro-regimes (default: 10)",
+                "max_sub": "Max sub-regimes per macro (default: 8)",
+                "min_island_cycles": "Min samples per island before merging (default: 200)"
+              }
+            },
+            {
+              "name": "IslandEvolver",
+              "order": 3,
+              "type": "optimizer",
+              "hook": "on_cycle_end()",
+              "description": "Per-regime genetic algorithm with sibling migration",
+              "algorithm": "Tournament selection, uniform crossover, Gaussian mutation, elitism",
+              "output": "Best execution config (genome) per regime island",
+              "genome_params": [
+                "gate_confidence_min",
+                "sizing_curve",
+                "sizing_factor",
+                "max_levels",
+                "tp_distance_atr_mult",
+                "hedge_distance_atr_mult",
+                "abort_aggressiveness",
+                "base_size_pct",
+                "hysteresis_margin",
+                "confidence_sensitivity",
+                "recovery_aggression"
+              ],
+              "config_keys": {
+                "population_size": "Individuals per island (default: 30)",
+                "max_generations": "Evolution limit (default: 100)",
+                "migration_interval": "Generations between sibling migration (default: 5)"
+              }
+            },
+            {
+              "name": "RegimeInferencer",
+              "order": 4,
+              "type": "inferencer",
+              "hook": "on_before() + gate_entry()",
+              "description": "Runtime regime classification with sticky hysteresis to prevent whipsaw",
+              "algorithm": "Soft GMM probabilities + hard config switching with margin threshold",
+              "output": "Current regime ID + confidence score",
+              "config_keys": {
+                "min_confidence": "Minimum probability to accept classification (default: 0.3)",
+                "default_hysteresis": "Margin needed to switch regime (default: 0.15)",
+                "transition_grace_candles": "Cooldown after switch (default: 5)"
+              }
+            },
+            {
+              "name": "AdaptiveSizer",
+              "order": 5,
+              "type": "sizer",
+              "hook": "adjust_size()",
+              "description": "Multi-factor position sizing: confidence \u00d7 drawdown \u00d7 base, bounded by SafetySizing",
+              "algorithm": "Three multiplicative factors with hard caps",
+              "output": "Adjusted position quantity",
+              "factors": [
+                "Island base size (evolved per regime)",
+                "Confidence scale (regime inference confidence ^ sensitivity)",
+                "Drawdown recovery (reduces size during drawdowns)"
+              ],
+              "config_keys": {
+                "drawdown_threshold_pct": "DD% before scaling starts (default: 5.0)",
+                "min_confidence_scale": "Floor for confidence factor (default: 0.2)",
+                "max_risk_per_cycle_pct": "Hard cap on position size (default: 15.0)"
+              }
+            }
+          ],
+          "lifecycle": [
+            {
+              "hook": "on_before()",
+              "description": "FeaturePool computes features \u2192 RegimeInferencer classifies regime \u2192 applies genome"
+            },
+            {
+              "hook": "gate_entry()",
+              "description": "Blocks if confidence < threshold or in grace period after regime switch"
+            },
+            {
+              "hook": "adjust_size()",
+              "description": "AdaptiveSizer scales position by confidence \u00d7 drawdown factor"
+            },
+            {
+              "hook": "filter_order()",
+              "description": "Injects evolved TP/hedge distances from active genome"
+            },
+            {
+              "hook": "suggest_exit()",
+              "description": "Aborts cycle if danger exceeds evolved aggressiveness threshold"
+            },
+            {
+              "hook": "on_cycle_end()",
+              "description": "Records outcome for fitness tracking and potential online learning"
+            }
+          ],
+          "composition_rules": {
+            "gate_entry": "AND \u2014 all pipelines must allow (any veto blocks)",
+            "adjust_size": "Multiplicative chain (each scales previous output)",
+            "suggest_exit": "Most aggressive action wins (close_all > partial > tighten_sl > set_tp)",
+            "filter_order": "Sequential chain \u2014 any None cancels the order"
+          }
+        }
+      }
+    }
+  }
+}

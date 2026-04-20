@@ -165,11 +165,46 @@ def _build_default_features() -> list:
     _add('dm_diff', 'trend', lambda c: _compute_dm_diff(c))
 
     # --- Chop ---
-    _add('chop_14', 'chop',
-         lambda c: _safe_indicator(ta.chop, c, period=14, sequential=True))
-    _add('er_50', 'chop', lambda c: _efficiency_ratio(c, 50))
-    _add('er_100', 'chop', lambda c: _efficiency_ratio(c, 100))
-    _add('hurst_100', 'chop', lambda c: _hurst_rolling(c, 100))
+    # Note: chop_14 and er_50/er_100 produce NaN on OANDA FX data during
+    # zero-volume periods (weekends, holidays). We wrap them with a fallback
+    # that returns 50.0 (neutral) when the indicator fails or returns NaN at the
+    # tail. hurst_100 has the same issue and uses a similar guard.
+    def _safe_chop(c):
+        result = _safe_indicator(ta.chop, c, period=14, sequential=True)
+        # Fill trailing NaN with the last valid value
+        if np.isnan(result[-1]):
+            valid = result[~np.isnan(result)]
+            if len(valid) > 0:
+                last_valid = valid[-1]
+                result = np.where(np.isnan(result), last_valid, result)
+            else:
+                result = np.full_like(result, 50.0)
+        return result
+
+    def _safe_er(c, period):
+        result = _efficiency_ratio(c, period)
+        if np.isnan(result[-1]):
+            valid = result[~np.isnan(result)]
+            if len(valid) > 0:
+                result = np.where(np.isnan(result), valid[-1], result)
+            else:
+                result = np.full_like(result, 0.5)
+        return result
+
+    def _safe_hurst(c, window):
+        result = _hurst_rolling(c, window)
+        if np.isnan(result[-1]):
+            valid = result[~np.isnan(result)]
+            if len(valid) > 0:
+                result = np.where(np.isnan(result), valid[-1], result)
+            else:
+                result = np.full_like(result, 0.5)
+        return result
+
+    _add('chop_14', 'chop', lambda c: _safe_chop(c))
+    _add('er_50', 'chop', lambda c: _safe_er(c, 50))
+    _add('er_100', 'chop', lambda c: _safe_er(c, 100))
+    _add('hurst_100', 'chop', lambda c: _safe_hurst(c, 100))
 
     # --- Momentum ---
     _add('rsi_14', 'momentum',
@@ -180,7 +215,16 @@ def _build_default_features() -> list:
          lambda c: _safe_indicator(ta.cci, c, period=20, sequential=True))
     _add('roc_10', 'momentum',
          lambda c: _safe_indicator(ta.roc, c, period=10, sequential=True))
-    _add('stoch_k', 'momentum', lambda c: _compute_stoch_k(c))
+    def _safe_stoch_k(c):
+        result = _compute_stoch_k(c)
+        if np.isnan(result[-1]):
+            valid = result[~np.isnan(result)]
+            if len(valid) > 0:
+                result = np.where(np.isnan(result), valid[-1], result)
+            else:
+                result = np.full_like(result, 50.0)
+        return result
+    _add('stoch_k', 'momentum', lambda c: _safe_stoch_k(c))
 
     # --- Structure ---
     _add('session_hour', 'structure', lambda c: _session_hour(c))

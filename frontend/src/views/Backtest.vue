@@ -398,6 +398,10 @@
                 </span>
                 <span v-if="generalInfo?.session_id" class="text-surface-600 truncate">ID: {{ generalInfo.session_id.slice(0, 8) }}</span>
               </div>
+              <!-- Phase message -->
+              <div v-if="phaseMessage" class="text-xs text-surface-400 italic">
+                {{ phaseMessage }}
+              </div>
             </div>
           </div>
 
@@ -1384,6 +1388,111 @@
                 </div>
               </div>
             </div>
+
+            <!-- Multi-Pipeline Comparison -->
+            <div class="mt-8 border-t border-surface-700/50 pt-6">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="text-sm font-semibold text-surface-300">Multi-Pipeline Comparison</h3>
+                  <p class="text-[10px] text-surface-500">Run all selected pipelines in parallel on the same data, each in its own isolated environment</p>
+                </div>
+              </div>
+
+              <!-- Pipeline selection checkboxes -->
+              <div class="flex flex-wrap gap-2 mb-4">
+                <label v-for="p in availablePipelines" :key="p.name"
+                  class="flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer transition-colors"
+                  :class="multiCompareSelected.includes(p.name) ? 'bg-brand-500/20 text-brand-300 border border-brand-500/40' : 'bg-surface-800 text-surface-400 border border-surface-700'">
+                  <input type="checkbox" :value="p.name" v-model="multiCompareSelected" class="rounded bg-surface-700 border-surface-500 w-3 h-3" />
+                  {{ p.name }}
+                </label>
+              </div>
+
+              <!-- Run button -->
+              <div class="flex items-center gap-3 mb-4">
+                <button @click="runMultiPipelineComparison"
+                  :disabled="multiCompareRunning || running || multiCompareSelected.length === 0"
+                  class="btn-sm bg-brand-600 hover:bg-brand-500 text-white flex items-center gap-1.5 disabled:opacity-40">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/></svg>
+                  Run {{ multiCompareSelected.length + 1 }} Backtests (Baseline + {{ multiCompareSelected.length }} Pipeline{{ multiCompareSelected.length > 1 ? 's' : '' }})
+                </button>
+                <span v-if="multiCompareRunning" class="text-xs text-amber-400 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                  {{ multiCompareRuns.filter(r => r.status === 'done').length }}/{{ multiCompareRuns.length }} completed
+                </span>
+              </div>
+
+              <!-- Progress per run -->
+              <div v-if="multiCompareRuns.length && multiCompareRunning" class="space-y-1 mb-4">
+                <div v-for="run in multiCompareRuns" :key="run.id" class="flex items-center gap-3 text-xs">
+                  <span class="w-28 truncate font-mono text-surface-300">{{ run.label }}</span>
+                  <div class="flex-1 h-1.5 bg-surface-800 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all duration-300"
+                      :class="run.status === 'error' ? 'bg-red-500' : run.status === 'done' ? 'bg-green-500' : 'bg-brand-500'"
+                      :style="{width: run.progress + '%'}"></div>
+                  </div>
+                  <span class="w-10 text-right font-mono text-surface-500">{{ run.progress }}%</span>
+                </div>
+              </div>
+
+              <!-- Results comparison table -->
+              <div v-if="multiCompareRuns.length && !multiCompareRunning && multiCompareRuns.some(r => r.metrics)" class="overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="text-surface-500 border-b border-surface-700">
+                      <th class="text-left py-2 px-2">Pipeline</th>
+                      <th class="text-right py-2 px-2">PF</th>
+                      <th class="text-right py-2 px-2">Net %</th>
+                      <th class="text-right py-2 px-2">Win Rate</th>
+                      <th class="text-right py-2 px-2">Max DD%</th>
+                      <th class="text-right py-2 px-2">Sessions</th>
+                      <th class="text-right py-2 px-2">Busts</th>
+                      <th class="text-right py-2 px-2">Spread $</th>
+                      <th class="text-right py-2 px-2">Swap $</th>
+                      <th class="text-center py-2 px-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="run in multiCompareRuns" :key="run.id"
+                      class="border-b border-surface-800 hover:bg-surface-800/30"
+                      :class="run.label === 'Baseline (no pipeline)' ? 'bg-surface-800/20' : ''">
+                      <td class="py-1.5 px-2 font-mono text-surface-200">
+                        <span :class="run.label === 'Baseline (no pipeline)' ? 'text-surface-400' : 'text-brand-400'">{{ run.label }}</span>
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono" :class="(run.metrics?.profit_factor || 0) >= 1 ? 'text-green-400' : 'text-red-400'">
+                        {{ run.metrics ? (run.metrics.profit_factor || 0).toFixed(3) : '-' }}
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono" :class="(run.metrics?.net_profit_percentage || 0) >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ run.metrics ? (run.metrics.net_profit_percentage || 0).toFixed(2) + '%' : '-' }}
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono text-surface-300">
+                        {{ run.metrics?.session_win_rate != null ? (run.metrics.session_win_rate * 100).toFixed(1) + '%' : run.metrics?.win_rate != null ? (run.metrics.win_rate * 100).toFixed(1) + '%' : '-' }}
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono text-red-400">
+                        {{ run.metrics?.max_drawdown != null ? run.metrics.max_drawdown.toFixed(1) + '%' : '-' }}
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono text-surface-300">
+                        {{ run.metrics?.total_sessions || run.metrics?.total || '-' }}
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono text-surface-300">
+                        {{ run.metrics?.bust_count ?? run.metrics?.total_busts ?? '-' }}
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono text-surface-400">
+                        {{ run.metrics?.total_spread_cost != null ? '$' + run.metrics.total_spread_cost.toFixed(0) : '-' }}
+                      </td>
+                      <td class="py-1.5 px-2 text-right font-mono text-surface-400">
+                        {{ run.metrics?.total_swap_cost != null ? '$' + run.metrics.total_swap_cost.toFixed(0) : '-' }}
+                      </td>
+                      <td class="py-1.5 px-2 text-center">
+                        <span v-if="run.status === 'done'" class="text-green-400">Done</span>
+                        <span v-else-if="run.status === 'error'" class="text-red-400" :title="run.error">Error</span>
+                        <span v-else class="text-amber-400">{{ run.progress }}%</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
           <!-- Sessions Tab (hedge session grouping) -->
@@ -1744,14 +1853,62 @@
             <!-- Martingale Costs -->
             <div v-else-if="isMartingale && sessionAnalytics" class="space-y-6">
 
-              <!-- Section 1: Cost Summary (session-focused) -->
+              <!-- Cost Model Status Banner -->
+              <div v-if="!metrics.cost_model_enabled" class="bg-amber-900/30 border border-amber-700/50 rounded-lg p-3">
+                <p class="text-sm text-amber-300 font-medium">Cost model is OFF</p>
+                <p class="text-xs text-amber-400/70 mt-1">Spread, swap, and slippage are not applied. Enable cost model in backtest settings for realistic results.</p>
+              </div>
+
+              <!-- Section 1: Cost Breakdown by Type -->
               <div>
-                <h3 class="text-xs font-semibold text-surface-500 mb-2">Cost Summary</h3>
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                <h3 class="text-xs font-semibold text-surface-500 mb-2">Cost Breakdown</h3>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
                   <div class="p-2 bg-surface-800 rounded">
                     <div class="text-surface-500 text-xs">Total All Costs</div>
                     <div class="font-mono text-red-400 font-bold">{{ fmtCost(totalCosts) }}</div>
                   </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Spread</div>
+                    <div class="font-mono text-red-400">{{ fmtCost(Math.abs(metrics.total_spread_cost || 0)) }}</div>
+                    <div class="text-[10px] mt-0.5" :class="metrics.spread_source === 'real_data' ? 'text-green-500' : 'text-surface-600'">
+                      {{ metrics.spread_source === 'real_data' ? 'From imported data (' + (metrics.spread_hit_rate || 0) + '%)' : 'Fixed from settings' }}
+                    </div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Swap (Overnight)</div>
+                    <div class="font-mono text-red-400">{{ fmtCost(Math.abs(metrics.total_swap_cost || 0)) }}</div>
+                    <div v-if="metrics.swap_config" class="text-[10px] text-surface-600 mt-0.5">
+                      <span v-for="(rates, sym) in metrics.swap_config" :key="sym">
+                        L:{{ rates.long }}/S:{{ rates.short }} $/lot
+                      </span>
+                    </div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Commission</div>
+                    <div class="font-mono text-surface-300">{{ fmtCost(Math.abs(metrics.fee || 0)) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Slippage</div>
+                    <div class="font-mono" :class="(metrics.total_slippage_cost || 0) > 0 ? 'text-red-400' : 'text-surface-500'">{{ fmtCost(Math.abs(metrics.total_slippage_cost || 0)) }}</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Cost Drag %</div>
+                    <div class="font-mono" :class="(metrics.cost_drag_pct || 0) > 30 ? 'text-red-400' : (metrics.cost_drag_pct || 0) > 15 ? 'text-amber-400' : 'text-green-400'">
+                      {{ metrics.cost_drag_pct != null ? metrics.cost_drag_pct.toFixed(1) + '%' : '-' }}
+                    </div>
+                    <div class="text-[10px] text-surface-600 mt-0.5">of gross profit</div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Avg Spread / Trade</div>
+                    <div class="font-mono text-surface-300">{{ metrics.avg_spread_per_trade != null ? '$' + metrics.avg_spread_per_trade.toFixed(2) : '-' }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 2: Cost Per Session -->
+              <div>
+                <h3 class="text-xs font-semibold text-surface-500 mb-2">Cost Per Session</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div class="p-2 bg-surface-800 rounded">
                     <div class="text-surface-500 text-xs">Cost / Session</div>
                     <div class="font-mono text-surface-100">{{ sessionAnalytics.total ? fmtCost(totalCosts / sessionAnalytics.total) : '-' }}</div>
@@ -1761,16 +1918,14 @@
                     <div class="font-mono text-surface-100">{{ sessionAnalytics.wins ? fmtCost(totalCosts / sessionAnalytics.wins) : '-' }}</div>
                   </div>
                   <div class="p-2 bg-surface-800 rounded">
-                    <div class="text-surface-500 text-xs">Cost Drag %</div>
-                    <div class="font-mono" :class="(metrics.cost_drag_pct || 0) > 30 ? 'text-red-400' : (metrics.cost_drag_pct || 0) > 15 ? 'text-amber-400' : 'text-green-400'">
-                      {{ metrics.cost_drag_pct != null ? metrics.cost_drag_pct.toFixed(1) + '%' : costProfitRatio != null ? costProfitRatio.toFixed(1) + '%' : '-' }}
-                    </div>
-                  </div>
-                  <div class="p-2 bg-surface-800 rounded">
                     <div class="text-surface-500 text-xs">Cost / Avg Win</div>
                     <div class="font-mono" :class="sessionAnalytics.avgWinPnl > 0 && (totalCosts / sessionAnalytics.total) / sessionAnalytics.avgWinPnl > 0.5 ? 'text-red-400' : 'text-green-400'">
                       {{ sessionAnalytics.avgWinPnl > 0 && sessionAnalytics.total ? ((totalCosts / sessionAnalytics.total) / sessionAnalytics.avgWinPnl * 100).toFixed(1) + '%' : '-' }}
                     </div>
+                  </div>
+                  <div class="p-2 bg-surface-800 rounded">
+                    <div class="text-surface-500 text-xs">Spread % of Total Cost</div>
+                    <div class="font-mono text-surface-300">{{ totalCosts > 0 ? (Math.abs(metrics.total_spread_cost || 0) / totalCosts * 100).toFixed(0) + '%' : '-' }}</div>
                   </div>
                 </div>
               </div>
@@ -2973,6 +3128,7 @@ const loadingSessions = ref(false)
 const error = ref('')
 const errorTrace = ref('')
 const message = ref('')
+const phaseMessage = ref('')
 const currentTaskId = ref(null)
 const sessionId = ref(null)
 
@@ -3021,6 +3177,11 @@ const baselineMetrics = ref(null)
 const baselineEquityCurve = ref(null)
 const comparisonError = ref('')
 const comparisonEquityEl = ref(null)
+
+// Multi-Pipeline Comparison
+const multiCompareRuns = ref([])  // [{id, label, pipeline, status, progress, metrics}]
+const multiCompareRunning = ref(false)
+const multiCompareSelected = ref([])  // pipeline names selected for comparison
 
 // Results tabs
 const activeTab = ref('summary')
@@ -3744,6 +3905,7 @@ const totalCosts = computed(() => {
   return Math.abs(metrics.value.fee || 0)
     + Math.abs(metrics.value.total_spread_cost || 0)
     + Math.abs(metrics.value.total_swap_cost || 0)
+    + Math.abs(metrics.value.total_slippage_cost || 0)
 })
 
 const costProfitRatio = computed(() => {
@@ -4078,6 +4240,29 @@ useWebSocket((msg) => {
   // msg.id is the session UUID (ws_manager converts PID → client_id before broadcast).
   if (!event?.startsWith('backtest.')) return
 
+  // Handle multi-pipeline comparison events
+  const multiRun = multiCompareRuns.value.find(r => r.id === id)
+  if (multiRun) {
+    if (event === 'backtest.progressbar') {
+      multiRun.progress = data?.current || 0
+    } else if (event === 'backtest.metrics') {
+      multiRun.metrics = data
+      multiRun.status = 'done'
+      multiRun.progress = 100
+      // Check if all runs are complete
+      if (multiCompareRuns.value.every(r => r.status === 'done' || r.status === 'error')) {
+        multiCompareRunning.value = false
+      }
+    } else if (event === 'backtest.exception') {
+      multiRun.status = 'error'
+      multiRun.error = data?.error || 'Failed'
+      if (multiCompareRuns.value.every(r => r.status === 'done' || r.status === 'error')) {
+        multiCompareRunning.value = false
+      }
+    }
+    return
+  }
+
   // Handle A/B comparison backtest events (must be checked before workspace routing)
   if (id && id === comparisonTaskId.value) {
     if (event === 'backtest.progressbar') {
@@ -4221,6 +4406,8 @@ useWebSocket((msg) => {
       hedgeSessions.value = Array.isArray(data) ? data : []
       sessionsPage.value = 1
     }
+  } else if (event === 'backtest.backtest_phase') {
+    phaseMessage.value = data?.message || ''
   } else if (event === 'backtest.alert') {
     if (data?.type === 'error') {
       error.value = data?.message || 'Backtest encountered an error'
@@ -4230,6 +4417,7 @@ useWebSocket((msg) => {
   } else if (event === 'backtest.metrics') {
     metrics.value = data
     running.value = false
+    phaseMessage.value = ''
     if (!error.value) message.value = 'Backtest completed!'
     progress.value = { current: 100, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
     sessionId.value = currentTaskId.value
@@ -5141,6 +5329,7 @@ async function runBacktest() {
   btChartVisible.value = false
   if (btTradeChartRef.value) btTradeChartRef.value.destroy()
   progress.value = { current: 0, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 }
+  phaseMessage.value = 'Starting backtest...'
   runStartedAt.value = Date.now()
   running.value = true
   configCollapsed.value = true
@@ -5228,6 +5417,81 @@ async function runBacktest() {
   } catch (e) {
     error.value = e.message
     running.value = false
+  }
+}
+
+async function runMultiPipelineComparison() {
+  if (multiCompareRunning.value || running.value) return
+  if (multiCompareSelected.value.length === 0) return
+
+  multiCompareRunning.value = true
+  multiCompareRuns.value = []
+
+  const routes = form.value.routes.map(r => ({
+    exchange: form.value.exchange,
+    symbol: r.symbol,
+    timeframe: r.timeframe,
+    strategy: r.strategy,
+  }))
+  const dataRoutes = form.value.data_routes.map(dr => ({
+    exchange: form.value.exchange,
+    symbol: dr.symbol,
+    timeframe: dr.timeframe,
+  }))
+
+  // Submit one backtest per selected pipeline + one baseline (no pipeline)
+  const configs = [
+    { label: 'Baseline (no pipeline)', pipeline: null },
+    ...multiCompareSelected.value.map(name => ({ label: name, pipeline: [{ name }] }))
+  ]
+
+  for (const cfg of configs) {
+    const id = crypto.randomUUID()
+    multiCompareRuns.value.push({
+      id,
+      label: cfg.label,
+      pipeline: cfg.pipeline,
+      status: 'running',
+      progress: 0,
+      metrics: null,
+      error: null,
+    })
+
+    try {
+      await api.runBacktest({
+        id,
+        exchange: form.value.exchange,
+        routes,
+        data_routes: dataRoutes,
+        config: {
+          warm_up_candles: form.value.warmUpCandles,
+          logging: { order_submission: false, order_cancellation: false, order_execution: false, position_opened: false, position_increased: false, position_reduced: false, position_closed: false, shorter_period_candles: false, trading_candles: false, balance_update: false },
+          exchanges: {
+            [form.value.exchange]: {
+              name: form.value.exchange,
+              type: '',
+              fee: 0,
+              balance: form.value.balance,
+            }
+          },
+          ...(cfg.pipeline ? { pipelines: cfg.pipeline } : {}),
+        },
+        start_date: form.value.startDate,
+        finish_date: form.value.endDate,
+        debug_mode: false,
+        export_chart: false,
+        export_tradingview: false,
+        export_csv: false,
+        export_json: false,
+        fast_mode: false,
+        benchmark: false,
+        cost_model: form.value.costModel,
+        hyperparameters: { preset: 'original' },
+      })
+    } catch (e) {
+      const run = multiCompareRuns.value.find(r => r.id === id)
+      if (run) { run.status = 'error'; run.error = e.message }
+    }
   }
 }
 

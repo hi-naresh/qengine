@@ -1,60 +1,52 @@
 {
   "variants": {
     "IslandPilot (full)": {
-      "profit_factor": 1.340949085996783,
-      "win_rate": 0.8457142857142858,
-      "bust_rate": 0.15428571428571428,
-      "net_pnl": 7829.453997222704,
-      "n_cycles": 1225,
-      "max_drawdown_pct": 30.107614629168612
-    },
-    "No Migration": {
-      "profit_factor": 1.1483444363977782,
-      "win_rate": 0.8448415922014623,
-      "bust_rate": 0.15515840779853776,
-      "net_pnl": 3015.950124447472,
-      "n_cycles": 1231,
-      "max_drawdown_pct": 31.88317791128268
+      "profit_factor": 0.9261672660222309,
+      "win_rate": 0.8640483383685801,
+      "bust_rate": 0.13595166163141995,
+      "net_pnl": -6103.030648932532,
+      "n_cycles": 1324,
+      "max_drawdown_pct": 344.0241418677494
     },
     "Flat Clustering": {
-      "profit_factor": 1.1483444363977782,
-      "win_rate": 0.8448415922014623,
-      "bust_rate": 0.15515840779853776,
-      "net_pnl": 3015.950124447472,
-      "n_cycles": 1231,
-      "max_drawdown_pct": 31.88317791128268
+      "profit_factor": 0.8613012814735482,
+      "win_rate": 0.8566796368352788,
+      "bust_rate": 0.14332036316472113,
+      "net_pnl": -14453.021182393712,
+      "n_cycles": 1542,
+      "max_drawdown_pct": 285.49084453359717
+    },
+    "No Gate": {
+      "profit_factor": 0.9921136496337478,
+      "win_rate": 0.8546824542518837,
+      "bust_rate": 0.14531754574811626,
+      "net_pnl": -775.4873044154465,
+      "n_cycles": 1858,
+      "max_drawdown_pct": 372.72870014258615
+    },
+    "Uniform Sizing": {
+      "profit_factor": 0.9174382976486601,
+      "win_rate": 0.8640483383685801,
+      "bust_rate": 0.13595166163141995,
+      "net_pnl": -14226.266708401234,
+      "n_cycles": 1324,
+      "max_drawdown_pct": 573.4344265578773
     },
     "Single Global": {
-      "profit_factor": 1.0958452387235345,
-      "win_rate": 0.8530042918454935,
-      "bust_rate": 0.14699570815450644,
-      "net_pnl": 4450.672289791057,
+      "profit_factor": 1.1446778229434682,
+      "win_rate": 0.8578326180257511,
+      "bust_rate": 0.14216738197424894,
+      "net_pnl": 2626.1495945122315,
       "n_cycles": 1864,
-      "max_drawdown_pct": 70.77272821455743
+      "max_drawdown_pct": 27.990212917616088
     },
     "Random Configs": {
       "profit_factor": 1.0694978525076684,
       "win_rate": 0.8530042918454935,
       "bust_rate": 0.14699570815450644,
-      "net_pnl": 1416.1691974840332,
+      "net_pnl": 1416.1691974840337,
       "n_cycles": 1864,
       "max_drawdown_pct": 44.192776035079525
-    },
-    "No Hysteresis": {
-      "profit_factor": 1.1483444363977782,
-      "win_rate": 0.8448415922014623,
-      "bust_rate": 0.15515840779853776,
-      "net_pnl": 3015.950124447472,
-      "n_cycles": 1231,
-      "max_drawdown_pct": 31.88317791128268
-    },
-    "Uniform Sizing": {
-      "profit_factor": 1.2678905508677552,
-      "win_rate": 0.8448415922014623,
-      "bust_rate": 0.15515840779853776,
-      "net_pnl": 14042.347960945102,
-      "n_cycles": 1231,
-      "max_drawdown_pct": 91.93785924981562
     },
     "No Pipeline": {
       "profit_factor": 1.0742562170834686,
@@ -66,11 +58,11 @@
     }
   },
   "pipeline_n_signals": 1866,
-  "pipeline_n_gated": 639,
+  "pipeline_n_gated": 540,
   "sizer_stats": {
-    "calls": 1225,
-    "avg_confidence_scale": 0.600187351055957,
-    "avg_drawdown_factor": 0.7722251199691497,
-    "avg_combined": 0.4679151312306937
+    "calls": 1324,
+    "avg_confidence_scale": 0.6151396478582893,
+    "avg_drawdown_factor": 0.7639006755364777,
+    "avg_combined": 0.47465356776828227
   }
 }

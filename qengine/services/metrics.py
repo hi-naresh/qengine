@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 import qengine.helpers as jh
+from qengine.config import config
 from qengine.models import ClosedTrade
 from qengine.models.CFDExchange import CFDExchange
 from qengine.core.instruments import instrument_registry
@@ -353,12 +354,34 @@ def _calculate_forex_metrics(trades_list: List[ClosedTrade]) -> dict:
     avg_pips = total_pips / len(trades_list) if trades_list else 0.0
     total_swap_cost = trading_exchange._overnight_charges
     total_spread_cost = trading_exchange._total_spread_cost
+    total_slippage_cost = getattr(trading_exchange, '_total_slippage_cost', 0.0)
+
+    # Determine spread source (real data vs fixed from settings)
+    from qengine.services import spread_data as _sd
+    sd_stats = _sd.stats()
+    spread_source = 'real_data' if sd_stats['hits'] > 0 else 'fixed'
+    spread_hit_rate = sd_stats['hit_rate']
+
+    # Per-trade spread cost breakdown
+    avg_spread_per_trade = total_spread_cost / len(trades_list) if trades_list else 0.0
+
+    # Swap per overnight (estimate)
+    swap_rates = trading_exchange._swap_rates
+    swap_config = {}
+    for symbol, (long_rate, short_rate) in swap_rates.items():
+        swap_config[symbol] = {'long': long_rate, 'short': short_rate}
 
     return {
         'total_pips': round(total_pips, 1),
         'avg_pips_per_trade': round(avg_pips, 1),
         'total_swap_cost': round(total_swap_cost, 2),
         'total_spread_cost': round(total_spread_cost, 2),
+        'total_slippage_cost': round(total_slippage_cost, 2),
+        'avg_spread_per_trade': round(avg_spread_per_trade, 4),
+        'spread_source': spread_source,
+        'spread_hit_rate': round(spread_hit_rate * 100, 1),
+        'swap_config': swap_config,
+        'cost_model_enabled': bool(config.get('app', {}).get('cost_model', True)),
     }
 
 
@@ -455,7 +478,7 @@ def _calculate_hedge_session_metrics(trades_list: List[ClosedTrade]) -> dict:
     max_consec_losses = _max_consecutive(wins, 0)
 
     # Bust metrics — sessions ending in bust/max_levels/margin_call
-    bust_outcomes = {'bust', 'max_levels', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
+    bust_outcomes = {'bust', 'max_levels', 'max_level_bust', 'max_level_sl', 'margin_call', 'margin_bust', 'liquidation'}
     bust_pnls = [s['pnl'] for s in sessions if s['exit_reason'] in bust_outcomes]
     total_busts = len(bust_pnls)
     worst_bust_pnl = round(min(bust_pnls), 2) if bust_pnls else 0.0
@@ -541,7 +564,7 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
     median_session_pnl = float(np.median(session_pnls))
 
     # --- Survival & Ruin ---
-    bust_outcomes = {'bust', 'max_levels', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
+    bust_outcomes = {'bust', 'max_levels', 'max_level_bust', 'max_level_sl', 'margin_call', 'margin_bust', 'liquidation'}
     bust_sessions = [s for s in sessions if s['exit_reason'] in bust_outcomes]
     bust_count = len(bust_sessions)
     bust_rate = bust_count / total_sessions

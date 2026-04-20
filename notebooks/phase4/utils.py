@@ -148,11 +148,52 @@ class SimConfig:
     def to_dict(self) -> dict:
         return asdict(self)
 
+    def total_exposure(self) -> float:
+        """Total exposure across all levels as multiple of base_size.
+
+        This is the sum of position sizes from level 0 to max_levels,
+        representing the worst-case total open position if all hedges fire.
+        """
+        return sum(calc_size(l, self) for l in range(self.max_levels + 1))
+
+    def worst_case_loss_pips(self) -> float:
+        """Worst-case loss in pips if all levels bust.
+
+        Approximate: each level's position is adversely moved by hedge_dist_pips.
+        Actual loss depends on alternating long/short structure but this gives
+        a conservative upper bound.
+        """
+        return sum(
+            calc_size(l, self) * self.hedge_dist_pips
+            for l in range(self.max_levels + 1)
+        )
+
+    def max_affordable_levels(self, equity: float, max_risk_pct: float = 0.15,
+                              pip_value: float = 10.0) -> int:
+        """Maximum levels the account can afford given equity and risk tolerance.
+
+        Finds the highest level L such that worst-case bust loss <= equity * max_risk_pct.
+        pip_value: dollars per pip per lot (EUR-USD standard lot = $10/pip).
+        """
+        max_loss_dollars = equity * max_risk_pct
+        for L in range(self.max_levels, -1, -1):
+            loss = sum(
+                calc_size(l, self) * self.hedge_dist_pips * pip_value
+                for l in range(L + 1)
+            )
+            if loss <= max_loss_dollars:
+                return L
+        return 0
+
     @classmethod
-    def from_genome(cls, genome_dict: dict) -> 'SimConfig':
+    def from_genome(cls, genome_dict: dict, equity: float = 10000.0,
+                    max_risk_pct: float = 0.15) -> 'SimConfig':
         """Create SimConfig from an IslandEvolver genome dict.
 
         Maps genome gene names to SimConfig fields.
+        Applies equity-aware constraints:
+        - Caps max_levels to what the account can afford
+        - Caps base_size so worst-case loss stays within max_risk_pct of equity
         """
         genes = genome_dict.get('genes', genome_dict)
         sizing_curve_val = genes.get('sizing_curve', 'geometric')
@@ -161,16 +202,44 @@ class SimConfig:
             from qengine.framework.components.island_evolver import SIZING_CURVE_MAP
             sizing_curve_val = SIZING_CURVE_MAP.get(sizing_curve_val, 'geometric')
 
-        return cls(
+        raw_max_levels = genes.get('max_levels', 6)
+        sizing_factor = genes.get('sizing_factor', 2.0)
+        hedge_dist_pips = genes.get('hedge_value', genes.get('hedge_distance_atr_mult', 1.0) * 20.0)
+        tp_pips = genes.get('tp_value', genes.get('tp_distance_atr_mult', 1.0) * 20.0)
+
+        # Ensure hedge/tp are in pips (some genomes store raw pips, others store ATR mult)
+        if hedge_dist_pips < 1.0:
+            hedge_dist_pips = hedge_dist_pips * 20.0  # ATR multiplier -> pips
+        if tp_pips < 1.0:
+            tp_pips = tp_pips * 20.0
+
+        # Build initial config to compute exposure
+        cfg = cls(
             sizing_curve=sizing_curve_val,
-            sizing_factor=genes.get('sizing_factor', 2.0),
+            sizing_factor=sizing_factor,
             base_size=genes.get('base_size_pct', 1.0),
-            max_levels=genes.get('max_levels', 6),
-            hedge_dist_pips=genes.get('hedge_distance_atr_mult', 1.0) * 20.0,
-            tp_pips=genes.get('tp_distance_atr_mult', 1.0) * 20.0,
-            abort_level=int(genes.get('max_levels', 6) * 2),
+            max_levels=min(raw_max_levels, 8),  # hard ceiling
+            hedge_dist_pips=hedge_dist_pips,
+            tp_pips=tp_pips,
+            abort_level=int(min(raw_max_levels, 8) * 2),
             max_bars=500,
         )
+
+        # Equity-aware level cap: reduce levels until affordable
+        affordable = cfg.max_affordable_levels(equity, max_risk_pct, pip_value=10.0)
+        if affordable < cfg.max_levels:
+            cfg.max_levels = max(affordable, 2)  # floor at 2 levels
+            cfg.abort_level = cfg.max_levels * 2
+
+        # Equity-aware base size cap: ensure worst-case bust < max_risk_pct of equity
+        max_loss_dollars = equity * max_risk_pct
+        worst_loss_per_unit = cfg.worst_case_loss_pips() * 10.0  # $10/pip/lot
+        if worst_loss_per_unit > 0:
+            max_base = max_loss_dollars / worst_loss_per_unit
+            if cfg.base_size > max_base:
+                cfg.base_size = max(max_base, 0.01)  # floor at 0.01
+
+        return cfg
 
 
 # ---------------------------------------------------------------------------

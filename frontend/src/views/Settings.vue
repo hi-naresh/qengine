@@ -625,16 +625,23 @@
           <!-- Spread -->
           <div>
             <h3 class="text-xs font-semibold text-surface-400 mb-2 uppercase tracking-wide">Spread</h3>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="label">Spread (pips)</label>
-                <input v-model.number="btForm.spread_pips" type="number" step="0.1" min="0" class="input" />
-                <p class="text-xs text-surface-600 mt-1">Default spread for this broker. 0 = no spread cost.</p>
+            <div v-if="spreadInData" class="bg-green-900/30 border border-green-700/50 rounded-lg p-3 mb-3">
+              <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                <p class="text-sm text-green-300 font-medium">Real spread available in imported data</p>
               </div>
-              <div>
-                <label class="label">Spread Randomness</label>
-                <input v-model.number="btForm.spread_randomness" type="number" step="0.05" min="0" max="1" class="input" />
-                <p class="text-xs text-surface-600 mt-1">0 = fixed spread. 0.5 = spread varies +/-50% each trade.</p>
+              <p class="text-xs text-green-400/70 mt-1 ml-6">{{ spreadCandleCount.toLocaleString() }} candles have real bid/ask spread from broker. Backtests will use actual per-candle spread automatically. Settings below serve as fallback for candles without spread data only.</p>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div :class="{ 'opacity-40': spreadInData }">
+                <label class="label">Spread (pips) <span v-if="spreadInData" class="text-green-400 text-xs">(fallback)</span></label>
+                <input v-model.number="btForm.spread_pips" type="number" step="0.1" min="0" class="input" :disabled="spreadInData" />
+                <p class="text-xs text-surface-600 mt-1">{{ spreadInData ? 'Disabled — using real spread from data.' : 'Default spread for this broker. 0 = no spread cost.' }}</p>
+              </div>
+              <div :class="{ 'opacity-40': spreadInData }">
+                <label class="label">Spread Randomness <span v-if="spreadInData" class="text-green-400 text-xs">(not needed)</span></label>
+                <input v-model.number="btForm.spread_randomness" type="number" step="0.05" min="0" max="1" class="input" :disabled="spreadInData" />
+                <p class="text-xs text-surface-600 mt-1">{{ spreadInData ? 'Disabled — real spread already varies naturally.' : '0 = fixed spread. 0.5 = spread varies +/-50% each trade.' }}</p>
               </div>
             </div>
           </div>
@@ -659,17 +666,56 @@
           <!-- Swap & Commission -->
           <div>
             <h3 class="text-xs font-semibold text-surface-400 mb-2 uppercase tracking-wide">Swap & Commission</h3>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-4 gap-3">
+              <div>
+                <label class="label">Swap Long ($/lot/night)</label>
+                <input v-model.number="btForm.swap_long" type="number" step="0.5" class="input" :disabled="!btForm.swap_enabled" />
+                <p class="text-xs text-surface-600 mt-1">Negative = charge. OANDA EUR/USD: ~-$10</p>
+              </div>
+              <div>
+                <label class="label">Swap Short ($/lot/night)</label>
+                <input v-model.number="btForm.swap_short" type="number" step="0.5" class="input" :disabled="!btForm.swap_enabled" />
+                <p class="text-xs text-surface-600 mt-1">Negative = charge. OANDA EUR/USD: ~-$0.9</p>
+              </div>
               <div>
                 <label class="label">Commission per Lot ($)</label>
                 <input v-model.number="btForm.commission_per_lot" type="number" step="0.5" min="0" class="input" />
-                <p class="text-xs text-surface-600 mt-1">Fixed commission per standard lot (on top of spread).</p>
+                <p class="text-xs text-surface-600 mt-1">Per standard lot. OANDA: $0 (in spread).</p>
               </div>
               <div class="flex items-end pb-6">
                 <label class="flex items-center gap-2 text-sm text-surface-400 cursor-pointer">
                   <input v-model="btForm.swap_enabled" type="checkbox" class="rounded bg-surface-700 border-surface-500" />
                   Enable Overnight Swap
                 </label>
+              </div>
+            </div>
+            <p class="text-xs text-surface-600 mt-1">Swap charged at 5pm ET daily. Wednesday = 3x (covers weekend). Applies per open ticket per night.</p>
+          </div>
+
+          <!-- Broker Execution Rules -->
+          <div>
+            <h3 class="text-xs font-semibold text-surface-400 mb-2 uppercase tracking-wide">Broker Execution Rules</h3>
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="label">Min Order Size (units)</label>
+                <input v-model.number="btForm.min_order_qty" type="number" step="1" min="0" class="input" />
+                <p class="text-xs text-surface-600 mt-1">0 = no minimum. OANDA=1, IG=10000.</p>
+              </div>
+              <div>
+                <label class="label">Stop-Out Level (%)</label>
+                <input v-model.number="btForm.stop_out_level" type="number" step="5" min="0" max="100" class="input" />
+                <p class="text-xs text-surface-600 mt-1">Margin level at which broker closes positions.</p>
+              </div>
+              <div>
+                <label class="label">Stop-Out Order</label>
+                <select v-model="btForm.stop_out_order" class="input">
+                  <option value="largest_margin">Largest Margin First</option>
+                  <option value="loser_first">Losers First</option>
+                  <option value="winner_first">Winners First</option>
+                  <option value="fifo">FIFO (Oldest First)</option>
+                  <option value="lifo">LIFO (Newest First)</option>
+                </select>
+                <p class="text-xs text-surface-600 mt-1">Order in which positions are closed at stop-out.</p>
               </div>
             </div>
           </div>
@@ -1308,11 +1354,18 @@ const btForm = ref({
   slippage_pips: 0.0,
   slippage_randomness: 0.0,
   swap_enabled: true,
+  swap_long: -10.0,
+  swap_short: -0.9,
   commission_per_lot: 0.0,
+  min_order_qty: 0,
+  stop_out_level: 50.0,
+  stop_out_order: 'largest_margin',
 })
 const savingBt = ref(false)
 const btMessage = ref('')
 const btMsgErr = ref(false)
+const spreadInData = ref(false)
+const spreadCandleCount = ref(0)
 
 // API Key Import/Export
 const exportPassword = ref('')
@@ -1548,8 +1601,15 @@ async function loadBacktestSettings() {
       slippage_pips: d.slippage_pips ?? 0.0,
       slippage_randomness: d.slippage_randomness ?? 0.0,
       swap_enabled: d.swap_enabled ?? true,
+      swap_long: d.swap_long ?? -10.0,
+      swap_short: d.swap_short ?? -0.9,
       commission_per_lot: d.commission_per_lot ?? 0.0,
+      min_order_qty: d.min_order_qty ?? 0,
+      stop_out_level: d.stop_out_level ?? 50.0,
+      stop_out_order: d.stop_out_order ?? 'largest_margin',
     }
+    spreadInData.value = d._spread_in_data ?? false
+    spreadCandleCount.value = d._spread_candle_count ?? 0
   } catch {
     resetBacktestDefaults()
   }
@@ -1580,7 +1640,12 @@ function resetBacktestDefaults() {
     slippage_pips: 0.0,
     slippage_randomness: 0.0,
     swap_enabled: true,
+    swap_long: -10.0,
+    swap_short: -0.9,
     commission_per_lot: 0.0,
+    min_order_qty: 0,
+    stop_out_level: 50.0,
+    stop_out_order: 'largest_margin',
   }
   btMessage.value = 'Reset to defaults (not saved yet)'
   btMsgErr.value = false

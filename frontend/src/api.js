@@ -166,6 +166,7 @@ export const api = {
   getExistingCandles: (data) => request('POST', '/candles/existing', data),
   deleteCandles: (exchange, symbol) => request('POST', '/candles/delete', { exchange, symbol }),
   deleteAllCandles: () => request('POST', '/candles/delete-all'),
+  previewCandles: (exchange, symbol, position = 'head', limit = 20) => request('POST', '/candles/preview', { exchange, symbol, position, limit }),
   downloadCandles: async (data) => {
     const res = await fetch('/candles/download', {
       method: 'POST',

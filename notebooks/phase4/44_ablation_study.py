@@ -1,14 +1,17 @@
 """
-44 — Ablation Study
+44 — Ablation Study (Fixed v2)
 
-Runs 8 pipeline variants to measure each component's contribution:
-- full_pipeline:    complete IslandPilot
-- no_migration:     evolved without sibling migration
-- flat_clustering:  single-level GMM (no hierarchy)
-- single_global:    ignore regime, use single global genome
+Matches script 43 exactly for full_pipeline baseline, then removes one
+component at a time. Script 43 uses tree.classify_best (no RegimeInferencer),
+so the full pipeline here also uses tree.classify_best.
+
+Variants:
+- full_pipeline:    matches script 43 (classify_best + evolved genome + gate + adaptive sizer)
+- flat_clustering:  macro-level only (no sub-regime distinction)
+- single_global:    ignore regime, use single global best genome
 - random_configs:   random genomes instead of evolved
-- no_hysteresis:    hysteresis = 0
-- uniform_sizing:   fixed size (no adaptive sizer)
+- uniform_sizing:   no adaptive sizer (fixed position size)
+- no_gate:          no confidence gating (all signals trade)
 - no_pipeline:      raw EMA signals, fixed params, no regime awareness
 """
 
@@ -31,7 +34,7 @@ log = get_logger('44_ablation_study')
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers (same as script 43)
+# Shared helpers (identical to script 43)
 # ---------------------------------------------------------------------------
 
 def generate_signals(candles: np.ndarray, fast: int = 8, slow: int = 21) -> list:
@@ -119,71 +122,108 @@ def simulate_cycle(candles: np.ndarray, entry_idx: int, direction: str,
 
 
 # ---------------------------------------------------------------------------
-# Variant runners
+# Core pipeline run — parameterized for ablation
 # ---------------------------------------------------------------------------
 
-def _run_variant(candles, features, signals, tree, evolver, variant_name,
-                 use_regime=True, use_genome=True, use_gate=True,
-                 use_adaptive_size=True, random_genome_seed=None,
-                 single_global=False):
-    """Run a pipeline variant and return cycles list."""
+def run_pipeline(candles, features, signals, tree, evolver,
+                 use_regime=True,
+                 use_evolved=True,
+                 use_gate=True,
+                 use_adaptive_size=True,
+                 use_sub_regimes=True,
+                 single_global_genome=None,
+                 random_seed=None):
+    """
+    Parameterized pipeline runner. Matches script 43 when all flags are True.
+
+    Args:
+        use_regime: classify regime and pick per-regime genome
+        use_evolved: use evolved genomes (False = default SimConfig)
+        use_gate: apply confidence gating
+        use_adaptive_size: apply adaptive position sizing
+        use_sub_regimes: True = per-leaf genome, False = best genome from macro cluster
+        single_global_genome: if set, use this genome for all signals
+        random_seed: if set, use random genomes
+    """
     sizer = AdaptiveSizer() if use_adaptive_size else None
     cycles = []
     equity = 10000.0
 
-    # Pre-compute a single global genome (best across all islands)
-    global_genome = None
-    if single_global and evolver is not None:
-        best_fitness = -np.inf
-        for lid in evolver.leaf_ids:
-            gd = evolver.get_best_genome(lid)
-            f = gd.get('fitness', -np.inf)
-            if f is not None and f > best_fitness:
-                best_fitness = f
-                global_genome = gd
+    # Build macro -> leaves mapping for flat_clustering
+    macro_to_leaves = {}
+    if tree is not None:
+        for leaf_id, (macro_id, _sub_id) in tree._leaf_map.items():
+            macro_to_leaves.setdefault(macro_id, []).append(str(leaf_id))
 
     for bar_idx, direction in signals:
         if bar_idx + 50 > len(candles):
             continue
 
-        fv = features[bar_idx] if use_regime else None
-
-        # Determine genome
         genes = None
-        if random_genome_seed is not None:
-            genes = Genome.random(seed=random_genome_seed + bar_idx).to_dict().get('genes', {})
-        elif single_global and global_genome is not None:
-            genes = global_genome.get('genes', global_genome)
-        elif use_genome and use_regime and tree is not None and evolver is not None:
-            if fv is not None and not np.any(np.isnan(fv)):
-                regime_id, confidence = tree.classify_best(fv)
-                regime_key = str(regime_id)
-                if regime_key in evolver.populations:
-                    gd = evolver.get_best_genome(regime_key)
-                    genes = gd.get('genes', gd)
-                    # Gate check
-                    if use_gate:
-                        gate_conf = genes.get('gate_confidence_min', 0.3)
-                        if confidence < gate_conf:
-                            continue
-        elif use_genome and evolver is not None:
-            # No regime, pick first population's best
-            if evolver.leaf_ids:
-                gd = evolver.get_best_genome(evolver.leaf_ids[0])
-                genes = gd.get('genes', gd)
+        confidence = 0.5  # default for non-regime variants
 
-        # Fall back to default config
-        if genes is None:
+        if random_seed is not None:
+            # Random genome
+            genes = Genome.random(seed=random_seed + bar_idx).to_dict().get('genes', {})
+        elif single_global_genome is not None:
+            # Single global
+            genes = single_global_genome
+        elif use_regime and tree is not None and evolver is not None:
+            # Regime-aware
+            fv = features[bar_idx]
+            if np.any(np.isnan(fv)):
+                continue
+
+            regime_id, confidence = tree.classify_best(fv)
+            regime_key = str(regime_id)
+
+            if use_sub_regimes:
+                # Per-leaf genome (full pipeline)
+                if regime_key not in evolver.populations:
+                    continue
+                gd = evolver.get_best_genome(regime_key)
+                genes = gd.get('genes', gd)
+            else:
+                # Flat clustering: best genome from macro cluster
+                macro_id = None
+                for lid, (mid, _sid) in tree._leaf_map.items():
+                    if lid == regime_id:
+                        macro_id = mid
+                        break
+                if macro_id is None:
+                    continue
+                best_fitness = -np.inf
+                for leaf_key in macro_to_leaves.get(macro_id, []):
+                    if leaf_key in evolver.populations:
+                        gd = evolver.get_best_genome(leaf_key)
+                        f = gd.get('fitness', -np.inf)
+                        if f is not None and f > best_fitness:
+                            best_fitness = f
+                            genes = gd.get('genes', gd)
+
+            if genes is None:
+                continue
+
+            # Confidence gate
+            if use_gate:
+                gate_conf = genes.get('gate_confidence_min', 0.3)
+                if confidence < gate_conf:
+                    continue
+
+        if genes is None and not use_evolved:
+            # No pipeline / no genome
             cfg = SimConfig()
+        elif genes is None:
+            continue
         else:
-            cfg = SimConfig.from_genome(genes)
+            cfg = SimConfig.from_genome(genes, equity=equity)
 
         # Adaptive sizing
         if sizer is not None and genes is not None:
             base_qty = calc_size(0, cfg)
             adjusted = sizer.compute(
                 base_pct=genes.get('base_size_pct', 1.0),
-                confidence=0.5,
+                confidence=confidence,  # ACTUAL confidence from GMM
                 sensitivity=genes.get('confidence_sensitivity', 1.0),
                 drawdown_pct=max_drawdown_pct([c.pnl for c in cycles[-50:]]) if cycles else 0.0,
                 recovery_aggression=genes.get('recovery_aggression', 0.5),
@@ -207,22 +247,17 @@ def _run_variant(candles, features, signals, tree, evolver, variant_name,
 def main():
     # Load models
     tree_path = MODELS_DIR / 'regime_tree.pkl'
+    tree = RegimeTree.load(str(tree_path)) if tree_path.exists() else None
 
-    tree = None
-    evolver = None
-    if tree_path.exists():
-        tree = RegimeTree.load(str(tree_path))
-
-    # Load evolver - try full state first, fall back to simple genomes
     evolver_path = MODELS_DIR / 'island_evolver.json'
     if not evolver_path.exists():
         evolver_path = MODELS_DIR / 'island_genomes.json'
 
+    evolver = None
     if evolver_path.exists():
         try:
             evolver = IslandEvolver.load(str(evolver_path))
         except (KeyError, Exception):
-            # Simple genomes format — build minimal evolver
             import json as _json
             with open(str(evolver_path)) as f:
                 genomes_data = _json.load(f)
@@ -240,6 +275,16 @@ def main():
 
     log.info(f"Loaded tree ({tree.n_leaves} leaves) and evolver ({len(evolver.populations)} islands)")
 
+    # Find global best genome for single_global variant
+    best_fitness = -np.inf
+    global_genes = None
+    for lid in evolver.leaf_ids:
+        gd = evolver.get_best_genome(lid)
+        f = gd.get('fitness', -np.inf)
+        if f is not None and f > best_fitness:
+            best_fitness = f
+            global_genes = gd.get('genes', gd)
+
     # Load test candles
     log.info("Loading test candles 2025-07-01 to 2025-12-30 ...")
     warmup, trading = load_candles(start_date='2025-07-01', end_date='2025-12-30')
@@ -251,54 +296,66 @@ def main():
     signals = generate_signals(candles)
     log.info(f"Generated {len(signals)} signals")
 
-    # Define variants
+    # Define variants — each removes exactly one component from full_pipeline
     variants = {
         'full_pipeline': dict(
-            use_regime=True, use_genome=True, use_gate=True, use_adaptive_size=True,
-        ),
-        'no_migration': dict(
-            use_regime=True, use_genome=True, use_gate=True, use_adaptive_size=True,
-            # Note: evolver was trained with migration; this uses same evolver
-            # A true ablation would retrain without migration, but we approximate
+            use_regime=True, use_evolved=True, use_gate=True,
+            use_adaptive_size=True, use_sub_regimes=True,
         ),
         'flat_clustering': dict(
-            use_regime=True, use_genome=True, use_gate=True, use_adaptive_size=True,
-            # Uses same tree; true ablation would use flat GMM — approximated here
+            use_regime=True, use_evolved=True, use_gate=True,
+            use_adaptive_size=True, use_sub_regimes=False,  # macro-level only
         ),
-        'single_global': dict(
-            use_regime=False, use_genome=True, use_gate=False, use_adaptive_size=True,
-            single_global=True,
-        ),
-        'random_configs': dict(
-            use_regime=True, use_genome=False, use_gate=False, use_adaptive_size=True,
-            random_genome_seed=42,
-        ),
-        'no_hysteresis': dict(
-            use_regime=True, use_genome=True, use_gate=True, use_adaptive_size=True,
-            # Hysteresis only affects inference; with classify_best it's already direct
+        'no_gate': dict(
+            use_regime=True, use_evolved=True, use_gate=False,  # no confidence gating
+            use_adaptive_size=True, use_sub_regimes=True,
         ),
         'uniform_sizing': dict(
-            use_regime=True, use_genome=True, use_gate=True, use_adaptive_size=False,
+            use_regime=True, use_evolved=True, use_gate=True,
+            use_adaptive_size=False, use_sub_regimes=True,  # no adaptive sizer
+        ),
+        'single_global': dict(
+            use_regime=False, use_evolved=True, use_gate=False,
+            use_adaptive_size=True, use_sub_regimes=True,
+            single_global_genome=global_genes,
+        ),
+        'random_configs': dict(
+            use_regime=True, use_evolved=False, use_gate=False,
+            use_adaptive_size=True, use_sub_regimes=True,
+            random_seed=42,
         ),
         'no_pipeline': dict(
-            use_regime=False, use_genome=False, use_gate=False, use_adaptive_size=False,
+            use_regime=False, use_evolved=False, use_gate=False,
+            use_adaptive_size=False, use_sub_regimes=True,
         ),
     }
 
     results = {}
     for name, kwargs in variants.items():
         log.info(f"Running variant: {name} ...")
-        cycles = _run_variant(candles, features, signals, tree, evolver, name, **kwargs)
+        cycles = run_pipeline(candles, features, signals, tree, evolver, **kwargs)
         stats = cycle_summary(cycles)
         results[name] = stats
-        log.info(f"  {name}: n={stats['n_cycles']}, PF={stats['profit_factor']:.2f}, "
+        pf_str = f"{stats['profit_factor']:.4f}" if stats['profit_factor'] < 100 else "inf"
+        log.info(f"  {name}: n={stats['n_cycles']}, PF={pf_str}, "
                  f"WR={stats['win_rate']:.3f}, busts={stats['n_busts']}, "
-                 f"net_pnl={stats['net_pnl']:.1f}")
+                 f"net_pnl={stats['net_pnl']:.1f}, maxDD={stats['max_drawdown_pct']:.1f}%")
 
-    # Plot: horizontal bar chart comparing PF
+    # Verify full_pipeline matches script 43
+    fp = results['full_pipeline']
+    log.info(f"\n=== VERIFICATION vs Script 43 ===")
+    log.info(f"This script:  PF={fp['profit_factor']:.4f}, cycles={fp['n_cycles']}, net_pnl={fp['net_pnl']:.0f}")
+    log.info(f"Script 43:    PF=1.3409, cycles=1225, net_pnl=7829")
+    pf_diff = abs(fp['profit_factor'] - 1.3409)
+    if pf_diff < 0.01:
+        log.info(f"MATCH (PF diff = {pf_diff:.4f})")
+    else:
+        log.warning(f"MISMATCH (PF diff = {pf_diff:.4f})")
+
+    # Plot
     fig, ax = plt.subplots(figsize=(10, 6))
     names = list(results.keys())
-    pfs = [min(results[n]['profit_factor'], 50) for n in names]  # cap inf
+    pfs = [min(results[n]['profit_factor'], 50) for n in names]
 
     colors = ['steelblue' if n == 'full_pipeline' else 'lightcoral' if n == 'no_pipeline'
               else 'lightgray' for n in names]
@@ -319,14 +376,28 @@ def main():
     log.info("Results saved")
 
     # Summary table
-    log.info("=== Ablation Summary ===")
-    log.info(f"{'Variant':<20} {'Cycles':>7} {'PF':>8} {'WR':>8} {'Busts':>7} {'Net PnL':>10}")
-    log.info("-" * 65)
+    log.info("\n=== Ablation Summary ===")
+    log.info(f"{'Variant':<20} {'Cycles':>7} {'PF':>8} {'WR':>8} {'Busts':>7} {'Net PnL':>10} {'MaxDD%':>8}")
+    log.info("-" * 75)
     for name in names:
         s = results[name]
-        pf_str = f"{s['profit_factor']:.2f}" if s['profit_factor'] < 100 else "inf"
+        pf_str = f"{s['profit_factor']:.4f}" if s['profit_factor'] < 100 else "inf"
         log.info(f"{name:<20} {s['n_cycles']:>7} {pf_str:>8} "
-                 f"{s['win_rate']:.3f}{'':<1} {s['n_busts']:>7} {s['net_pnl']:>10.1f}")
+                 f"{s['win_rate']:.3f}{'':<1} {s['n_busts']:>7} {s['net_pnl']:>10.1f} {s['max_drawdown_pct']:>7.1f}%")
+
+    # Component contribution (delta from full)
+    fp_pf = fp['profit_factor']
+    log.info(f"\n=== Component Contribution (delta from full_pipeline PF={fp_pf:.4f}) ===")
+    for name in names:
+        if name == 'full_pipeline':
+            continue
+        s = results[name]
+        delta = fp_pf - s['profit_factor']
+        if fp_pf > 0 and fp_pf < float('inf'):
+            pct = delta / fp_pf * 100
+            log.info(f"  {name}: PF={s['profit_factor']:.4f}  delta={delta:+.4f} ({pct:+.1f}%)")
+        else:
+            log.info(f"  {name}: PF={s['profit_factor']:.4f}  delta={delta:+.4f}")
 
 
 if __name__ == '__main__':

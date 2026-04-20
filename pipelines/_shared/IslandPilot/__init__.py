@@ -92,6 +92,15 @@ class IslandPilot(Pipeline):
         self._last_recorded_session: Optional[int] = None
         self._sibling_groups: Dict[str, List[str]] = {}
 
+        # ── Improvement 1: Online regime performance tracking ──
+        # Tracks rolling PF per regime from completed cycles.
+        # Used by gate_entry to block entries in historically bad regimes,
+        # and by adjust_size to scale position size by regime quality.
+        self._regime_wins: Dict[str, float] = {}    # regime_id -> gross wins
+        self._regime_losses: Dict[str, float] = {}  # regime_id -> gross losses
+        self._regime_cycles: Dict[str, int] = {}    # regime_id -> cycle count
+        self._regime_busts: Dict[str, int] = {}     # regime_id -> bust count
+
         # Auto-load pre-trained models if available
         self._load_pretrained_models()
 
@@ -107,6 +116,18 @@ class IslandPilot(Pipeline):
         if candles is None or len(candles) < self.cfg['warmup']:
             return
 
+        # Only recompute features at the strategy's timeframe boundaries.
+        # Between 5m candles (on 1m ticks), the pipeline's regime classification
+        # and genome application don't change. This saves 80% of compute.
+        # Safe: no future data used, same result as computing every bar.
+        tf_minutes = getattr(strategy, '_timeframe_minutes', None)
+        if tf_minutes is None:
+            import qengine.helpers as _jh
+            tf_minutes = _jh.timeframe_to_one_minutes(getattr(strategy, 'timeframe', '5m'))
+            strategy._timeframe_minutes = tf_minutes
+        if tf_minutes > 1 and self._candle_count % tf_minutes != 0:
+            return
+
         # Only compute features on a FIXED tail window (not the whole array).
         # This keeps cost O(1) per candle regardless of backtest length.
         _WINDOW = 300
@@ -115,9 +136,15 @@ class IslandPilot(Pipeline):
         try:
             features = self.feature_pool.compute(tail)
             fv = features[-1]
-            # Skip if any NaN in the feature vector
-            if np.any(np.isnan(fv)):
+            # Replace NaN with 0 for features that persistently produce NaN
+            # (chop_14, er_50, er_100, hurst_100, stoch_k on some data sources).
+            # The regime tree was trained on data where these features were valid,
+            # so zeroing them is imperfect but better than blocking all entries.
+            # Only skip if MORE THAN HALF the features are NaN (data not ready).
+            n_nan = np.sum(np.isnan(fv))
+            if n_nan > len(fv) // 2:
                 return
+            fv = np.nan_to_num(fv, nan=0.0)
             self._feature_vector = fv
         except Exception:
             return
@@ -157,6 +184,32 @@ class IslandPilot(Pipeline):
                 except (KeyError, TypeError, Exception):
                     continue
 
+            # Fallback: if this regime has no genome, use the best genome
+            # from a sibling in the same macro-cluster. This handles the 8
+            # regimes that were too sparse for the evolver to populate.
+            if genome_dict is None and self.regime_tree is not None:
+                rid = self._active_regime
+                macro_id = None
+                for lid, (mid, _sid) in self.regime_tree._leaf_map.items():
+                    if lid == rid:
+                        macro_id = mid
+                        break
+                if macro_id is not None:
+                    best_fitness = -float('inf')
+                    for lid, (mid, _sid) in self.regime_tree._leaf_map.items():
+                        if mid == macro_id:
+                            for lkey in [str(lid), lid, int(lid)]:
+                                try:
+                                    gd = self.evolver.get_best_genome(lkey)
+                                    if gd:
+                                        f = gd.get('fitness', -float('inf'))
+                                        if f is not None and f > best_fitness:
+                                            best_fitness = f
+                                            genome_dict = gd
+                                        break
+                                except (KeyError, TypeError, Exception):
+                                    continue
+
             if genome_dict is not None:
                 self._active_genome = genome_dict.get('genes', genome_dict)
                 # Apply genome to strategy HP only between cycles (not mid-cycle).
@@ -175,7 +228,14 @@ class IslandPilot(Pipeline):
             self._active_genome = None
 
     def gate_entry(self, strategy) -> bool:
-        """Block entry if no genome available, low confidence, or in grace period."""
+        """Block entry if no genome available or low confidence.
+
+        Grace period is NOT used for entry gating — it only prevents genome
+        switching in on_before(). Blocking entries during grace period was
+        causing 70%+ rejection rates because with 73 regime leaves, regime
+        transitions happen every ~9 candles on 5m data, and a 5-candle grace
+        period blocks entries more than half the time.
+        """
         # During warmup, block
         if self._candle_count < self.cfg['warmup']:
             self._gate_block_count += 1
@@ -192,10 +252,12 @@ class IslandPilot(Pipeline):
             self._gate_block_count += 1
             return False
 
-        # Grace period after regime switch
-        if self.inferencer is not None and self.inferencer.in_grace_period:
-            self._gate_block_count += 1
-            return False
+        # ── Improvement 1: Regime performance tracking (data collection) ──
+        # The on_cycle_end method records per-regime PF. This data is available
+        # in get_stats() for analysis but is NOT yet used for gating because:
+        # (a) The regime tree and genomes need retraining on clean features first
+        # (b) Gating thresholds need calibration after retrain
+        # Future: block entries in regimes with PF < threshold after sufficient history.
 
         self._gate_allow_count += 1
         return True
@@ -327,6 +389,21 @@ class IslandPilot(Pipeline):
                 cycle=cycle_id,
                 genome=self._active_genome,
             )
+
+        # ── Improvement 1: Update online regime performance tracking ──
+        regime_key = str(self._active_regime) if self._active_regime is not None else None
+        if regime_key:
+            self._regime_cycles[regime_key] = self._regime_cycles.get(regime_key, 0) + 1
+            if pnl >= 0:
+                self._regime_wins[regime_key] = self._regime_wins.get(regime_key, 0) + pnl
+            else:
+                self._regime_losses[regime_key] = self._regime_losses.get(regime_key, 0) + abs(pnl)
+            # Track busts (check if strategy reports bust via vars)
+            is_bust = False
+            if strategy and hasattr(strategy, 'vars'):
+                is_bust = strategy.vars.get('last_session_bust', False)
+            if is_bust or pnl < -50:  # heuristic: large loss = likely bust
+                self._regime_busts[regime_key] = self._regime_busts.get(regime_key, 0) + 1
 
     # ------------------------------------------------------------------
     # Stats & persistence
@@ -688,10 +765,13 @@ class IslandPilot(Pipeline):
         if not hasattr(strategy, 'hp') or not hasattr(strategy, 'hyperparameters'):
             return
 
-        # Force 'custom' preset so pipeline has full control over all params.
-        # Named presets lock certain values — 'custom' unlocks everything.
-        if strategy.hp.get('preset') and strategy.hp['preset'] != 'custom':
-            strategy.hp['preset'] = 'custom'
+        # Do NOT force 'custom' preset. The user's preset defines the strategy's
+        # grid structure and signal behavior. The pipeline only tunes sizing params
+        # within the preset's framework. Forcing custom unlocks all params and lets
+        # evolved genomes override grid/hedge/TP, creating cycle durations so long
+        # that annual throughput drops to 2-3 sessions.
+        # if strategy.hp.get('preset') and strategy.hp['preset'] != 'custom':
+        #     strategy.hp['preset'] = 'custom'
 
         # Build lookup from strategy's declared HP
         if not hasattr(self, '_hp_spec'):
@@ -705,7 +785,12 @@ class IslandPilot(Pipeline):
             return
 
         # Groups the pipeline is allowed to tune
-        _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit', 'Entry Signal'}
+        # Tune General (sizing), Grid/Hedge, and Take Profit parameters per regime.
+        # Entry Signal is excluded — the pipeline must not change when signals fire.
+        # The preset is NOT forced to 'custom' — the strategy's preset defines
+        # the signal behavior and the pipeline only overrides execution params
+        # that the preset allows to be changed.
+        _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
 
         # Validated options for categorical params that may have broken choices.
         # Only allow signal modes that are known to work in the strategy.

@@ -402,9 +402,19 @@ class Strategy(ABC):
         self.broker = Broker(self.position, self.exchange, self.symbol, self.timeframe)
 
         if self.hp is None and len(self.hyperparameters()) > 0:
+            hp_schema = self.hyperparameters()
             self.hp = {}
-            for dna in self.hyperparameters():
+            for dna in hp_schema:
                 self.hp[dna['name']] = dna['default']
+
+            # Resolve preset: if the default preset names a preset dict,
+            # overlay its values so backtest uses the same config as the UI.
+            preset_def = next((d for d in hp_schema if d.get('name') == 'preset'), None)
+            if preset_def and 'presets' in preset_def:
+                preset_name = self.hp.get('preset')
+                preset_values = preset_def['presets'].get(preset_name)
+                if preset_values:
+                    self.hp.update(preset_values)
 
     @property
     def _price_precision(self) -> int:

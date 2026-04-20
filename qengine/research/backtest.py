@@ -27,6 +27,7 @@ def backtest(
         candles_pipeline_class = None,
         candles_pipeline_kwargs: dict = None,
         pipeline_configs: list = None,
+        cost_model: bool = True,
 ) -> dict:
     """
     An isolated backtest() function which is perfect for using in research, and AI training
@@ -78,6 +79,7 @@ def backtest(
         candles_pipeline_class=candles_pipeline_class,
         candles_pipeline_kwargs=candles_pipeline_kwargs,
         pipeline_configs=pipeline_configs,
+        cost_model=cost_model,
     )
 
 
@@ -100,8 +102,14 @@ def _isolated_backtest(
         candles_pipeline_class = None,
         candles_pipeline_kwargs: dict = None,
         pipeline_configs: list = None,
+        cost_model: bool = True,
 ) -> dict:
     qe_config['app']['trading_mode'] = 'backtest'
+    qe_config['app']['cost_model'] = cost_model
+
+    # Reset cached mode check (may have changed between runs)
+    import qengine.helpers as _jh
+    _jh.reset_mode_cache()
 
     # inject (formatted) configuration values
     formatted = _format_config(config)

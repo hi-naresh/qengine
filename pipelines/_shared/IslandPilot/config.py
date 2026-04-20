@@ -36,8 +36,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     'inference': {
         'min_confidence': 0.3,
-        'default_hysteresis': 0.15,
-        'transition_grace_candles': 5,
+        'default_hysteresis': 0.30,   # was 0.15 — need stronger stickiness with 73 leaves
+        'transition_grace_candles': 2, # was 5 — only affects genome switching, not entry gating
     },
     'sizing': {
         'drawdown_threshold_pct': 5.0,
@@ -45,7 +45,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'min_drawdown_scale': 0.1,
         'max_risk_per_cycle_pct': 15.0,
     },
-    'warmup': 100,
+    'warmup': 10,  # was 100 — only need ~10 candles for features to stabilize (300-bar window handles rest)
 }
 
 
