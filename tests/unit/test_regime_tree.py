@@ -6,7 +6,7 @@ import tempfile
 import numpy as np
 import pytest
 
-from qengine.framework.components.regime_tree import (
+from pipelines._shared.components.regime_tree import (
     MacroCluster,
     RegimeTree,
     SubCluster,

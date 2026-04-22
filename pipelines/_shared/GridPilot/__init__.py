@@ -28,9 +28,9 @@ import numpy as np
 
 from qengine.framework.base import Pipeline
 from qengine.framework.stats import PipelineStats
-from qengine.framework.components.danger_scorer import DangerScorer
-from qengine.framework.components.q_abort import QAbort, TOTAL_STATES
-from qengine.framework.components.entry_gate import EntryGate
+from pipelines._shared.components.danger_scorer import DangerScorer
+from pipelines._shared.components.q_abort import QAbort, TOTAL_STATES
+from pipelines._shared.components.entry_gate import EntryGate
 
 # Path to shipped model artifacts
 _MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
@@ -260,7 +260,7 @@ class GridPilot(Pipeline):
         danger_now = self.scorer.current_score
 
         # Get Q-values before decide() for logging
-        from qengine.framework.components.q_abort import _encode_state
+        from pipelines._shared.components.q_abort import _encode_state
         state_idx = _encode_state(level, duration, self._danger_at_entry, danger_now)
         q_values = [float(self.abort.q_table[state_idx, 0]),
                     float(self.abort.q_table[state_idx, 1])]

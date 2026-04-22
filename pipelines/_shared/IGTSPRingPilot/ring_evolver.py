@@ -20,7 +20,7 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
-from qengine.framework.components.island_evolver import (
+from pipelines._shared.components.island_evolver import (
     IslandEvolver,
     Genome,
     Population,

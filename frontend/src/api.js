@@ -104,11 +104,6 @@ export const api = {
   validateStrategy: (code) => request('POST', '/llm/validate', { code }),
   configureLLM: (data) => request('POST', '/llm/configure', data),
 
-  // Autopilot
-  startAutopilot: (data) => request('POST', '/autopilot', data),
-  cancelAutopilot: (id) => request('POST', '/autopilot/cancel', { id }),
-  getAutopilotState: (sessionId) => request('GET', `/autopilot/state/${sessionId}`),
-
   // Pipelines (framework)
   getRegisteredPipelines: () => request('GET', '/pipelines/registered'),
   getAllPipelines: () => request('GET', '/pipelines/all'),

@@ -1,6 +1,7 @@
 import peewee
 import json
 from qengine.services.db import database
+from qengine.libs.custom_json import NpEncoder
 import qengine.helpers as jh
 
 
@@ -361,7 +362,7 @@ def update_backtest_session_results(
         d['sessions'] = json.dumps(sessions)
 
     if pipeline_stats is not None:
-        d['pipeline_stats'] = json.dumps(pipeline_stats)
+        d['pipeline_stats'] = json.dumps(pipeline_stats, cls=NpEncoder)
 
     if export_paths is not None:
         d['export_paths'] = json.dumps(export_paths)

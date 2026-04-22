@@ -45,7 +45,7 @@ _MAX_LOOKBACK = 300
 
 def _feature_pool():
     """Lazy import — avoids a hard dep on indicators at import time."""
-    from qengine.framework.components.feature_selector import FeaturePool
+    from pipelines._shared.components.feature_selector import FeaturePool
     return FeaturePool()
 
 

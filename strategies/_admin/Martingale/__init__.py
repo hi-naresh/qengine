@@ -10,8 +10,7 @@ Every aspect is modular and pluggable:
   - Risk: daily/weekly loss caps, consecutive bust halt, cooldown, abort policies
   - Position: partial close, breakeven move, stop-loss hit(full-close)
 
-Use `preset` hyperparameter to load named configurations (raw, surefire_v1,
-surefire_v2, conservative, aggressive, fibonacci, scalper) or set 'custom'
+Use `preset` hyperparameter to load named configurations default (written in forums) or set custom (allows any HP)
 to configure every parameter individually.
 """
 import math
@@ -221,14 +220,20 @@ class Martingale(Strategy):
             {'name': 'hedge_expand_factor', 'type': float, 'group': _H,
              'min': 1.0, 'max': 2.0, 'default': 1.2,
              'depends_on': {'hedge_expand': ['yes']}},
+            {'name': 'enable_grid_reposition', 'type': bool, 'group': _H, 'default': False,
+             'description': 'Dynamically reposition unactivated grid levels during consolidation'},
+            {'name': 'reposition_atr_contraction', 'type': float, 'group': _H,
+             'min': 0.5, 'max': 0.99, 'default': 0.85,
+             'depends_on': {'enable_grid_reposition': [True]},
+             'description': 'ATR contraction ratio to trigger repositioning (0.85 = 15% contraction)'},
 
             # ── Take Profit ──
             {'name': 'tp_mode', 'type': 'categorical', 'group': _T,
-             'options': ['fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward', 'trailing'],
+             'options': ['fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward', 'trailing', 'integral'],
              'default': 'fixed_pips'},
             {'name': 'tp_value', 'type': float, 'group': _T,
-             'min': 0.01, 'max': 500.0, 'default': 20.0,
-             'description': 'Pips (fixed), ATR mult (atr), equity % (bucket), ratio (rr), pips (trail)'},
+             'min': 0.0001, 'max': 500.0, 'default': 20.0,
+             'description': 'Pips (fixed), ATR mult (atr), equity % (bucket), ratio (rr), pips (trail), fraction of cost basis (integral e.g. 0.005=0.5%)'},
             {'name': 'tp_atr_period', 'type': int, 'group': _T,
              'min': 5, 'max': 30, 'default': 14,
              'depends_on': {'tp_mode': ['atr_based']}},
@@ -412,6 +417,10 @@ class Martingale(Strategy):
             'hedge_stop_order_id': None,
             'pending_hedge_level': None,
             'pending_hedge_dir': None,
+            # P14: Dynamic grid repositioning state
+            'grid_repositioned': False,
+            'reposition_count': 0,
+            'reposition_events': [],
         })
 
     def should_long(self) -> bool:
@@ -555,13 +564,18 @@ class Martingale(Strategy):
             self._close_cycle('abort')
             return
 
-        # Session-level TP modes that can't use ticket TP (bucket_pct, trailing)
+        # Session-level TP modes that can't use ticket TP (bucket_pct, trailing, integral)
         tp_mode = self.hp.get('tp_mode', 'fixed_pips')
-        if tp_mode in ('bucket_pct', 'trailing'):
+        if tp_mode in ('bucket_pct', 'trailing', 'integral'):
             if self._check_tp():
                 self._cancel_hedge_stop()
                 self._close_cycle('tp_hit')
                 return
+
+        # P14: Dynamic grid repositioning during consolidation
+        if self.hp.get('enable_grid_reposition', False):
+            if self._should_reposition_grid():
+                self._reposition_unactivated_levels()
 
         # Check partial close / breakeven
         self._check_position_management()
@@ -1261,11 +1275,162 @@ class Martingale(Strategy):
             self.vars['pending_hedge_level'] = None
             self.vars['pending_hedge_dir'] = None
 
+    # ╔═══════════════════════════════════════════════════════════════════════╗
+    # ║              P14 — DYNAMIC GRID REPOSITIONING                       ║
+    # ╚═══════════════════════════════════════════════════════════════════════╝
+
+    def _should_reposition_grid(self) -> bool:
+        """Return True when conditions are met to shift the next hedge level closer.
+
+        Conditions:
+        1. Active cycle at level >= 1 (at least one hedge already triggered)
+        2. Already-repositioned flag is not set (one reposition per cycle)
+        3. Price has moved significantly from L0 entry (> 1.5 ATR displacement)
+        4. ATR is contracting (current ATR < ATR 20 bars ago * contraction_ratio)
+        5. The pending hedge has not yet been triggered (hedge STOP order is live)
+        """
+        if not self.vars.get('cycle_active'):
+            return False
+        if self.vars.get('level', 0) < 1:
+            return False
+        if self.vars.get('grid_repositioned', False):
+            return False
+        # Need a live pending hedge order to reposition
+        if not self.vars.get('hedge_stop_order_id'):
+            return False
+
+        # Condition 3: price displacement from L0 entry > 1.5 ATR
+        legs = self.vars.get('legs', [])
+        if not legs:
+            return False
+        l0_entry = legs[0]['entry']
+        l0_dir = legs[0]['dir']
+        displacement = (l0_entry - self.price) if l0_dir == 'long' else (self.price - l0_entry)
+        atr_arr = ta.atr(self.candles, period=14, sequential=True)
+        if atr_arr is None or len(atr_arr) < 21:
+            return False
+        current_atr = atr_arr[-1]
+        if current_atr <= 0:
+            return False
+        if displacement < 1.5 * current_atr:
+            return False
+
+        # Condition 4: ATR contraction
+        contraction_ratio = self.hp.get('reposition_atr_contraction', 0.85)
+        past_atr = atr_arr[-21]  # ~20 bars ago (index -21 gives bar 20 periods back)
+        if past_atr <= 0:
+            return False
+        if current_atr >= past_atr * contraction_ratio:
+            return False  # Not yet contracting enough
+
+        return True
+
+    def _reposition_unactivated_levels(self):
+        """Shift the next hedge trigger price 40% closer to current price.
+
+        The existing pending STOP order is cancelled, the hedge trigger price
+        is recomputed at 60% of the original spacing from current price, and a
+        new STOP order is placed at the new trigger.  Only one reposition per
+        cycle (guard via grid_repositioned flag).
+        """
+        current_level = self.vars.get('level', 0)
+        next_level = current_level + 1
+        last_leg = self.vars['legs'][-1] if self.vars.get('legs') else None
+        if last_leg is None:
+            return
+
+        # Original hedge trigger (based on last leg entry)
+        old_trigger = self.vars.get('hedge_trigger_price')
+        if old_trigger is None:
+            return
+
+        # New trigger: original spacing compressed by 40% toward current price
+        orig_dist_pips = self._hedge_distance_pips(current_level)
+        orig_dist_price = self.pips_to_price(orig_dist_pips) if hasattr(self, 'pips_to_price') else orig_dist_pips * 0.0001
+        new_dist_price = orig_dist_price * 0.6  # 40% tighter
+
+        last_dir = last_leg['dir']
+        if last_dir == 'long':
+            new_trigger = self.price - new_dist_price
+        else:
+            new_trigger = self.price + new_dist_price
+
+        # Cancel existing STOP and replace with new one
+        self._cancel_hedge_stop()
+
+        # Store new trigger and place the STOP at the adjusted price
+        self.vars['hedge_trigger_price'] = new_trigger
+
+        # Place the replacement hedge STOP
+        new_dir = 'short' if last_dir == 'long' else 'long'
+        qty = self._calc_size(next_level)
+        side = 'buy' if new_dir == 'long' else 'sell'
+        max_levels = self.vars.get('effective_max_levels', self.hp.get('max_levels', 6))
+
+        if next_level < max_levels:
+            try:
+                order = self.broker.api.stop_order(
+                    self.exchange, self.symbol, abs(qty), new_trigger, side, reduce_only=False
+                )
+                if order:
+                    self.vars['hedge_stop_order_id'] = order.id
+                    self.vars['pending_hedge_level'] = next_level
+                    self.vars['pending_hedge_dir'] = new_dir
+            except Exception:
+                # Could not place repositioned order — leave without a STOP
+                pass
+
+        # Mark repositioned for this cycle
+        self.vars['grid_repositioned'] = True
+        self.vars['reposition_count'] = self.vars.get('reposition_count', 0) + 1
+        events = self.vars.get('reposition_events', [])
+        events.append({
+            'bar': self.index,
+            'level': current_level,
+            'old_price': old_trigger,
+            'new_price': new_trigger,
+        })
+        self.vars['reposition_events'] = events
+
+    # ╔═══════════════════════════════════════════════════════════════════════╗
+    # ║                P15 — INTEGRAL TAKE-PROFIT                           ║
+    # ╚═══════════════════════════════════════════════════════════════════════╝
+
+    def _compute_gain_integral(self) -> float:
+        """Compute cumulative gain across all open tickets as a fraction of cost basis.
+
+        For each open ticket:
+          long  gain_i = (current_price - entry_price) * qty * contract_size
+          short gain_i = (entry_price - current_price) * qty * contract_size
+
+        Returns total_gain / total_cost_basis (signed fraction).
+        cost_basis = sum(entry_price * qty * contract_size) for all tickets.
+        """
+        if not self.is_open or not self.position._tickets:
+            return 0.0
+        contract_size = getattr(self, 'contract_size', 1.0)
+        total_gain = 0.0
+        total_cost_basis = 0.0
+        current_price = self.price
+        for ticket in self.position._tickets:
+            qty = ticket.qty  # always positive
+            ep = ticket.entry_price
+            cs = contract_size
+            if ticket.type == 'long':
+                gain = (current_price - ep) * qty * cs
+            else:
+                gain = (ep - current_price) * qty * cs
+            total_gain += gain
+            total_cost_basis += ep * qty * cs
+        if total_cost_basis <= 0:
+            return 0.0
+        return total_gain / total_cost_basis
+
     def _compute_tp(self, entry_price, direction):
-        """Compute take-profit price (or None for bucket/trailing modes)."""
+        """Compute take-profit price (or None for bucket/trailing/integral modes)."""
         mode = self.hp.get('tp_mode', 'fixed_pips')
 
-        if mode == 'bucket_pct' or mode == 'trailing':
+        if mode in ('bucket_pct', 'trailing', 'integral'):
             return None  # Checked dynamically in _check_tp
 
         if mode == 'fixed_pips':
@@ -1290,7 +1455,7 @@ class Martingale(Strategy):
 
         For price-based modes (fixed_pips, atr_based, risk_reward), the engine
         handles TP via ticket triggers — this method only checks session-level
-        modes (bucket_pct, trailing).
+        modes (bucket_pct, trailing, integral).
         """
         mode = self.hp.get('tp_mode', 'fixed_pips')
 
@@ -1301,6 +1466,11 @@ class Martingale(Strategy):
 
         if mode == 'trailing':
             return self._check_trailing_tp()
+
+        if mode == 'integral':
+            integral = self._compute_gain_integral()
+            threshold = self.hp.get('tp_value', 0.005)  # default 0.5% of cost basis
+            return integral >= threshold
 
         # Price-based modes (fixed_pips, atr_based, risk_reward) are handled
         # by the engine via on_ticket_tp_hit callback. No manual check needed.
@@ -1338,8 +1508,8 @@ class Martingale(Strategy):
         """
         tp_mode = self.hp.get('tp_mode', 'fixed_pips')
 
-        if tp_mode == 'trailing':
-            return  # Trailing TP is dynamic, can't pre-compute a price
+        if tp_mode in ('trailing', 'integral'):
+            return  # Dynamic TP modes — can't pre-compute a fixed price
 
         if tp_mode == 'bucket_pct':
             # Compute the price where session PnL = target % of equity
@@ -1782,6 +1952,8 @@ class Martingale(Strategy):
         self.vars['hedge_stop_order_id'] = None
         self.vars['pending_hedge_level'] = None
         self.vars['pending_hedge_dir'] = None
+        # P14: reset per-cycle reposition flag (but keep count and events across cycles)
+        self.vars['grid_repositioned'] = False
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
     # ║                         UTILITIES                                   ║

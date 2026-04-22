@@ -40,14 +40,22 @@ BASE_ROUTES = [{
 }]
 
 
+def _to_ts(date_str):
+    """Convert 'YYYY-MM-DD' string to unix millisecond timestamp (int)."""
+    import arrow
+    return arrow.get(date_str).int_timestamp * 1000
+
+
 def load_candles(start_date='2006-01-02', end_date=DATA_END):
-    """Load EUR-USD candles. Always use end_date <= 2024-12-31."""
+    """Load EUR-USD 1m candles (backtest engine requires 1m; routes handle resampling).
+    Always use end_date <= 2024-12-31."""
     assert end_date <= DATA_END, f"No 2025+ data allowed. Got {end_date}"
     warmup, candles = get_candles(
-        exchange=EXCHANGE, symbol=SYMBOL, timeframe=TIMEFRAME,
-        start_date=start_date, finish_date=end_date,
+        exchange=EXCHANGE, symbol=SYMBOL, timeframe='1m',
+        start_date_timestamp=_to_ts(start_date),
+        finish_date_timestamp=_to_ts(end_date),
     )
-    if warmup.ndim == 2 and len(warmup) > 0:
+    if warmup is not None and hasattr(warmup, 'ndim') and warmup.ndim == 2 and len(warmup) > 0:
         return np.concatenate([warmup, candles], axis=0)
     return candles
 

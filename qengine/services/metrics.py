@@ -404,7 +404,7 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
             sessions_map[session_num] = {
                 'pnl': 0.0, 'legs': 0, 'max_level': 0,
                 'exit_reason': None, 'leg_levels': [], 'leg_holdings': [],
-                'leg_entry_prices': [],
+                'leg_entry_prices': [], 'exit_price': None, 'direction': None,
             }
             session_order.append(session_num)
 
@@ -432,6 +432,20 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
         if reason:
             s['exit_reason'] = reason
 
+        # Track exit price (updated each leg so last leg wins) and direction (first leg only)
+        ep = getattr(t, 'exit_price', None)
+        if ep is not None:
+            try:
+                ep_f = float(ep)
+                if not (ep_f != ep_f):  # NaN check
+                    s['exit_price'] = ep_f
+            except (TypeError, ValueError):
+                pass
+        if s['direction'] is None:
+            trade_type = getattr(t, 'type', None)
+            if trade_type in ('long', 'short'):
+                s['direction'] = trade_type
+
     result = []
     for sn in session_order:
         s = sessions_map[sn]
@@ -444,6 +458,8 @@ def _parse_sessions(trades_list: List[ClosedTrade]) -> list:
             'leg_levels': s['leg_levels'],
             'leg_holdings': s['leg_holdings'],
             'leg_entry_prices': s['leg_entry_prices'],
+            'exit_price': s['exit_price'],
+            'direction': s['direction'],
         })
     return result
 
@@ -758,19 +774,47 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
             depth_stationary = None
 
     # --- P8: Protective Sell / Profitable Buy Accuracy (Wilson & Banzhaf 2010) ---
-    # Separates win rate into entry quality vs exit quality
+    # Separates win rate into entry quality vs exit quality:
+    #   profitable_buy_pct  = % of cycles where entry direction was right (PnL > 0)
+    #   protective_sell_pct = % of bust/abort exits where price continued adverse after exit
+    #                         (proxy: next cycle's first entry price is worse than exit price)
     profitable_buy_pct = 0.0
     protective_sell_pct = 0.0
-    abort_outcomes = {'abort', 'max_level_bust', 'max_level_sl', 'margin_call', 'liquidation'}
+    protective_sell_count = 0
+    protective_sell_eligible = 0
+
     if total_sessions > 0:
-        profitable_buys = sum(1 for s in sessions if s['pnl'] > 0)
-        profitable_buy_pct = profitable_buys / total_sessions
-        # Protective sell: among aborted cycles, % that aborted before max observed depth
-        aborted_sessions = [s for s in sessions if s['exit_reason'] in abort_outcomes]
-        if aborted_sessions:
-            max_possible = max((s['max_level'] for s in sessions), default=0)
-            protected = sum(1 for s in aborted_sessions if s['max_level'] < max_possible)
-            protective_sell_pct = protected / len(aborted_sessions)
+        n_wins = sum(1 for s in sessions if s['pnl'] > 0)
+        profitable_buy_pct = n_wins / total_sessions
+
+    bust_abort_outcomes = {
+        'bust', 'max_levels', 'max_level_bust', 'max_level_sl',
+        'margin_call', 'margin_bust', 'liquidation',
+        'max_consec_busts', 'daily_loss_limit', 'aborted', 'abort',
+    }
+    for i, s in enumerate(sessions):
+        if s.get('exit_reason') not in bust_abort_outcomes:
+            continue
+        if i + 1 >= len(sessions):
+            continue  # no following session to compare against
+
+        next_s = sessions[i + 1]
+        exit_price = s.get('exit_price')
+        # Use first leg entry price of next session as proxy for "where price went next"
+        next_entry_prices = next_s.get('leg_entry_prices') or []
+        next_entry = next_entry_prices[0] if next_entry_prices and next_entry_prices[0] > 0 else None
+        direction = s.get('direction', 'long')
+
+        if exit_price is not None and next_entry is not None:
+            protective_sell_eligible += 1
+            if direction == 'long' and next_entry < exit_price:
+                # Price continued down after long bust → exit was protective
+                protective_sell_count += 1
+            elif direction == 'short' and next_entry > exit_price:
+                # Price continued up after short bust → exit was protective
+                protective_sell_count += 1
+
+    protective_sell_pct = protective_sell_count / max(protective_sell_eligible, 1) if protective_sell_eligible > 0 else 0.0
 
     # --- P7: Triangular Loss Growth Validation (Taranto & Khan 2020) ---
     # Compare empirical cumulative loss at each level against:
@@ -1054,8 +1098,10 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         # P7: Triangular Loss Growth (Taranto & Khan 2020)
         'loss_growth_validation': loss_growth_validation,
         # P8: Protective Sell / Profitable Buy (Wilson & Banzhaf 2010)
-        'profitable_buy_pct': round(profitable_buy_pct, 4),
-        'protective_sell_pct': round(protective_sell_pct, 4),
+        'profitable_buy_pct': round(profitable_buy_pct * 100, 2),
+        'protective_sell_pct': round(protective_sell_pct * 100, 2),
+        'protective_sell_eligible': protective_sell_eligible,
+        'protective_sell_count': protective_sell_count,
         # P9: Analytical Ruin Probability (Karathanasopoulos et al. 2021)
         'analytical_ruin_prob': round(analytical_ruin_prob, 6),
         'analytical_survival_prob': round(analytical_survival_prob, 6),
@@ -1070,6 +1116,133 @@ def _calculate_martingale_metrics(sessions: list, starting_balance: float,
         'cost_sensitivity': cost_sensitivity,
         # P3: NPD-PR Depth Fan (Chen 2025)
         'depth_fan': depth_fan,
+        # P13: Internal survival params (prefixed _ = internal use by calculate_two_asset_survival)
+        '_survival_mu': mu,
+        '_survival_sigma_sq': sigma_sq,
+        '_survival_k0': k0,
+        '_survival_w': w,
+    }
+
+
+def calculate_two_asset_survival(metrics1: dict, metrics2: dict) -> dict:
+    """Compute two-asset portfolio survival condition per Karathanasopoulos et al. (2021) Proposition 2.
+
+    The two-asset survival condition relaxes the single-asset requirement μ/σ² > 1/2 to:
+
+        (a + μ̄) / (2b) > 1                        [Proposition 2, eq. P2-1]
+
+    where:
+        μ̄  = (μ₁ + μ₂) / 2   — mean of per-cycle returns across both instruments
+        a   = min(μ₁, μ₂)     — weaker instrument's mean return (conservative)
+        b   = max(σ₁², σ₂²)   — larger variance (conservative)
+
+    Combined survival probability uses the Gamma formula with pooled parameters:
+        α = 2μ̄/b - 1
+        β = 2k₀_combined / b
+        P_survive = 1 - Gamma_CDF(1/w_combined, α, scale=1/β)
+
+    Args:
+        metrics1: dict returned by _calculate_martingale_metrics() for instrument 1.
+                  Must contain '_survival_mu', '_survival_sigma_sq', '_survival_k0', '_survival_w'.
+        metrics2: dict returned by _calculate_martingale_metrics() for instrument 2.
+
+    Returns:
+        dict with keys:
+            single1: {ratio, met, prob}        — single-asset survival stats for instrument 1
+            single2: {ratio, met, prob}        — single-asset survival stats for instrument 2
+            combined: {condition, met, prob, improvement_pct}
+                condition      — (a + μ̄) / (2b) value
+                met            — bool, condition > 1.0
+                prob           — combined P_survive
+                improvement_pct — how much the combined condition exceeds the weaker single-asset ratio
+    """
+    from scipy.stats import gamma as gamma_dist
+
+    def _single_survival_stats(mu: float, sigma_sq: float, k0: float, w: float) -> dict:
+        """Compute single-asset survival ratio and probability from raw params."""
+        ratio = mu / sigma_sq if sigma_sq > 1e-12 else 0.0
+        met = ratio > 0.5
+        prob = 0.0
+        if met and w > 0:
+            alpha = 2 * mu / sigma_sq - 1
+            beta = 2 * k0 / sigma_sq if sigma_sq > 1e-12 else 0.0
+            if abs(ratio - 1.0) < 0.1 and mu > 0:
+                # Special case: P = exp(-2k₀ / μw)
+                prob = min(1.0, math.exp(-2 * k0 / (mu * w))) if mu * w > 0 else 0.0
+            elif alpha > 0:
+                if beta > 0:
+                    try:
+                        prob = float(1.0 - gamma_dist.cdf(1.0 / max(w, 1e-12), a=alpha, scale=1.0 / beta))
+                    except (ValueError, OverflowError):
+                        prob = 0.5
+                else:
+                    prob = 1.0 if mu > 0 else 0.0
+        return {'ratio': round(ratio, 6), 'met': met, 'prob': round(max(0.0, min(1.0, prob)), 6)}
+
+    # --- Extract internal survival params ---
+    mu1 = metrics1.get('_survival_mu', 0.0)
+    sigma_sq1 = max(metrics1.get('_survival_sigma_sq', 1e-12), 1e-12)
+    k0_1 = metrics1.get('_survival_k0', 0.0)
+    w1 = metrics1.get('_survival_w', 1.0)
+
+    mu2 = metrics2.get('_survival_mu', 0.0)
+    sigma_sq2 = max(metrics2.get('_survival_sigma_sq', 1e-12), 1e-12)
+    k0_2 = metrics2.get('_survival_k0', 0.0)
+    w2 = metrics2.get('_survival_w', 1.0)
+
+    # --- Single-asset stats ---
+    single1 = _single_survival_stats(mu1, sigma_sq1, k0_1, w1)
+    single2 = _single_survival_stats(mu2, sigma_sq2, k0_2, w2)
+
+    # --- Two-asset combined condition (Proposition 2) ---
+    # μ̄ = mean return across both instruments
+    mu_bar = (mu1 + mu2) / 2.0
+    # a = weaker instrument mean (conservative floor)
+    a = min(mu1, mu2)
+    # b = larger variance (conservative ceiling)
+    b = max(sigma_sq1, sigma_sq2)
+
+    # (a + μ̄) / (2b)  — must exceed 1.0 for guaranteed survival
+    two_asset_condition = (a + mu_bar) / (2.0 * b) if b > 1e-12 else 0.0
+    two_asset_met = two_asset_condition > 1.0
+
+    # --- Combined survival probability ---
+    k0_combined = (k0_1 + k0_2) / 2.0
+    w_combined = (w1 + w2) / 2.0
+
+    combined_prob = 0.0
+    if mu_bar > 0 and b > 1e-12 and w_combined > 0:
+        alpha_c = 2.0 * mu_bar / b - 1.0   # α = 2μ̄/b - 1
+        beta_c = 2.0 * k0_combined / b      # β = 2k₀/b
+        ratio_c = mu_bar / b                # μ̄/b for special-case check
+        if abs(ratio_c - 1.0) < 0.1 and mu_bar > 0:
+            # Special case
+            combined_prob = min(1.0, math.exp(-2 * k0_combined / (mu_bar * w_combined))) if mu_bar * w_combined > 0 else 0.0
+        elif alpha_c > 0:
+            if beta_c > 0:
+                try:
+                    combined_prob = float(1.0 - gamma_dist.cdf(
+                        1.0 / max(w_combined, 1e-12), a=alpha_c, scale=1.0 / beta_c))
+                except (ValueError, OverflowError):
+                    combined_prob = 0.5
+            else:
+                combined_prob = 1.0
+
+    # --- Improvement over weaker single-asset ---
+    weaker_ratio = min(single1['ratio'], single2['ratio'])
+    # How much the two-asset condition improves on the weaker single (percentage points of condition value)
+    improvement_pct = round((two_asset_condition - weaker_ratio) / max(abs(weaker_ratio), 1e-12) * 100, 2) \
+        if weaker_ratio != 0 else 0.0
+
+    return {
+        'single1': single1,
+        'single2': single2,
+        'combined': {
+            'condition': round(two_asset_condition, 6),   # (a + μ̄) / (2b)
+            'met': two_asset_met,
+            'prob': round(max(0.0, min(1.0, combined_prob)), 6),
+            'improvement_pct': improvement_pct,
+        },
     }
 
 

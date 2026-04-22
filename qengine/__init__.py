@@ -152,7 +152,6 @@ from qengine.controllers.settings_controller import router as settings_router
 from qengine.controllers.playground_controller import router as playground_router
 from qengine.controllers.issue_controller import router as issue_router
 from qengine.controllers.framework_controller import router as framework_router
-from qengine.controllers.autopilot_controller import router as autopilot_router
 from qengine.controllers.report_controller import router as report_router
 
 # register routers
@@ -179,7 +178,6 @@ fastapi_app.include_router(settings_router)
 fastapi_app.include_router(playground_router)
 fastapi_app.include_router(issue_router)
 fastapi_app.include_router(framework_router)
-fastapi_app.include_router(autopilot_router)
 fastapi_app.include_router(report_router)
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # #

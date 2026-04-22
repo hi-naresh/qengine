@@ -13,11 +13,11 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from qengine.framework.components.feature_selector import FeaturePool, select_features
-from qengine.framework.components.regime_tree import RegimeTree
-from qengine.framework.components.island_evolver import IslandEvolver, Genome
-from qengine.framework.components.regime_inferencer import RegimeInferencer
-from qengine.framework.components.adaptive_sizer import AdaptiveSizer
+from pipelines._shared.components.feature_selector import FeaturePool, select_features
+from pipelines._shared.components.regime_tree import RegimeTree
+from pipelines._shared.components.island_evolver import IslandEvolver, Genome
+from pipelines._shared.components.regime_inferencer import RegimeInferencer
+from pipelines._shared.components.adaptive_sizer import AdaptiveSizer
 
 
 # ---------------------------------------------------------------------------

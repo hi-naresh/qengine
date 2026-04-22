@@ -1,8 +1,0 @@
-variant,component_removed,pf_full,pf_variant,pf_delta,pf_pct_change,wr_delta,bust_delta,pnl_delta,helps
-random_configs,random configs,1.148,1.069,0.079,7.4,-0.0082,0.0082,1599.8,True
-no_pipeline,pipeline,1.148,1.074,0.074,6.9,-0.0082,0.0082,1525.7,True
-single_global,single global,1.148,1.096,0.052,4.8,-0.0082,0.0082,-1434.7,True
-no_migration,migration,1.148,1.148,0.0,0.0,0.0,0.0,0.0,False
-flat_clustering,flat clustering,1.148,1.148,0.0,0.0,0.0,0.0,0.0,False
-no_hysteresis,hysteresis,1.148,1.148,0.0,0.0,0.0,0.0,0.0,False
-uniform_sizing,uniform sizing,1.148,1.268,-0.12,-9.4,0.0,0.0,-11026.4,False

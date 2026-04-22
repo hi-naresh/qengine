@@ -45,7 +45,22 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'min_drawdown_scale': 0.1,
         'max_risk_per_cycle_pct': 15.0,
     },
-    'warmup': 10,  # was 100 — only need ~10 candles for features to stabilize (300-bar window handles rest)
+    # PHASE6: Online per-regime gating — blocks regimes that have accumulated
+    # N cycles with PF below threshold. Defaults are LENIENT so it doesn't
+    # over-block early in a run. Tighten if you want stricter risk management.
+    'online_gate': {
+        'enabled': True,
+        'min_cycles_for_gate': 15,   # need 15+ cycles before gating kicks in (was 5)
+        'min_regime_pf': 0.7,        # block regime only if PF < 0.7 (was 1.0)
+    },
+    # PHASE6: Drift detection — conservative defaults. Disable by setting
+    # enabled=False in user config if you prefer uninterrupted trading.
+    'drift': {
+        'enabled': True,
+        'recent_n': 30,              # larger window → less noisy (was 20)
+        'drop_ratio': 0.3,           # only pause if recent PF < 30% of lifetime (was 0.5)
+    },
+    'warmup': 10,
 }
 
 

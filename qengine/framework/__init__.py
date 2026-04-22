@@ -5,4 +5,3 @@ from qengine.framework.registry import (
     list_pipelines,
     create_pipelines,
 )
-from qengine.framework.stats import PipelineStats

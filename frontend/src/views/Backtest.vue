@@ -1286,6 +1286,109 @@
           <!-- Pipeline Intelligence Tab -->
           <div v-if="activeTab === 'pipeline'">
             <PipelineIntelligence :stats="pipelineStats" :session-id="generalInfo?.session_id" />
+
+            <!-- ═══ P8: ENTRY & EXIT QUALITY CARDS ═══ -->
+            <div v-if="metrics?.profitable_buy_pct != null || metrics?.protective_sell_pct != null" class="mt-4 grid grid-cols-2 gap-3">
+              <!-- Entry Quality Card -->
+              <div v-if="metrics?.profitable_buy_pct != null"
+                class="p-4 bg-surface-800 rounded-lg border border-surface-700/50"
+                title="% of cycles where initial entry direction was correct (cycle closed in profit)">
+                <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-1">Entry Quality</div>
+                <div class="text-2xl font-mono font-bold"
+                  :class="metrics.profitable_buy_pct > 60 ? 'text-green-400' : metrics.profitable_buy_pct >= 40 ? 'text-amber-400' : 'text-red-400'">
+                  {{ metrics.profitable_buy_pct.toFixed(1) }}<span class="text-base font-normal">%</span>
+                </div>
+                <div class="text-[10px] text-surface-500 mt-1">Profitable Buy Rate</div>
+              </div>
+              <!-- Exit Quality Card -->
+              <div v-if="metrics?.protective_sell_pct != null"
+                class="p-4 bg-surface-800 rounded-lg border border-surface-700/50"
+                title="% of bust exits where price continued adverse after exit — confirming the exit was protective">
+                <div class="text-[10px] text-surface-500 uppercase tracking-wider mb-1">Exit Quality</div>
+                <div class="text-2xl font-mono font-bold"
+                  :class="metrics.protective_sell_pct > 55 ? 'text-green-400' : metrics.protective_sell_pct >= 45 ? 'text-amber-400' : 'text-red-400'">
+                  {{ metrics.protective_sell_pct.toFixed(1) }}<span class="text-base font-normal">%</span>
+                </div>
+                <div class="text-[10px] text-surface-500 mt-1">Protective Sell Rate</div>
+                <div v-if="metrics?.protective_sell_count != null && metrics?.protective_sell_eligible != null"
+                  class="text-[10px] text-surface-600 mt-0.5 font-mono">
+                  ({{ metrics.protective_sell_count }} / {{ metrics.protective_sell_eligible }} busts with next-cycle data)
+                </div>
+              </div>
+            </div>
+
+            <!-- ═══ DEPTH FAN (NPD-PR) CHART ═══ -->
+            <div class="mt-6 border-t border-surface-700/50 pt-6">
+              <div class="flex items-center justify-between mb-1">
+                <div>
+                  <h3 class="text-sm font-semibold text-surface-300">Depth Fan <span class="text-[10px] font-normal text-surface-600 font-mono">(NPD-PR)</span></h3>
+                  <p class="text-[10px] text-surface-500">Normalized price deformation by depth level</p>
+                </div>
+              </div>
+              <!-- No data state -->
+              <div v-if="!metrics?.depth_fan" class="card py-8 text-center text-surface-500 text-xs">
+                Insufficient data (need 10+ multi-level cycles)
+              </div>
+              <!-- Chart -->
+              <div v-else class="card">
+                <div ref="depthFanEl" class="w-full h-[280px]"></div>
+                <!-- Info row -->
+                <div class="mt-2 text-[10px] text-surface-500 font-mono">
+                  <span>{{ metrics.depth_fan.n_cycles }} cycles</span>
+                  <span class="mx-2 text-surface-700">|</span>
+                  <span v-if="metrics.depth_fan.collapse_boundary != null">
+                    Collapse at <span class="text-amber-400">L{{ metrics.depth_fan.collapse_boundary }}</span>
+                  </span>
+                  <span v-else class="text-surface-600">No collapse boundary detected</span>
+                </div>
+                <!-- Legend -->
+                <div class="mt-2 flex gap-4 text-[10px]">
+                  <span class="flex items-center gap-1.5"><span class="inline-block w-4 h-0.5 bg-red-400 opacity-60"></span> Bust traces</span>
+                  <span class="flex items-center gap-1.5"><span class="inline-block w-4 h-0.5 bg-sky-400 opacity-60"></span> Win traces</span>
+                  <span class="flex items-center gap-1.5"><span class="inline-block w-4 h-px bg-red-400" style="border-top: 2px dashed #f87171"></span> Bust mean</span>
+                  <span class="flex items-center gap-1.5"><span class="inline-block w-4 h-px bg-sky-400" style="border-top: 2px dashed #38bdf8"></span> Win mean</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ═══ P6: DEPTH BARRIER ANNOTATION ═══ -->
+            <div v-if="metrics?.depth_barrier != null" class="mt-4 p-4 bg-surface-800 rounded-lg border border-red-500/30 flex items-start gap-3">
+              <div class="mt-0.5 w-3 h-3 rounded-full bg-red-500 flex-shrink-0"></div>
+              <div>
+                <div class="text-sm font-semibold text-red-400">Depth Barrier: Level {{ metrics.depth_barrier }}</div>
+                <div class="text-xs text-surface-400 mt-0.5">
+                  Win rate drops below 70% at L{{ metrics.depth_barrier }}.
+                  <span v-if="metrics?.depth_barrier_details?.win_rate != null"> Current win rate at this level: <span class="font-mono text-red-300">{{ (metrics.depth_barrier_details.win_rate * 100).toFixed(1) }}%</span>
+                    <span v-if="metrics.depth_barrier_details.n_samples != null" class="text-surface-600"> ({{ metrics.depth_barrier_details.n_samples }} samples)</span>.
+                  </span>
+                  Recommended <span class="font-mono text-amber-300">max_levels: {{ metrics.depth_barrier - 1 }}</span>.
+                </div>
+              </div>
+            </div>
+
+            <!-- ═══ P2: DEPTH TRANSITION HEATMAP ═══ -->
+            <div class="mt-6 border-t border-surface-700/50 pt-6">
+              <div class="flex items-center justify-between mb-1">
+                <div>
+                  <h3 class="text-sm font-semibold text-surface-300">Depth Transition Matrix</h3>
+                  <p class="text-[10px] text-surface-500">Markov transition probabilities between depth levels</p>
+                </div>
+              </div>
+              <div v-if="!metrics?.depth_transition_matrix" class="card py-8 text-center text-surface-500 text-xs">
+                Insufficient data
+              </div>
+              <div v-else class="card">
+                <div ref="depthTransitionEl" class="w-full" style="min-height: 140px;"></div>
+                <!-- Stationary distribution row -->
+                <div v-if="metrics?.depth_stationary?.length" class="mt-3 text-[10px] text-surface-500">
+                  <span class="text-surface-600 mr-2">Stationary:</span>
+                  <span v-for="(p, i) in metrics.depth_stationary" :key="i" class="mr-3 font-mono">
+                    L{{ i }}: <span class="text-surface-300">{{ (p * 100).toFixed(1) }}%</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <!-- A/B Comparison -->
             <div class="mt-8 border-t border-surface-700/50 pt-6">
               <div class="flex items-center justify-between mb-4">
@@ -3235,6 +3338,8 @@ const equityChartEl = ref(null)
 const floatingPnlChartEl = ref(null)
 const marginChartEl = ref(null)
 const dangerChartEl = ref(null)
+const depthFanEl = ref(null)
+const depthTransitionEl = ref(null)
 const sessionEquityEl = ref(null)
 const btTradeChartRef = ref(null)
 const btChartCandles = ref([])
@@ -5665,6 +5770,273 @@ function drawComparisonEquity() {
   ctx.fillText('Without Pipeline', lx + 22, pad.top + 23)
 }
 
+function drawDepthFan() {
+  const el = depthFanEl.value
+  const fan = metrics.value?.depth_fan
+  if (!el || !fan) return
+
+  const stats = fan.stats || []
+  const traces = fan.traces || []
+  const collapse = fan.collapse_boundary
+
+  if (!stats.length) return
+
+  const dpr = window.devicePixelRatio || 1
+  const w = el.clientWidth
+  const h = el.clientHeight
+  if (!w || !h) return
+
+  let canvas = el.querySelector('canvas')
+  if (!canvas) {
+    canvas = document.createElement('canvas')
+    el.innerHTML = ''
+    el.appendChild(canvas)
+  }
+  canvas.width = w * dpr
+  canvas.height = h * dpr
+  canvas.style.width = w + 'px'
+  canvas.style.height = h + 'px'
+
+  const ctx = canvas.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  const maxLevel = stats.length - 1
+  const pad = { top: 20, right: 20, bottom: 35, left: 60 }
+  const pw = w - pad.left - pad.right
+  const ph = h - pad.top - pad.bottom
+
+  // Compute Y range from all stats + traces (capped to 50 each for performance)
+  const bustTraces = traces.filter(t => t.is_bust).slice(0, 50)
+  const winTraces = traces.filter(t => !t.is_bust).slice(0, 50)
+  const allRatios = [
+    ...stats.map(s => s.bust_mean).filter(v => v != null),
+    ...stats.map(s => s.win_mean).filter(v => v != null),
+    ...stats.map(s => s.min_ratio).filter(v => v != null),
+    ...stats.map(s => s.max_ratio).filter(v => v != null),
+    ...bustTraces.flatMap(t => t.points.map(p => p.ratio)),
+    ...winTraces.flatMap(t => t.points.map(p => p.ratio)),
+    1.0,
+  ]
+  const minR = Math.min(...allRatios)
+  const maxR = Math.max(...allRatios)
+  const pad_r = (maxR - minR) * 0.08 || 0.002
+  const rMin = minR - pad_r
+  const rMax = maxR + pad_r
+  const rRange = rMax - rMin || 0.001
+
+  function xOf(level) {
+    return pad.left + (maxLevel > 0 ? pw * level / maxLevel : pw / 2)
+  }
+  function yOf(ratio) {
+    return pad.top + ph * (1 - (ratio - rMin) / rRange)
+  }
+
+  // Background
+  ctx.fillStyle = '#1a1b23'
+  ctx.fillRect(0, 0, w, h)
+
+  // Grid lines
+  ctx.strokeStyle = '#1e1f2b'
+  ctx.lineWidth = 1
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + ph * i / 4
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke()
+  }
+  for (let lv = 0; lv <= maxLevel; lv++) {
+    const x = xOf(lv)
+    ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + ph); ctx.stroke()
+  }
+
+  // Collapse boundary vertical line
+  if (collapse != null && collapse <= maxLevel) {
+    const cx = xOf(collapse)
+    ctx.strokeStyle = '#f59e0b'
+    ctx.lineWidth = 1.5
+    ctx.setLineDash([4, 4])
+    ctx.beginPath(); ctx.moveTo(cx, pad.top); ctx.lineTo(cx, pad.top + ph); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = '#f59e0b'
+    ctx.font = '9px monospace'
+    ctx.textAlign = 'left'
+    ctx.fillText('L' + collapse, cx + 3, pad.top + 11)
+  }
+
+  // Draw individual traces
+  function drawTrace(trace, color, alpha) {
+    const pts = trace.points
+    if (!pts || pts.length < 2) return
+    ctx.strokeStyle = color
+    ctx.globalAlpha = alpha
+    ctx.lineWidth = 0.8
+    ctx.setLineDash([])
+    ctx.beginPath()
+    for (let i = 0; i < pts.length; i++) {
+      const x = xOf(pts[i].level)
+      const y = yOf(pts[i].ratio)
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+    }
+    ctx.stroke()
+    ctx.globalAlpha = 1
+  }
+
+  for (const t of bustTraces) drawTrace(t, '#f87171', 0.25)
+  for (const t of winTraces) drawTrace(t, '#38bdf8', 0.20)
+
+  // Draw bust_mean and win_mean dashed lines
+  function drawMeanLine(vals, color) {
+    if (!vals.length) return
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1.5
+    ctx.setLineDash([5, 4])
+    ctx.globalAlpha = 1
+    ctx.beginPath()
+    let started = false
+    for (let i = 0; i < vals.length; i++) {
+      if (vals[i] == null) { started = false; continue }
+      const x = xOf(i)
+      const y = yOf(vals[i])
+      if (!started) { ctx.moveTo(x, y); started = true } else { ctx.lineTo(x, y) }
+    }
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+
+  drawMeanLine(stats.map(s => s.bust_mean), '#f87171')
+  drawMeanLine(stats.map(s => s.win_mean), '#38bdf8')
+
+  // Baseline ratio = 1.0 reference line (thin white)
+  if (rMin < 1.0 && rMax > 1.0) {
+    const y1 = yOf(1.0)
+    ctx.strokeStyle = '#ffffff22'
+    ctx.lineWidth = 1
+    ctx.setLineDash([2, 6])
+    ctx.beginPath(); ctx.moveTo(pad.left, y1); ctx.lineTo(w - pad.right, y1); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = '#aaaaaa55'
+    ctx.font = '9px monospace'
+    ctx.textAlign = 'right'
+    ctx.fillText('1.000', pad.left - 4, y1 + 3)
+  }
+
+  // Y axis labels
+  ctx.fillStyle = '#666'
+  ctx.font = '10px sans-serif'
+  ctx.textAlign = 'right'
+  for (let i = 0; i <= 4; i++) {
+    const v = rMin + rRange * (1 - i / 4)
+    ctx.fillText(v.toFixed(4), pad.left - 5, pad.top + ph * i / 4 + 4)
+  }
+
+  // X axis labels (level numbers)
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#666'
+  for (let lv = 0; lv <= maxLevel; lv++) {
+    ctx.fillText('L' + lv, xOf(lv), pad.top + ph + 18)
+  }
+
+  // Axis titles
+  ctx.fillStyle = '#555'
+  ctx.font = '10px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText('Depth Level', pad.left + pw / 2, h - 4)
+  ctx.save()
+  ctx.translate(11, pad.top + ph / 2)
+  ctx.rotate(-Math.PI / 2)
+  ctx.fillText('Price Ratio', 0, 0)
+  ctx.restore()
+}
+
+function drawDepthTransition() {
+  const el = depthTransitionEl.value
+  const matrix = metrics.value?.depth_transition_matrix
+  if (!el || !matrix || !matrix.length) return
+
+  const N = matrix.length
+  const cellSize = Math.min(64, Math.max(28, Math.floor(300 / N)))
+  const pad = { top: 28, right: 16, bottom: 28, left: 36 }
+  const w = pad.left + N * cellSize + pad.right
+  const h = pad.top + N * cellSize + pad.bottom
+
+  const dpr = window.devicePixelRatio || 1
+  let canvas = el.querySelector('canvas')
+  if (!canvas) {
+    canvas = document.createElement('canvas')
+    el.innerHTML = ''
+    el.appendChild(canvas)
+  }
+  canvas.width = w * dpr
+  canvas.height = h * dpr
+  canvas.style.width = w + 'px'
+  canvas.style.height = h + 'px'
+  el.style.height = h + 'px'
+
+  const ctx = canvas.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  // Background
+  ctx.fillStyle = '#1a1b23'
+  ctx.fillRect(0, 0, w, h)
+
+  // Draw cells
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      const p = matrix[i][j]
+      const x = pad.left + j * cellSize
+      const y = pad.top + i * cellSize
+
+      // white (p=0) → deep blue (p=1): interpolate in RGB
+      const r = Math.round(255 * (1 - p))
+      const g = Math.round(255 * (1 - p))
+      const b = Math.round(255 * (1 - p * 0.2) * (p > 0 ? 1 : 0) + 255 * (1 - p))
+      // Simpler: white→deep-blue: r: 255→0, g: 255→68, b: 255→255
+      const cr = Math.round(255 * (1 - p))
+      const cg = Math.round(255 * (1 - p * 0.73))
+      const cb = 255
+      ctx.fillStyle = `rgb(${cr},${cg},${cb})`
+      ctx.fillRect(x, y, cellSize - 1, cellSize - 1)
+
+      // Cell label
+      if (p >= 0.05) {
+        ctx.fillStyle = p > 0.5 ? '#fff' : '#1a1b23'
+        ctx.font = `${Math.max(9, Math.min(12, cellSize - 10))}px monospace`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(p.toFixed(2), x + cellSize / 2 - 0.5, y + cellSize / 2)
+      }
+    }
+  }
+
+  // X-axis labels (Next depth)
+  ctx.fillStyle = '#888'
+  ctx.font = '10px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'alphabetic'
+  for (let j = 0; j < N; j++) {
+    ctx.fillText(j, pad.left + j * cellSize + cellSize / 2 - 0.5, pad.top - 6)
+  }
+  ctx.fillStyle = '#555'
+  ctx.font = '9px sans-serif'
+  ctx.fillText('Next depth', pad.left + N * cellSize / 2, pad.top - 16)
+
+  // Y-axis labels (Current depth)
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = '#888'
+  ctx.font = '10px sans-serif'
+  for (let i = 0; i < N; i++) {
+    ctx.fillText(i, pad.left - 4, pad.top + i * cellSize + cellSize / 2)
+  }
+  ctx.save()
+  ctx.translate(10, pad.top + N * cellSize / 2)
+  ctx.rotate(-Math.PI / 2)
+  ctx.fillStyle = '#555'
+  ctx.font = '9px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('Current depth', 0, 0)
+  ctx.restore()
+}
+
 async function cancelBacktest() {
   if (!currentTaskId.value) return
   try {
@@ -6363,6 +6735,16 @@ watch([comparisonEquityEl, baselineEquityCurve], () => {
   nextTick(() => setTimeout(drawComparisonEquity, 50))
 })
 
+// Depth fan: redraw when element mounts or data arrives
+watch([depthFanEl, () => metrics.value?.depth_fan], () => {
+  nextTick(() => setTimeout(drawDepthFan, 50))
+})
+
+// Depth transition heatmap: redraw when element mounts or data arrives
+watch([depthTransitionEl, () => metrics.value?.depth_transition_matrix], () => {
+  nextTick(() => setTimeout(drawDepthTransition, 50))
+})
+
 // Chart re-render on tab switch
 watch(activeTab, async (tab) => {
   if (tab === 'charts') {
@@ -6375,9 +6757,11 @@ watch(activeTab, async (tab) => {
       renderSyncedCharts()
     }
   }
-  if (tab === 'pipeline' && baselineEquityCurve.value) {
+  if (tab === 'pipeline') {
     await nextTick()
-    setTimeout(drawComparisonEquity, 50)
+    if (baselineEquityCurve.value) setTimeout(drawComparisonEquity, 50)
+    if (metrics.value?.depth_fan) setTimeout(drawDepthFan, 60)
+    if (metrics.value?.depth_transition_matrix) setTimeout(drawDepthTransition, 70)
   }
 })
 

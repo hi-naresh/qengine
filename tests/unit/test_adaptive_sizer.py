@@ -6,7 +6,7 @@ import tempfile
 import numpy as np
 import pytest
 
-from qengine.framework.components.adaptive_sizer import AdaptiveSizer
+from pipelines._shared.components.adaptive_sizer import AdaptiveSizer
 
 
 class TestAdaptiveSizer:

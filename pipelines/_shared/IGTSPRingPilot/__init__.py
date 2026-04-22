@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from qengine.framework.base import Pipeline
-from qengine.framework.components.island_evolver import (
+from pipelines._shared.components.island_evolver import (
     GENE_BOUNDS,
     Genome,
     build_gene_bounds_from_strategy,

@@ -23,7 +23,7 @@ from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from qengine.framework.components.island_evolver import (
+from pipelines._shared.components.island_evolver import (
     GENE_BOUNDS,
     Genome,
     Population,
