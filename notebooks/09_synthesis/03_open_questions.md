@@ -16,13 +16,13 @@ The break-even win rate of 99.58% is 1.17pp above the empirical 98.41%. The ques
 ---
 
 ## Q2: Is partial abort (close losing tickets, keep L0) operationally feasible?
-**From:** `06_abort_theory/04_partial_abort.py`
+**From:** `06_abort_theory/04_partial_abort.py` (now completed)
 
-The theoretical analysis shows partial abort (keeping L0 running while closing deeper losing tickets) has positive EV if L0 retains its base win rate. This requires the engine to support closing individual tickets while keeping others open — which CFD mode already supports via `close_ticket(id, price)`.
+The empirical analysis shows partial abort (keeping L0, closing deeper tickets) has EV = **-$1.01 per session** — worse than full abort ($0). This is because L0's base win rate (98.4%) with avg_win=$0.60 and avg_bust=-$144 gives negative EV even if only a fraction (0.7×) of the bust is realized.
 
-**Why it matters:** Partial abort could improve on full abort by preserving the L0 position's directional edge rather than surrendering all unrealized exposure.
+The conclusion in the script ("partial abort can be positive EV") was a placeholder written before the avg_win values were known. With 2-pip spread and current parameters, partial abort is NOT a viable improvement.
 
-**Approach:** Implement a strategy variant that closes all tickets except L0 when a configurable margin threshold is exceeded. Run empirical comparison vs full abort and no-abort.
+**Revised status:** This question is answered — partial abort is worse than full abort at current spread levels. Would only be viable if entry filtering increases avg_win to >$1.50 (roughly), at which point EV(partial_keep_L0) ≈ 0. This is an indirect argument for directional entry as a prerequisite for partial abort viability.
 
 ---
 

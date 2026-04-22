@@ -131,17 +131,23 @@ The N-to-1 heatmap confirms: identical N values for sf=2.5 at ml=6/8, and for sf
 
 ---
 
-## Finding 15b: Bust rate is purely a function of max_levels, independent of sizing_factor
-**Source:** `07_hp_interactions/01_sizing_x_levels.py`
+## Finding 15b: Bust rate is purely a function of max_levels — sizing_factor has zero effect
+**Source:** `07_hp_interactions/01_sizing_x_levels.py` (complete: 36 configs, 18yr backtest)
 
-**What:** Bust_rate at each ml value is IDENTICAL across all tested sizing factors:
-- ml=3: bust_rate = 0.1698 (same for sf=1.3, 1.5, 1.7)
-- ml=4: bust_rate = 0.0957 (same for sf=1.3, 1.5, 1.7)
-- ml=8: bust_rate = 0.0088 (same for sf=1.3, 1.5)
+**What:** Complete sizing×levels sweep confirms the bust_rate pattern is PERFECTLY UNIFORM across all sf values at each ml level. Key values (all sf: 1.3, 1.5, 1.7, 2.0, 2.5, 3.0 produce identical bust_rates):
 
-Sizing factor has ZERO effect on bust probability. Only max_levels (grid depth limit) and hedge_distance affect bust rate.
+| ml | bust_rate | note |
+|----|-----------|------|
+| 3  | 0.1698 | uniform across ALL sf |
+| 4  | 0.0957 | uniform across ALL sf |
+| 5  | 0.0569 | uniform across ALL sf |
+| 6  | 0.0257 | uniform for sf≤2.0; sf≥2.5 caps here |
+| 7  | 0.0159 | sf≤2.0 only; sf=2.5 still 0.0257 |
+| 8  | 0.0088 | sf≤1.7; sf=2.0 still 0.0159 |
 
-**Why novel:** All HP interaction research assumes sf and ml jointly determine risk. This finding proves bust rate is univariate in max_levels (given fixed hedge distance). This has a critical practical implication: **adjusting sizing_factor is irrelevant for bust risk management**. The only effective knobs for bust probability are max_levels and hedge_distance.
+Exception for high sf: bust_rate plateaus at the effective_max level (not the configured ml), due to the pre-session margin affordability cap (Finding 19). Within the achievable level range, sf still has zero effect on bust_rate.
+
+**Why novel:** All HP interaction research assumes sf and ml jointly determine risk. This finding proves bust_rate is univariate in effective_max_levels (given fixed hedge distance). Adjusting sf is irrelevant for bust frequency management — the only lever is max_levels or hedge_distance. This has critical implications for ARIA: danger scoring that incorporates sizing_factor as a bust_rate predictor is adding noise, not signal.
 
 ---
 
