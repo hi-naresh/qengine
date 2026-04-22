@@ -96,6 +96,20 @@ No configuration with finite N has positive margin of safety. At ml≥6, the spr
 
 ---
 
+## Finding 15b: Bust rate is purely a function of max_levels, independent of sizing_factor
+**Source:** `07_hp_interactions/01_sizing_x_levels.py`
+
+**What:** Bust_rate at each ml value is IDENTICAL across all tested sizing factors:
+- ml=3: bust_rate = 0.1698 (same for sf=1.3, 1.5, 1.7)
+- ml=4: bust_rate = 0.0957 (same for sf=1.3, 1.5, 1.7)
+- ml=8: bust_rate = 0.0088 (same for sf=1.3, 1.5)
+
+Sizing factor has ZERO effect on bust probability. Only max_levels (grid depth limit) and hedge_distance affect bust rate.
+
+**Why novel:** All HP interaction research assumes sf and ml jointly determine risk. This finding proves bust rate is univariate in max_levels (given fixed hedge distance). This has a critical practical implication: **adjusting sizing_factor is irrelevant for bust risk management**. The only effective knobs for bust probability are max_levels and hedge_distance.
+
+---
+
 ## Finding 8: Wider hedge distance reduces bust_rate 7x and increases avg_win 5x simultaneously
 **Source:** `05_market_structure/03_volatility_vs_hedge.py`
 

@@ -45,7 +45,15 @@ Format:
 
 ---
 
-## [2026-04-22] Script: `07_hp_interactions/01_sizing_x_levels.py`
+## [2026-04-22] Script: `07_hp_interactions/01_sizing_x_levels.py` (observation 1)
+**Observation:** Bust_rate at ml=3 is 0.1698 for ALL sizing factors tested (sf=1.3, 1.5, 1.7 all identical). At ml=8, bust_rate is 0.0088 for sf=1.3 and sf=1.5 (identical again).
+**Expected (math):** Larger sizing_factor should create larger loss per level → harder to recover → higher bust rate.
+**Delta:** Sizing factor has ZERO effect on bust rate. Bust rate is a pure function of max_levels only.
+**Status:** explained — bust occurs when price moves adversely through ALL levels without reversing. The probability of this event depends on price dynamics and grid distance, not on the dollar amount staked per level. Sizing factor only affects the dollar loss per bust, not the probability of busting.
+
+---
+
+## [2026-04-22] Script: `07_hp_interactions/01_sizing_x_levels.py` (observation 2)
 **Observation:** Bust rate DECREASES as max_levels increases (sf=1.3: ml=3 → 0.1698, ml=7 → 0.0159).
 **Expected (math):** More levels = more exposure = higher bust rate.
 **Delta:** Inverted — more levels = more recovery attempts = lower bust rate.
