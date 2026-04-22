@@ -59,9 +59,39 @@ The canonical HP uses geometric sizing (sf=2.0). The strategy was designed with 
 
 ---
 
-## Q6: Can the abort EV curve (from 01_abort_vs_no_abort.py) be approximated analytically?
-**From:** `06_abort_theory/01_abort_vs_no_abort.py` (pending results)
+## Q6: Can the abort EV curve be approximated analytically?
+**From:** `06_abort_theory/01_abort_vs_no_abort.py` (complete)
 
-The empirical abort EV curve gives the optimal K by PnL and bust_rate. The analytical derivation would give a formula: EV(K) = f(win_rate, avg_win, avg_bust, K) that generalizes across HP configurations.
+The complete empirical abort EV curve confirms PnL-optimal K=1, bust-rate-optimal K=7 (no-op). The analytical derivation would give a formula: EV(K) = f(win_rate, avg_win, avg_bust, K, p_level_reach[k]) that generalizes across HP configurations.
 
-**Why it matters:** An analytic formula means pipeline components can compute optimal abort level dynamically without requiring empirical sweep for each configuration.
+The key unknown is p_level_reach[k] — the probability that a given cycle reaches exactly level k. If this can be modeled as a geometric random variable parameterized by win_rate and hedge_distance, the formula is:
+
+`EV(K) = p_abort(K) × avg_abort_loss + (1 − p_abort(K)) × EV_no_abort`
+
+where `p_abort(K) = ∑_{k=K}^{max} p_level_reach[k]`
+
+**Why it matters:** Dynamic optimal abort threshold for each config without requiring a sweep per configuration.
+
+---
+
+## Q7: What is the minimum spread for positive EV given optimal HP?
+**From:** Findings 1, 5, 7b — all confirmed negative EV at 2-pip spread
+
+With 2-pip spread: 0/25 configs viable. The break-even spread is where avg_win_after_spread crosses zero for the best configuration (sf=2.0, ml=3: avg_win=1.38 before spread adjustment). Analytically, break-even spread s satisfies:
+
+`avg_win(s) − 2s × pip_value × n_trades = 0`
+
+Empirically, this threshold should be found by re-running the canonical backtest at spreads: 0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0 pips.
+
+**Why it matters:** If a 1-pip spread (available at some brokers) makes sf=2.0, ml=3 viable, it changes the entire strategy value proposition for those broker environments.
+
+---
+
+## Q8: Does the high-sf level capping anomaly reflect a configurable strategy parameter or a bug?
+**From:** anomalies.md — sf=2.5 caps at level 5 stats despite max_levels=8; sf=3.0 caps at level 4-5
+
+The N-to-1 results confirm: for sf≥2.5, increasing max_levels beyond ~5 produces no change in N ratio, win_rate, or avg_bust. This strongly suggests an internal strategy limit at ~level 5 for high sf values.
+
+**Hypothesis:** The Martingale strategy has an internal equity check: if adding a new hedge would reduce equity below some threshold (e.g., 50%), the cycle terminates before reaching configured max_levels. With sf=3.0 and base_size=0.5%, the L5 position is 0.5% × 3^5 = 12.2% of equity — at this point, unrealized losses may trigger a pre-configured internal guard.
+
+**Why it matters:** If this is a bug (unintended early termination), it should be fixed. If it's a feature (implicit safety limit), it should be documented as an HP interaction that reduces effective max_levels for high sf values — the configured max_levels may not be the actual limit in live trading.

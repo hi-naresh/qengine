@@ -114,6 +114,23 @@ For sf≤1.5 at ml≥6: p_min > 1.0 (literally requires >100% win rate — mathe
 
 ---
 
+## Finding 19: Configured max_levels is not the effective max_levels for high sf values
+**Source:** `strategies/_admin/Martingale/__init__.py` line 481 (code inspection) + `01_finite_capital/01_n_to_1_ratio.py`
+
+**What:** The Martingale strategy applies a pre-session margin feasibility check: `effective_max_levels = min(configured_max, _max_affordable_levels())`. For high sizing factors, geometric position growth exhausts the available margin budget before reaching the configured max_levels. This means:
+- sf=1.5: effective_max ≈ configured max (margin not binding)
+- sf=2.0: effective_max ≈ min(configured, 7) — ml=7 and ml=8 produce identical bust_rate
+- sf=2.5: effective_max ≈ 6 — ml=6, ml=7, ml=8 all behave as ml=6
+- sf=3.0: effective_max ≈ 5 — ml≥5 all behave as ml=5
+
+The N-to-1 heatmap confirms: identical N values for sf=2.5 at ml=6/8, and for sf=3.0 at ml=5/6/8.
+
+**Why novel:** Pipeline HP bounds that specify max_levels independently of sf will silently cap at the margin-affordable depth. A `max_levels=8` configuration with `sf=3.0` is functionally equivalent to `max_levels=5`. This means the **effective risk configuration is not what the pipeline specifies** — it's downgraded by the margin feasibility check without any explicit signal to the optimizer. Pipeline evolution is effectively sampling from a smaller space than configured, creating a mismatch between evolved parameters and realized behavior.
+
+**Pipeline fix:** Add `_max_affordable_levels()` as a deterministic constraint in IslandPilot's individual evaluation — flag any (sf, ml) individual whose effective_max < configured max, and penalize or reject it. This prevents the optimizer from believing it's exploring high-ml territory when it's actually constrained to low effective levels.
+
+---
+
 ## Finding 15b: Bust rate is purely a function of max_levels, independent of sizing_factor
 **Source:** `07_hp_interactions/01_sizing_x_levels.py`
 

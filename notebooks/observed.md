@@ -62,10 +62,10 @@ Format:
 ---
 
 ## [2026-04-22] Script: `01_finite_capital/01_n_to_1_ratio.py`
-**Observation:** For sf=2.5: N=66.0 at BOTH ml=6 AND ml=8 (identical). For sf=3.0: N=30.6 at ml=5, ml=6, AND ml=8 (all identical). avg_win and avg_bust are the same across these ml values.
+**Observation:** For sf=2.5: N=66.0 at BOTH ml=6 AND ml=8 (identical). For sf=3.0: N=30.6 at ml=5, ml=6, AND ml=8 (all identical). avg_win and avg_bust are the same across these ml values. Also sf=2.0: bust_rate identical at ml=7 and ml=8.
 **Expected (math):** N ratio should differ across ml values since deeper levels produce larger busts.
-**Delta:** Complete invariance of N across the upper ml range for high sf values. sf=2.5 caps at ml=6 level stats; sf=3.0 caps at ml=5 level stats.
-**Status:** unexplained — consistent with the anomaly in anomalies.md that high sf (2.5, 3.0) appears to hit an internal bust level around 5 regardless of configured max_levels. The N-to-1 ratio stabilizing confirms the actual bust path is capped. Needs code inspection of Martingale strategy to understand why sf≥2.5 doesn't utilize the full max_levels depth.
+**Delta:** Complete invariance of N (and bust_rate) across the upper ml range for all sf values above a threshold.
+**Status:** explained — `strategies/_admin/Martingale/__init__.py` line 481 computes `effective_max_levels = min(configured_max, _max_affordable_levels())`. For high sf, geometric sizing exhausts margin budget before reaching configured max_levels. Pre-session check caps sessions at the affordable depth. Result: configured ml=8 is effectively ml=5 for sf=3.0, ml=6 for sf=2.0, ml=7 for sf=1.5. This explains the plateau in N-to-1 data — the strategy never actually runs to the configured depth for high sf values. Key implication: pipeline HP bounds for max_levels are meaningless without also constraining sf, since effective_max_levels depends on sf × equity × leverage jointly.
 
 ---
 

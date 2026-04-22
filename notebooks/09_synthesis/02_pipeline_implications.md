@@ -83,6 +83,16 @@ Format:
 **After:** Minimum recommended equity = **$5,000** for OANDA EUR-USD trading
 **Why:** At $1k equity, OANDA integer unit rounding causes 10% position sizing error at level 0 (target 4.5 units → rounds to 5 units). This systematically over-sizes every position by 10%. At $5k, error falls to 1.2% — within acceptable range. Margin is not the binding constraint (Finding 3) but position accuracy is.
 
+## IslandPilot — effective_max_levels constraint for optimizer correctness
+**Source:** `strategies/_admin/Martingale/__init__.py` line 481, N-to-1 heatmap (Finding 19)
+**Before:** Pipeline evolves (sf, ml) pairs with configured max_levels as the binding parameter
+**After:** Add `_max_affordable_levels(sf, equity, leverage, base_pct)` check to IslandPilot individual evaluation. Reject or heavily penalize any individual where `effective_max < configured_max`. The lookup table from the research:
+- sf=1.5: effective_max = configured_max (no cap at standard equity)
+- sf=2.0: effective_max ≈ 7 (configured ml=8 behaves as ml=7)
+- sf=2.5: effective_max ≈ 6 (configured ml≥7 behaves as ml=6)
+- sf=3.0: effective_max ≈ 5 (configured ml≥6 behaves as ml=5)
+**Why:** Without this constraint, the optimizer believes it's exploring higher max_levels territory when it's actually constrained to lower effective levels. Parameter estimates become unreliable and the evolved hp doesn't reflect actual behavior.
+
 ## IslandPilot — max_levels hard cap at 5 for sf=2.0 (revised from prior cap of 6)
 **Source:** `01_finite_capital/01_n_to_1_ratio.py` (complete), `01_finite_capital/02_break_even_formula.py`
 **Before:** max_levels upper bound = 6

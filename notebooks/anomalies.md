@@ -26,11 +26,9 @@ Effect is consistent across ALL equity levels ($1k–$10k). The configured max_l
 **What we tried:**
 - Ruled out margin calls (0/1200 bust events show margin_call or margin_bust outcome)
 - Ruled out equity effects (result is identical at $1k and $10k)
-- Hypothesis 1: CANONICAL_HP has max_levels=6 and override may not take effect — needs verification
-- Hypothesis 2: Strategy has internal equity check that prevents new hedges once equity falls below threshold
-- Hypothesis 3: Levels column is 0-indexed — max_levels=8 means busts at "level 7" which is the 8th position; sf=2.5 terminates naturally at position 5 due to some strategy limit
+- Code inspection: found `_max_affordable_levels()` in `strategies/_admin/Martingale/__init__.py` line 481
 
-**Status:** open — requires inspection of Martingale strategy code to confirm HP override behavior and level counting convention.
+**Status:** resolved — The strategy computes `effective_max_levels = min(configured_max, affordable)` at session start. For high sf values, the geometric position sizes grow so fast that the account can only afford ~5-7 levels at the available leverage. sf=2.5 with 0.5% base size at level 6 = 2.5^6 × 0.5% = 15.3% position per level — the margin math caps affordability below the configured 8 levels. This is a designed safety feature (pre-session margin feasibility check) that prevents entering a session the account can't fund to completion. The 0 margin calls is consistent: sessions only start if they can be fully funded, so the effective bust level is capped at the affordable depth, not the configured depth.
 
 ---
 
