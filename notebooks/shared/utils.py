@@ -9,7 +9,7 @@ import numpy as np
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
-os.chdir(_ROOT)
+os.chdir(_ROOT)  # qengine resolves strategy/data paths relative to repo root
 
 from qengine.research.candles import get_candles
 from qengine.research.backtest import backtest
@@ -58,7 +58,7 @@ def make_candles_dict(candles):
 
 
 def run_backtest(hp: dict, candles=None, start_date='2006-01-02',
-                 balance=10_000) -> dict:
+                 balance=10_000, cost_model: bool = True) -> dict:
     """Run a single backtest, return result with result['sessions']."""
     if candles is None:
         candles = load_candles(start_date=start_date)
@@ -70,11 +70,16 @@ def run_backtest(hp: dict, candles=None, start_date='2006-01-02',
         candles=make_candles_dict(candles),
         hyperparameters=hp,
         generate_equity_curve=False,
+        cost_model=cost_model,
     )
 
 
 def sessions_to_df(sessions: list):
-    """Convert result['sessions'] to a pandas DataFrame."""
+    """Convert result['sessions'] to a pandas DataFrame.
+
+    Only proper hedge sessions (integer session number) are included.
+    Standalone trades (session key is a string like 'standalone-1') are excluded.
+    """
     import pandas as pd
     rows = []
     for s in sessions:
