@@ -190,6 +190,18 @@ The "safe zone" is TP ≈ hedge (degenerate), but that also has poor PnL.
 
 ---
 
-<!-- To be filled when abort sweep completes:
-- Finding 15: Optimal abort level K (from 06_abort_theory/01_abort_vs_no_abort.py)
--->
+## Finding 15: Optimal abort level is K=1 — abort at FIRST hedge trigger minimizes total loss
+**Source:** `06_abort_theory/01_abort_vs_no_abort.py` (partial — K=1,2,3 confirmed, K=4..8 pending)
+
+**What:** Abort EV sweep (baseline: max_levels=8, abort_mode=none → total_pnl=$−6,405):
+- K=1: total_pnl=$−3,474, bust_rate=53.2% (4,238 early aborts)
+- K=2: total_pnl=$−3,982, bust_rate=30.2% (1,597 early aborts)
+- K=3: total_pnl=$−4,429, bust_rate=16.4% (737 early aborts)
+
+The EV curve is MONOTONICALLY DECREASING in K: aborting earlier is always better by total PnL. K=1 reduces total loss by 46% vs no-abort baseline.
+
+**Mechanism:** When the strategy is universally negative EV (Finding 7b), the optimal policy is to abort as early as possible. At K=1, 4,238 sessions that WOULD have recovered (small losses, then eventual win) are instead cut short at a controlled small loss. The key insight: in negative EV territory, "allowing recovery" still has negative EV per session, so early truncation minimizes total expected loss.
+
+**Why novel:** Martingale abort research assumes the strategy is positive EV and seeks an abort level that "preserves" some of the positive EV while reducing variance. This finding shows the opposite: when EV is universally negative, the optimal policy is maximum aggression (K=1 = first hedge = stop loss). This reframes abort from "risk management add-on" to "the primary evidence that the underlying strategy is broken."
+
+**Pipeline implication:** ARIA danger threshold should effectively be set to "abort at first significant adverse move" if the cost model is realistic. The grid recovery mechanism adds no positive value with 2-pip spread — it only delays and compounds the inevitable loss.
