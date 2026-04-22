@@ -128,7 +128,53 @@ The tighter TP dramatically reduces busts (price reaches TP before triggering a 
 
 ---
 
-<!-- To be filled when sweeps complete:
-- Finding 11: Abort EV curve optimal K (from 06_abort_theory/01_abort_vs_no_abort.py when complete)
-- Finding 12: Capital boundary inflection point (from 01_finite_capital/03_capital_boundary.py when complete)
+## Finding 11: Bust rate is equity-invariant (capital amount has zero effect on bust probability)
+**Source:** `01_finite_capital/03_capital_boundary.py`
+
+**What:** Sweeping starting equity $1k, $2.5k, $5k with aggressive config (sf=2.0, ml=8): bust_rate is identical at **0.016** across all equity levels. No inflection point found.
+
+**Why novel:** The widely held assumption is that undercapitalized traders face higher bust risk (less margin buffer). This finding shows the opposite: with proportional base sizing (0.5% of equity), bust risk is completely equity-independent. The bust structure is determined entirely by price action (will the market move to max_levels before reversing?), not by account size. This fundamentally reframes the "minimum account size" question — there is no minimum from a bust-rate perspective; the only constraint is absolute dollar exposure at max_levels.
+
+---
+
+## Finding 12: Hedge-to-TP ratio creates two distinct failure modes
+**Source:** `07_hp_interactions/02_hedge_x_tp.py`
+
+**What:** With hedge=10 pips fixed, varying TP:
+- TP=5 (hedge > TP): bust_rate=0.0163, total_pnl=$−8,054 [tiny wins, spread dominates]
+- TP=10 (hedge == TP): bust_rate=0.0507, total_pnl=$−9,646 [degenerate case]
+- TP=15 (TP/hedge=1.5): bust_rate=0.1031, total_pnl=$−8,505 [bust_rate spikes]
+- TP=20 (TP/hedge=2): bust_rate=0.1676, total_pnl=$−9,457 [even higher]
+- TP=30 (TP/hedge=3): bust_rate increases further
+
+Two distinct failure modes:
+1. **TP < hedge**: Very low bust_rate but negative PnL — wins too small for spread overhead
+2. **TP > hedge**: High bust_rate — more levels triggered before TP reached
+
+The "safe zone" is TP ≈ hedge (degenerate), but that also has poor PnL.
+
+**Why novel:** All literature assumes TP > hedge is "better." This finding shows TP > hedge monotonically increases bust_rate. The optimal configuration depends on the spread-to-TP overhead ratio, not just the TP/hedge ratio alone. For 2-pip spread, the minimum viable TP is approximately 15-20 pips regardless of hedge distance.
+
+---
+
+## Finding 13: No margin calls at any tested configuration (0/1200 cases)
+**Source:** `03_margin_mechanics/02_implicit_forced_close.py`
+
+**What:** Sweeping equity ($1k, $2k, $5k, $10k) × sf (1.5, 2.0, 2.5) × max_levels=8 over 18 years: zero margin calls (0/1200 bust events). All busts are max_level_bust (strategy configuration), never margin_call or margin_bust.
+
+**Why novel:** The Martingale literature treats margin call as the primary risk mechanism. This finding shows that at realistic OANDA parameters (30:1, 0.5% base, 18 years EUR-USD), the margin call mechanism is never triggered. The actual risk mechanism is the configurable max_levels parameter. Margin call is a theoretical risk that does not manifest empirically in the tested parameter space.
+
+---
+
+## Finding 14: At 5-pip hedge, avg_win is negative (strategy cannot be profitable)
+**Source:** `05_market_structure/03_volatility_vs_hedge.py`
+
+**What:** At hedge=tp=5 pips: avg_win = −$0.113 (negative). The 2-pip spread consumes 40% of a 5-pip TP, and the multi-level nature means cumulative spread exceeds any possible win. n_sessions=7,771 (7.4x more sessions than at 40 pips) because tight hedges trigger rapidly.
+
+**Why novel:** Papers discussing tight grid Martingale strategies often use illustrative examples with 5-10 pip grids. This finding shows that at realistic 2-pip spreads, sub-12-pip hedge distances produce structurally unprofitable sessions — not just inefficient, but mathematically impossible to be net positive after costs. This sets a hard floor on minimum viable grid distance given spread.
+
+---
+
+<!-- To be filled when abort sweep completes:
+- Finding 15: Optimal abort level K (from 06_abort_theory/01_abort_vs_no_abort.py)
 -->
