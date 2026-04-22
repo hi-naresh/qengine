@@ -1,6 +1,7 @@
 from typing import List, Dict
 import copy
 from qengine.services import candle_service, exchange_service, order_service, position_service
+from qengine.services import report
 from qengine.services.validators import validate_routes
 from qengine.modes.backtest_mode import simulator
 from qengine.config import config as qe_config, reset_config, set_config
@@ -205,6 +206,7 @@ def _isolated_backtest(
     # Always include trades if available (needed for trade-shuffling Monte Carlo)
     if 'trades' in backtest_result:
         result['trades'] = backtest_result['trades']
+    result['sessions'] = report.hedge_sessions()
     if 'pipeline_stats' in backtest_result:
         result['pipeline_stats'] = backtest_result['pipeline_stats']
 
