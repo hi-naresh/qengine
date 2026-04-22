@@ -61,6 +61,30 @@ Format:
 
 ---
 
+## [2026-04-22] Script: `01_finite_capital/01_n_to_1_ratio.py`
+**Observation:** For sf=2.5: N=66.0 at BOTH ml=6 AND ml=8 (identical). For sf=3.0: N=30.6 at ml=5, ml=6, AND ml=8 (all identical). avg_win and avg_bust are the same across these ml values.
+**Expected (math):** N ratio should differ across ml values since deeper levels produce larger busts.
+**Delta:** Complete invariance of N across the upper ml range for high sf values. sf=2.5 caps at ml=6 level stats; sf=3.0 caps at ml=5 level stats.
+**Status:** unexplained — consistent with the anomaly in anomalies.md that high sf (2.5, 3.0) appears to hit an internal bust level around 5 regardless of configured max_levels. The N-to-1 ratio stabilizing confirms the actual bust path is capped. Needs code inspection of Martingale strategy to understand why sf≥2.5 doesn't utilize the full max_levels depth.
+
+---
+
+## [2026-04-22] Script: `06_abort_theory/01_abort_vs_no_abort.py`
+**Observation:** PnL-optimal abort (K=1) gives bust_rate=53.2%; bust-rate-optimal (K=7) is a no-op at bust_rate=1.6%. These two metrics diverge maximally — optimizing one makes the other worse.
+**Expected (math):** Lower bust rate should generally correlate with better PnL (fewer catastrophic losses).
+**Delta:** Anti-correlation: K=1 improves PnL by 46% while increasing bust frequency 33x.
+**Status:** explained — the negative EV structure means every "recovered" session still contributes negative expected value. K=1 aborts are small losses; K=7 busts are catastrophic losses. Total dollar impact reverses the apparent safety ranking of abort levels. Bust rate is a misleading metric when strategy EV is negative.
+
+---
+
+## [2026-04-22] Script: `08_broker_mechanics/01_lot_rounding.py`
+**Observation:** At $1k equity, base position target is 4.545 units → rounds to 5 units = 10% rounding error. Only 3 cases exceed 5% threshold, all at $1k equity level 0.
+**Expected (math):** Rounding error should be <1% for meaningful position sizes.
+**Delta:** 10% error at minimum practical equity level due to OANDA requiring integer units with only ~4-5 units at $1k.
+**Status:** explained — at $5k+ equity, error falls to <1.2%. Minimum practical equity for accurate position sizing is $5k, not $1k.
+
+---
+
 ## [2026-04-22] Script: `05_market_structure/03_volatility_vs_hedge.py`
 **Observation:** At 5-pip hedge, avg_win = −$0.113 (negative). At 40-pip hedge, avg_win = $2.99 (positive).
 **Expected (math):** avg_win should scale roughly linearly with hedge distance.

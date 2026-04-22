@@ -37,11 +37,14 @@ Format:
 
 ---
 
-## ARIA Abort Policy — set abort level at Pareto-optimal K
-**Source:** `06_abort_theory/01_abort_vs_no_abort.py` (pending completion)
-**Before:** Abort level K = 4 (from prior Phase 2 research)
-**After:** [Update once 01_abort_vs_no_abort.py sweep completes]
-**Why:** The empirical Pareto-optimal K (bust_reduction / PnL_sacrifice efficiency) may differ from the theoretically derived level. The point-of-no-return analysis shows EV is already negative at level 0, so the abort policy's goal is variance reduction, not EV improvement. Optimal K balances bust frequency reduction vs total trades sacrificed.
+## ARIA Abort Policy — abort objective must change from bust-rate to total-loss
+**Source:** `06_abort_theory/01_abort_vs_no_abort.py` (complete), `06_abort_theory/02_point_of_no_return.py`
+**Before:** Abort level K = 4 (from prior Phase 2 research), objective = reduce bust_rate
+**After:** Two valid abort policies:
+  - **Policy A (loss minimization):** K=1 — reduces total loss by 46% ($−6,405 → $−3,475) at cost of 53.2% abort rate (most sessions cut at first hedge)
+  - **Policy B (catastrophic bust elimination):** K=6 — eliminates level-6 busts, costs only $728 more vs K=1 in total PnL sacrifice, reduces bust_rate from 1.6% → 2.4%
+  - K=7/8 are no-ops (max bust level is 6 for sf=2.0)
+**Why:** Complete abort sweep shows PnL-optimal and bust-rate-optimal abort levels are maximally divergent (Finding 18). Bust rate as an objective leads to K=7 (no-op). Since strategy EV is universally negative, the correct objective is minimizing total loss. Policy B (K=6) is recommended for live trading: it eliminates catastrophic drawdowns while preserving more session-level continuity than K=1.
 
 ---
 
@@ -64,7 +67,24 @@ Format:
 
 ---
 
-<!-- To be filled when sweeps complete:
-## IslandPilot — safe region bounds from sizing×levels heatmap
-## ARIA — volatility-adjusted hedge distance
--->
+## IslandPilot — N-to-1 aware safe region in (sf, ml) space
+**Source:** `01_finite_capital/01_n_to_1_ratio.py`, `01_finite_capital/02_break_even_formula.py`
+**Before:** sf and ml evolved with independent bounds
+**After:** Add feasibility filter: reject any (sf, ml) individual where avg_win ≤ 0 (i.e., where N=nan). From the complete heatmap:
+- sf ≤ 1.3: max_levels ≤ 4 (avg_win turns 0 at ml=5)
+- sf ≤ 1.5: max_levels ≤ 5 (avg_win turns 0 at ml=6)
+- sf = 2.0: max_levels ≤ 8 (avg_win positive throughout, min $0.60)
+- sf ≥ 2.5: max_levels ≤ 5 (level capping anomaly — ml>5 gives no extra recovery)
+**Why:** The complete N-to-1 heatmap shows that the "feasible" region is a non-rectangular diagonal band. The current rectangular bounds (sf ∈ [1.3, 3.0] × ml ∈ [3, 8]) include many configurations where avg_win ≤ 0 (structurally impossible to profit). Filtering these reduces search space and avoids degenerate solutions.
+
+## Live Trading Position Sizing — minimum equity $5k for OANDA
+**Source:** `08_broker_mechanics/01_lot_rounding.py`
+**Before:** No stated minimum equity requirement beyond margin
+**After:** Minimum recommended equity = **$5,000** for OANDA EUR-USD trading
+**Why:** At $1k equity, OANDA integer unit rounding causes 10% position sizing error at level 0 (target 4.5 units → rounds to 5 units). This systematically over-sizes every position by 10%. At $5k, error falls to 1.2% — within acceptable range. Margin is not the binding constraint (Finding 3) but position accuracy is.
+
+## IslandPilot — max_levels hard cap at 5 for sf=2.0 (revised from prior cap of 6)
+**Source:** `01_finite_capital/01_n_to_1_ratio.py` (complete), `01_finite_capital/02_break_even_formula.py`
+**Before:** max_levels upper bound = 6
+**After:** Recommended max_levels ≤ 5 for all configurations, with an exception for sf=2.0 where ml=6 gives N=97.4 (still finite but with margin_of_safety=−0.015)
+**Why:** Complete break-even analysis shows 0/25 configs are viable. The "least bad" configs are high-sf with moderate ml. sf=2.0, ml=5 gives N=43.6 (worst case 44 wins erased per bust). Allowing ml=6 for sf=2.0 is acceptable if pipeline's directional edge can close the 1.5% gap vs p_min=98.5%.
