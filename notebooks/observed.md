@@ -13,4 +13,64 @@ Format:
 
 ---
 
-<!-- Log entries below as research progresses -->
+## [2026-04-22] Script: `02_bust_anatomy/03_bust_path_patterns.py`
+**Observation:** All 60 busts over 18 years took exactly 7 trades with std=0. All busts at level 6.
+**Expected (math):** Busts should occur at varying levels depending on market path, with some std in trade count.
+**Delta:** Zero variance in bust structure. Every bust is identical in sequence length and terminal level.
+**Status:** explained — with fixed HP and max_levels=6, the bust path is deterministic once max_levels is reached. The only stochastic component is the entry point of the sequence.
+
+---
+
+## [2026-04-22] Script: `06_abort_theory/02_point_of_no_return.py`
+**Observation:** Conditional EV is negative at EVERY level, including level 0 ($−1.70).
+**Expected (math):** Positive expected value should hold at low levels where win rate is high (98.4%).
+**Delta:** EV is negative even at level 0 — the strategy is structurally below break-even.
+**Status:** explained — the 2-pip spread erodes avg_win from ~$8-10 (no spread) to $0.60. Break-even win rate = 99.58% > actual 98.41%. Negative EV is a consequence of the cost model, not the strategy structure.
+
+---
+
+## [2026-04-22] Script: `03_margin_mechanics/02_implicit_forced_close.py`
+**Observation:** Zero margin calls across all 1,200 bust events (12 configs × 100 busts each).
+**Expected (math):** Higher sf (2.5) and lower equity ($1k) should trigger margin calls.
+**Delta:** Margin mechanism never activates — all exits are via max_level_bust.
+**Status:** explained — at 30:1 leverage and 0.5% base sizing, margin utilization stays <9% even at level 8 (sf=2.0). The geometric sizing is proportional to equity, so relative margin usage doesn't change with equity level.
+
+---
+
+## [2026-04-22] Script: `01_finite_capital/03_capital_boundary.py`
+**Observation:** Bust rate = 0.016 at ALL equity levels ($1k, $2.5k, $5k, $10k, $25k).
+**Expected (math):** Lower equity should correlate with higher bust risk due to less margin buffer.
+**Delta:** Zero variation in bust rate across 25x equity range.
+**Status:** explained — proportional base sizing (0.5% of equity) keeps relative position sizes constant. Since bust mechanism is price-driven (max_levels reached), not capital-driven, equity is irrelevant to bust probability.
+
+---
+
+## [2026-04-22] Script: `07_hp_interactions/01_sizing_x_levels.py`
+**Observation:** Bust rate DECREASES as max_levels increases (sf=1.3: ml=3 → 0.1698, ml=7 → 0.0159).
+**Expected (math):** More levels = more exposure = higher bust rate.
+**Delta:** Inverted — more levels = more recovery attempts = lower bust rate.
+**Status:** explained — max_levels acts as both a recovery ceiling (can go deeper) and a bust trigger. With low ml=3, cycles that would recover at level 4-5 are instead classified as max_level_bust. With high ml=7, those same cycles recover. Bust rate reflects only cycles that fail to recover within the configured level limit.
+
+---
+
+## [2026-04-22] Script: `05_market_structure/03_volatility_vs_hedge.py`
+**Observation:** At 5-pip hedge, avg_win = −$0.113 (negative). At 40-pip hedge, avg_win = $2.99 (positive).
+**Expected (math):** avg_win should scale roughly linearly with hedge distance.
+**Delta:** 5-pip hedge is structurally unprofitable (negative win value) due to spread overhead at 40%.
+**Status:** explained — 2 pips spread on a 5-pip TP = 40% overhead. Multiple levels add cumulative spread. At sub-12-pip distances, cumulative spread exceeds win amount across all levels.
+
+---
+
+## [2026-04-22] Script: `07_hp_interactions/01_sizing_x_levels.py`
+**Observation:** Bust rate decreases monotonically as max_levels increases: ml=3→0.170, ml=4→0.096, ml=5→0.057, ml=6→0.026, ml=7→0.016, ml=8→0.009 (sf=1.3).
+**Expected (math):** More levels means higher max exposure = higher bust probability.
+**Delta:** Inverted relationship — bust_rate drops by 95% as ml goes from 3 to 8.
+**Status:** explained — bust is defined as failure to recover within the max_levels limit. More levels = more recovery attempts. The bust EVENT requires the market to sustain an adverse run through ALL levels without reversing. With higher ml, fewer sequences achieve this.
+
+---
+
+## [2026-04-22] Script: `01_finite_capital/03_capital_boundary.py`
+**Observation:** Conservative config (sf=1.5, ml=4): bust_rate=0.096 vs Aggressive config (sf=2.0, ml=8): bust_rate=0.016.
+**Expected (math):** Conservative parameterization (lower sf, lower ml) should produce lower bust rate.
+**Delta:** Conservative produces 6x HIGHER bust_rate than aggressive.
+**Status:** explained — lower max_levels limits recovery opportunities. A config labeled "conservative" because individual level sizes are smaller actually has a higher bust frequency because cycles have fewer recovery chances. Conservative ≠ lower bust_rate; it means lower bust magnitude but higher bust frequency. True risk is N-to-1 × bust_rate = expected loss per session.
