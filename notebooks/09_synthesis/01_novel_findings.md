@@ -72,6 +72,21 @@ The transition at ml=5–6 is sharp: sf=1.3 gives N=4827 while sf=2.0 gives N=43
 
 ---
 
+## Finding 7b: All tested HP configurations are structurally negative EV — no viable config exists with 2-pip spread
+**Source:** `01_finite_capital/01_n_to_1_ratio.py` (partial) — cross-checked with all_sessions.csv
+
+**What:** Break-even analysis across all tested (sf, ml) pairs shows universal negative margin of safety:
+- sf=1.3, ml=3: N=9.4, margin of safety = −0.074 (need 90.4% win rate, have 83%)
+- sf=1.5, ml=4: N=24.7, margin of safety = −0.057
+- sf=2.0, ml=4: N=18.9, margin of safety = −0.046
+- ml≥6 (any sf): N→nan (avg_win → 0 after spread), margin of safety undefined
+
+No configuration with finite N has positive margin of safety. At ml≥6, the spread erodes win value entirely, making the strategy structurally unresolvable.
+
+**Why novel:** The implicit assumption in Martingale optimization literature is that there EXISTS a valid parameter set. This finding shows that with 2-pip spread (realistic OANDA EUR-USD), no static HP configuration produces positive EV. The parameter space has no feasible region. The only path to profitability is either (1) reducing spread below ~0.5 pip, (2) adding directional edge via entry timing, or (3) dynamic HP adjustment conditioned on regime.
+
+---
+
 ## Finding 7: Margin consumption rate is 8.4x higher in bust sessions vs wins
 **Source:** `05_market_structure/02_margin_consumption_rate.py`
 
