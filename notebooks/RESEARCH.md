@@ -35,7 +35,7 @@ Research program studying each aspect of the Surefire Hedge strategy in isolatio
 | `04_cost_model/` | Spread per level, swap drag, effective grid distance | Complete |
 | `05_market_structure/` | Holding time, margin consumption rate, volatility vs hedge | Complete |
 | `06_abort_theory/` | Abort vs no-abort sweep, point-of-no-return, optimal K | Complete |
-| `07_hp_interactions/` | Sizing×levels, hedge×TP, equity sensitivity, heatmaps | Pending (sizing_x_levels.csv running) |
+| `07_hp_interactions/` | Sizing×levels, hedge×TP, equity sensitivity, heatmaps | Complete |
 | `08_broker_mechanics/` | Lot rounding, NAV closeout model, OANDA vs generalized | Complete |
 | `09_synthesis/` | Novel findings, pipeline implications, open questions | Ongoing |
 
@@ -64,6 +64,7 @@ See `09_synthesis/01_novel_findings.md` for detailed findings.
 - F17: NAV closeout triggers 22pp higher margin utilization
 - F18: PnL-optimal vs bust-rate-optimal abort maximally divergent
 - F19: Configured max_levels ≠ effective max_levels for high sf
+- F20: Total PnL degrades monotonically with sf — sf=1.3 is Pareto-optimal
 
 ## Pipeline Implications
 

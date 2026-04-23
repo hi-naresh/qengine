@@ -93,6 +93,12 @@ Format:
 - sf=3.0: effective_max ≈ 5 (configured ml≥6 behaves as ml=5)
 **Why:** Without this constraint, the optimizer believes it's exploring higher max_levels territory when it's actually constrained to lower effective levels. Parameter estimates become unreliable and the evolved hp doesn't reflect actual behavior.
 
+## IslandPilot — minimize sf for risk reduction (inverted from prior intuition)
+**Source:** `07_hp_interactions/01_sizing_x_levels.py` (Finding 20)
+**Before:** sf treated as "aggressive vs conservative" knob, often biased toward moderate values (2.0)
+**After:** Bias sf toward LOW values (1.3-1.5) unless avg_win per session is a critical objective
+**Why:** Bust_rate is sf-invariant (Finding 15b) but total realized loss scales 2-3x with sf. At ml=5: sf=1.3 loses $2,968 vs sf=3.0 loses $8,877 over 18 years for identical bust frequency. Low sf is dominated-free on the risk dimension. The only argument for higher sf is per-session avg_win (sf=2.0: $0.60 vs sf=1.3: $0.71 — actually lower too). sf=1.3 ml=3 is the Pareto-optimal starting point for any pipeline search.
+
 ## IslandPilot — max_levels hard cap at 5 for sf=2.0 (revised from prior cap of 6)
 **Source:** `01_finite_capital/01_n_to_1_ratio.py` (complete), `01_finite_capital/02_break_even_formula.py`
 **Before:** max_levels upper bound = 6

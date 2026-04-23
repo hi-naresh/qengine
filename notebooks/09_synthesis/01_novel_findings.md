@@ -114,6 +114,25 @@ For sf≤1.5 at ml≥6: p_min > 1.0 (literally requires >100% win rate — mathe
 
 ---
 
+## Finding 20: Total PnL degrades monotonically with sf despite sf-invariant bust rate
+**Source:** `07_hp_interactions/01_sizing_x_levels.py` (complete 36-config sweep, 18yr total PnL)
+
+**What:** While bust_rate is sf-invariant at each ml (Finding 15b), total realized PnL over 18 years worsens monotonically with sf:
+
+| ml | sf=1.3 | sf=1.5 | sf=2.0 | sf=3.0 |
+|----|--------|--------|--------|--------|
+| 3  | −$2,438 | −$2,719 | −$3,461 | −$5,000 |
+| 5  | −$2,968 | −$3,587 | −$5,496 | −$8,877 |
+| 8  | −$2,868 | −$3,771 | −$6,406 | −$8,877 |
+
+All 36 configs have NEGATIVE total PnL. Ratio of worst-to-best sf at each ml: ~2-3x. Lower sf produces smaller individual bust magnitudes, yielding less total loss over the same number of bust events.
+
+**Why novel:** The Martingale literature treats high sf as aggressive/risky and low sf as conservative. This finding inverts the optimization: **sf should be MINIMIZED, not maximized, for total-loss reduction**. Since bust_rate is independent of sf, there is no compensating benefit from larger sf values — they only amplify loss magnitudes. The "aggressive vs conservative sf" framing is misleading; all sf values have identical bust frequency but different loss scales.
+
+**Pipeline implication:** IslandPilot should bias sf toward the low end (1.3-1.5) when selecting from the feasible region. The only argument for higher sf is larger avg_win per session — but the N-to-1 heatmap shows sf=1.3 at ml=3 achieves N=9.4 (best in class), making it the Pareto-optimal starting point for any viable-EV search.
+
+---
+
 ## Finding 19: Configured max_levels is not the effective max_levels for high sf values
 **Source:** `strategies/_admin/Martingale/__init__.py` line 481 (code inspection) + `01_finite_capital/01_n_to_1_ratio.py`
 
