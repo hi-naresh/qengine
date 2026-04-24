@@ -21,11 +21,9 @@ Format:
 
 ---
 
-## IslandPilot — sizing_factor × max_levels cross-constraint
-**Source:** `01_finite_capital/01_n_to_1_ratio.py` (partial)
-**Before:** sf and ml evolved independently with separate bounds
-**After:** Add cross-constraint: `(sf, ml)` pairs must satisfy `sf^ml * base_size < max_position_limit`
-**Why:** The N-to-1 ratio is a joint function of (sf, ml) not either alone. At sf=1.3/ml=5, N=4827 (barely viable). At sf=2.0/ml=5, N=43.6 (much more manageable). The interaction is non-linear. The safe region is a diagonal band, not a rectangle.
+## IslandPilot — sizing_factor × max_levels cross-constraint (consolidated into the "N-to-1 aware safe region" entry below)
+**Source:** `01_finite_capital/01_n_to_1_ratio.py`
+**Note:** The (sf, ml) interaction is non-linear and the safe region is a diagonal band, not a rectangle. Concrete bounds are specified in the "N-to-1 aware safe region" entry below, which combines the feasibility (avg_win > 0) and affordability (effective_max) filters. Kept here as a pointer to the consolidated entry.
 
 ---
 
@@ -59,15 +57,18 @@ Format:
 ## Live Trading Diagnostics — session danger gauge calibration
 **Source:** `05_market_structure/02_margin_consumption_rate.py`, `02_bust_anatomy/03_bust_path_patterns.py`
 **Before:** Session danger gauge uses level count as primary signal
-**After:** Use two signals simultaneously:
-  1. Level count ≥ (effective_max − 2) → yellow (elevated)
+**After:** Use two signals simultaneously, scaled by the effective bust depth D (= min(configured_max_levels, _max_affordable_levels()) − 1, i.e. the 0-indexed last level the strategy can reach):
+  1. Current level ≥ D − 2 → yellow (elevated)
   2. Equity-per-leg-pct > 3% → orange (high)
-  3. Both level ≥ (effective_max − 1) AND equity-per-leg > 5% → red (abort territory)
+  3. Both level ≥ D − 1 AND equity-per-leg > 5% → red (abort territory)
 
-Concrete thresholds for the canonical live config (sf=2.0, ml=6, effective_max=6):
+Concrete thresholds for the canonical live config (sf=2.0, configured ml=6 → D=5):
+  - Level ≥ 3 → yellow; level ≥ 4 + high margin rate → red
+
+For the bust-anatomy dataset (sf=2.0, configured ml=8, effective_max=7 → D=6):
   - Level ≥ 4 → yellow; level ≥ 5 + high margin rate → red
 
-**Why:** In the bust-anatomy dataset (ml=8 override), all 60 busts terminated at level 6 with 7 trades and std=0 — bust depth is deterministic given sf. For canonical ml=6, busts terminate at level 5/6 (the effective_max). The level-count signal is nearly deterministic once bust trajectory begins. Adding equity-per-leg as a secondary signal provides earlier warning during the adverse run before the final bust level is reached (Finding 7: bust sessions consume 8.4× more equity per leg than wins).
+**Why:** In the bust-anatomy dataset (ml=8 override), all 60 busts terminated at level 6 with 7 positions and std=0. For canonical ml=6, busts terminate at level 5. Bust depth is deterministic given sf and effective_max. The level-count signal is nearly deterministic once bust trajectory begins. Adding equity-per-leg as a secondary signal provides earlier warning during the adverse run before the final bust level is reached (Finding 7: bust sessions consume 8.4× more equity per leg than wins).
 
 ---
 
@@ -109,8 +110,8 @@ Concrete thresholds for the canonical live config (sf=2.0, ml=6, effective_max=6
 
 sf=1.3 ml=3 is the Pareto-optimal starting point by **total_pnl** (−$2,438 over 18 years), though sf=2.0 ml=3 yields higher per-session avg_win ($1.38 vs $0.71) at the cost of 40% more total loss.
 
-## IslandPilot — max_levels hard cap at 5 for sf=2.0 (revised from prior cap of 6)
+## IslandPilot — prefer ml=3-5 for low bust magnitude (secondary recommendation within safe region)
 **Source:** `01_finite_capital/01_n_to_1_ratio.py` (complete), `01_finite_capital/02_break_even_formula.py`
-**Before:** max_levels upper bound = 6
-**After:** Recommended max_levels ≤ 5 for all configurations, with an exception for sf=2.0 where ml=6 gives N=97.4 (still finite but with margin_of_safety=−0.015)
-**Why:** Complete break-even analysis shows 0/25 configs are viable. The "least bad" configs are high-sf with moderate ml. sf=2.0, ml=5 gives N=43.6 (worst case 44 wins erased per bust). Allowing ml=6 for sf=2.0 is acceptable if pipeline's directional edge can close the 1.5% gap vs p_min=98.5%.
+**Before:** max_levels upper bound = 6 uniformly
+**After:** Within the N-to-1 aware safe region (above), bias fitness toward ml=3-5. Use ml=6 only for sf=2.0 with a directional entry edge.
+**Why:** Complete break-even analysis shows 0/25 configs are viable. The "least bad" configs by margin of safety are sf=2.5 ml=6 (−0.011) and sf=2.0 ml=8 (−0.012, effectively ml=7). Low ml (3-5) has higher bust_rate but smaller bust magnitude — N=8-44 vs N=97+ at ml=6+. Since bust dollar loss dominates long-run P&L (Finding 20), ml=3-5 yields better total P&L even though margin of safety is more negative. This is a different optimality criterion from the "best margin of safety" configs — the two criteria disagree and the choice depends on pipeline objective.

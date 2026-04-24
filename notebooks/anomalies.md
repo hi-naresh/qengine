@@ -24,7 +24,7 @@ Format:
 Effect is consistent across ALL equity levels ($1k–$10k). The configured max_levels=8 appears to not control the actual bust level for sf=2.0 and sf=2.5.
 
 **What we tried:**
-- Ruled out margin calls (0/1200 bust events show margin_call or margin_bust outcome)
+- Ruled out margin calls (0/772 bust events show margin_call or margin_bust outcome; 4 equity × (33+60+100) busts)
 - Ruled out equity effects (result is identical at $1k and $10k)
 - Code inspection: found `_max_affordable_levels()` in `strategies/_admin/Martingale/__init__.py` line 481
 

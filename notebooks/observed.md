@@ -14,10 +14,10 @@ Format:
 ---
 
 ## [2026-04-22] Script: `02_bust_anatomy/03_bust_path_patterns.py`
-**Observation:** All 60 busts over 18 years took exactly 7 trades with std=0. All busts at level 6.
+**Observation:** All 60 busts over 18 years took exactly 7 positions opened with std=0. All busts terminated at level 6 (0-indexed). Config: canonical HP with max_levels=8 override.
 **Expected (math):** Busts should occur at varying levels depending on market path, with some std in trade count.
 **Delta:** Zero variance in bust structure. Every bust is identical in sequence length and terminal level.
-**Status:** explained — with fixed HP and max_levels=6, the bust path is deterministic once max_levels is reached. The only stochastic component is the entry point of the sequence.
+**Status:** explained — with fixed HP and effective_max_levels=7 for sf=2.0 (Finding 19), the bust path is deterministic once effective_max is reached: entry at level 0 + 6 hedges = 7 positions total, bust at level 6. The only stochastic component is the entry point of the sequence.
 
 ---
 
@@ -30,10 +30,10 @@ Format:
 ---
 
 ## [2026-04-22] Script: `03_margin_mechanics/02_implicit_forced_close.py`
-**Observation:** Zero margin calls across all 1,200 bust events (12 configs × 100 busts each).
+**Observation:** Zero margin calls across all 772 bust events (12 configs: 4 equity × 3 sf; bust counts per config are 33 for sf=1.5, 60 for sf=2.0, 100 for sf=2.5, identical across all 4 equity levels → total 4 × (33+60+100) = 772).
 **Expected (math):** Higher sf (2.5) and lower equity ($1k) should trigger margin calls.
 **Delta:** Margin mechanism never activates — all exits are via max_level_bust.
-**Status:** explained — at 30:1 leverage and 0.5% base sizing, margin utilization stays <9% even at level 8 (sf=2.0). The geometric sizing is proportional to equity, so relative margin usage doesn't change with equity level.
+**Status:** explained — at 30:1 leverage and 0.5% base sizing, margin utilization stays <9% even at level 8 (sf=2.0). The geometric sizing is proportional to equity, so relative margin usage doesn't change with equity level. Bust counts are identical at each equity level because proportional sizing makes bust structure equity-invariant (Finding 11).
 
 ---
 
@@ -70,10 +70,10 @@ Format:
 ---
 
 ## [2026-04-22] Script: `06_abort_theory/01_abort_vs_no_abort.py`
-**Observation:** PnL-optimal abort (K=1) gives bust_rate=53.2%; bust-rate-optimal (K=7) is a no-op at bust_rate=1.6%. These two metrics diverge maximally — optimizing one makes the other worse.
-**Expected (math):** Lower bust rate should generally correlate with better PnL (fewer catastrophic losses).
-**Delta:** Anti-correlation: K=1 improves PnL by 46% while increasing bust frequency 33x.
-**Status:** explained — the negative EV structure means every "recovered" session still contributes negative expected value. K=1 aborts are small losses; K=7 busts are catastrophic losses. Total dollar impact reverses the apparent safety ranking of abort levels. Bust rate is a misleading metric when strategy EV is negative.
+**Observation:** "bust_rate" rises monotonically as abort threshold K decreases (K=1: 53.2%, K=6: 2.4%, K=7: 1.6% no-op). PnL-optimal K=1 cuts total loss by 46% ($−6,406 → $−3,475) but "bust_rate" is 33.5× baseline.
+**Expected (math):** Lower bust rate should generally correlate with better PnL.
+**Delta:** bust_rate and total_pnl are anti-correlated under active abort policy.
+**Status:** explained — the `is_bust` flag in `sessions_to_df` includes ALL terminal outcomes (abort, terminate, max_level_bust, sl_hit, margin_call, etc.). Aborts are counted as busts by definition, so enabling abort mechanically raises the bust_rate numerator. Separating the populations: catastrophic busts (max_level_bust only) DO decrease monotonically as K decreases (K=0→60, K=6→3, K=1→1). The anti-correlation disappears when the metric is cleanly defined. The true finding is that "bust_rate" as aggregated in the research code conflates controlled aborts (~$−0.40 each) with catastrophic busts (~$−144 each), which are economically opposite events.
 
 ---
 

@@ -21,7 +21,7 @@ Detail (ml=8 configuration):
 - Avg win = $0.85, avg bust = −$82.69, N = 97.4
 - Break-even = 98.98%, actual = 97.43%, margin of safety = **−0.0155**
 
-Both configurations confirm negative EV. The ml=8 override was used in bust-anatomy scripts to obtain a larger bust sample for path analysis; canonical ml=6 has only 100 busts over 18 years vs ml=8's 60 busts — both suffice, but the margin-of-safety numbers differ slightly.
+Both configurations confirm negative EV. The ml=8 override was used in bust-anatomy scripts to observe **deeper bust paths** (7 positions per bust at effective_max=7 vs 6 at canonical ml=6), not to get more bust events — canonical ml=6 actually has more busts over 18 years (100 vs 60). The trade-off: fewer bust events but longer, more informative per-bust trajectories.
 
 **Note on sample size:** For p=0.9841 over n=3,771 sessions, the binomial standard error is SE≈0.20pp, giving a 95% margin of error of ±0.40pp (full 95% CI width ≈ 0.8pp). The margin of safety (−1.17pp) is **5.7σ below the break-even win rate** — statistically robust as negative EV, not sampling noise. (Testing H0: p_true ≥ 0.9958: z = (0.9841 − 0.9958)/0.00204 = −5.74.)
 
@@ -126,9 +126,9 @@ Every config tested rejects the break-even hypothesis at >2σ, and most at >4σ.
 ---
 
 ## Finding 7: Margin consumption rate is 8.4x higher in bust sessions vs wins
-**Source:** `05_market_structure/02_margin_consumption_rate.py`
+**Source:** `05_market_structure/02_margin_consumption_rate.py` (sf=2.0, ml=8 override — uses all_sessions.csv)
 
-**What:** Bust sessions consume 9.05% of equity per leg (median), vs 1.08% per leg in winning sessions. This 8.4x differential emerges because bust sessions reach deeper levels where geometric sizing concentrates margin.
+**What:** Bust sessions consume 9.05% of equity per leg (**mean of margin_rate = peak_equity_pct / trade_count**), vs 1.08% per leg in winning sessions. This 8.4x differential emerges because bust sessions reach deeper levels where geometric sizing concentrates margin.
 
 **Why novel:** This creates a practical early-warning signal: a session consuming >3% equity per leg is disproportionately likely to be a bust trajectory. ARIA danger scoring should weight margin consumption rate as a primary signal, not a secondary one.
 
@@ -316,7 +316,7 @@ The "safe zone" is TP ≈ hedge (degenerate), but that also has poor PnL.
 ## Finding 17: NAV-based margin closeout (OANDA) triggers 22pp higher margin utilization than equity-based theory
 **Source:** `08_broker_mechanics/02_margin_closeout_model.py`
 
-**What:** OANDA computes margin utilization as margin_used / NAV (where NAV = balance + unrealized P&L). In a stress-test parameterization (**BASE_LOTS=0.01 lots of $100k standard = 1% notional base sizing of $10k, ~22× the strategy's actual 0.5% sizing**), margin at level 8 with sf=2.0 reaches **209% NAV-based vs 187% equity-based** — a **22pp gap**. This parameterization was chosen specifically to drive margin utilization above 100% so the NAV vs equity difference becomes observable; the strategy's actual 0.5% base sizing never approaches 100% utilization at any level (Finding 3).
+**What:** OANDA computes margin utilization as margin_used / NAV (where NAV = balance + unrealized P&L). In a stress-test parameterization (**BASE_LOTS=0.01 standard lots × 100,000 units/lot × price 1.10 = $1,100 notional ≈ 11% of $10k equity — about 22× the strategy's actual 0.5% sizing**), margin at level 8 with sf=2.0 reaches **209% NAV-based vs 187% equity-based** — a **22pp gap**. This parameterization was chosen specifically to drive margin utilization above 100% so the NAV vs equity difference becomes observable; the strategy's actual 0.5% base sizing never approaches 100% utilization at any level (Finding 3).
 
 **Why novel:** Backtester models and academic papers typically use equity-based margin calculations. For OANDA CFD positions at deep levels, the unrealized loss (spread costs + adverse price moves) depresses NAV, causing margin to cross the 100% threshold at a lower realized adverse move. The practical gap: a strategy that theoretically needs X pip adverse move to trigger margin close actually triggers at X−Y pips due to unrealized losses. This is a live trading risk not captured in backtests — and while it does not manifest at the strategy's current sizing, it becomes material if an operator ever up-sizes base_pct by ≥10× or runs an aggressive custom sequence.
 
