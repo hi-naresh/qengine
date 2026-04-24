@@ -16,13 +16,16 @@ The break-even win rate of 99.58% is 1.17pp above the empirical 98.41%. The ques
 ---
 
 ## Q2: Is partial abort (close losing tickets, keep L0) operationally feasible?
-**From:** `06_abort_theory/04_partial_abort.py` (now completed)
+**From:** `06_abort_theory/04_partial_abort.py` (heuristic estimate, not full simulation)
 
-The empirical analysis shows partial abort (keeping L0, closing deeper tickets) has EV = **-$1.01 per session** — worse than full abort ($0). This is because L0's base win rate (98.4%) with avg_win=$0.60 and avg_bust=-$144 gives negative EV even if only a fraction (0.7×) of the bust is realized.
+The script approximates partial-abort EV using a simplified model: `EV_partial_keep = BASE_WIN_RATE × AVG_WIN + (1 − BASE_WIN_RATE) × (AVG_BUST × 0.7)`. With the observed parameters (win_rate=98.4%, avg_win=$0.60, avg_bust=−$144) this yields **EV ≈ −$1.01** — worse than full abort ($0).
 
-The conclusion in the script ("partial abort can be positive EV") was a placeholder written before the avg_win values were known. With 2-pip spread and current parameters, partial abort is NOT a viable improvement.
+**Caveats on the estimate:**
+1. The script reuses BASE_WIN_RATE (computed from full sessions that played out) as the conditional win rate of the L0-only position after partial abort. The true conditional win rate post-partial-abort is unknown and likely differs (the session has already demonstrated adverse price motion, so L0's remaining prospects may be worse than the unconditional base rate).
+2. The 0.7× factor on avg_bust is a rough assumption about how much bust magnitude is saved by closing inner legs.
+3. Full simulation would require engine support for mid-session ticket selection, which is available in CFD mode (via `close_ticket(id, price)`) but was not exercised in this analysis.
 
-**Revised status:** This question is answered — partial abort is worse than full abort at current spread levels. Would only be viable if entry filtering increases avg_win to >$1.50 (roughly), at which point EV(partial_keep_L0) ≈ 0. This is an indirect argument for directional entry as a prerequisite for partial abort viability.
+**Status:** heuristic indicates partial abort is likely not viable at current spreads. To be confirmed with a full backtest variant. A necessary (not sufficient) condition for partial abort to become viable: avg_win would need to be roughly >$1.50, which does not occur at any tested (sf, ml) in the current grid for spread=2 pips.
 
 ---
 
@@ -38,24 +41,24 @@ The N-to-1 ratio was computed over the full 18-year dataset. In volatile regimes
 ---
 
 ## Q4: What is the minimum spread at which the strategy becomes positive EV?
-**From:** Finding 5 (spread kills edge at level 1)
+**From:** Findings 1, 7b, 14 (structural negative EV at 2-pip spread across all tested HP)
 
-The analysis was conducted at 2-pip spread. The break-even spread (where avg_win_after_spread > 0) is a function of (sf, ml, hedge, tp). Computing this analytically would give a "minimum broker quality" requirement.
+The analysis was conducted at 2-pip spread. The break-even spread (where avg_win_after_spread > 0) is a function of (sf, ml, hedge, tp). Computing this empirically would give a "minimum broker quality" requirement.
 
 **Why it matters:** The spread threshold identifies which brokers can support this strategy. A 1-pip broker might change the entire picture.
 
-**Approach:** Rerun canonical HP backtest at spreads 0, 0.5, 1, 1.5, 2, 2.5, 3 pips. Find the spread where avg_win = 0 and where the system crosses from negative to positive EV.
+**Approach:** Rerun canonical HP backtest at spreads 0, 0.5, 1, 1.5, 2, 2.5, 3 pips. Find the spread where avg_win = 0 and where the system crosses from negative to positive EV. Note: Q7 below overlaps — consolidating them is a to-do.
 
 ---
 
 ## Q5: Does geometric sizing outperform uniform or Fibonacci sizing?
-**From:** `07_hp_interactions/01_sizing_x_levels.py` (pending results)
+**From:** `07_hp_interactions/01_sizing_x_levels.py` (sweep is complete for geometric only; non-geometric curves not tested)
 
-The canonical HP uses geometric sizing (sf=2.0). The strategy was designed with this in mind, but it's possible that uniform sizing (1x at each level) or Fibonacci sizing (1, 1, 2, 3, 5, 8) would produce a different N-to-1 profile while maintaining acceptable win rates.
+The canonical HP uses geometric sizing (sf=2.0). The strategy supports uniform, fibonacci, sqrt, anti_martingale, and custom sequences (see `Martingale/__init__.py`). The 36-config sweep varied sf and ml within the geometric family only — non-geometric curves remain untested.
 
-**Why it matters:** If a non-geometric sizing curve reduces N-to-1 without proportionally reducing win rates, it may shift the system into positive EV territory.
+**Why it matters:** If a non-geometric sizing curve reduces N-to-1 without proportionally reducing win rates, it may shift the system into (less-) negative EV territory. Fibonacci (1,1,2,3,5,8...) grows slower than 2^n, producing smaller bust magnitudes; uniform (1,1,1,...) has the smallest busts but no recovery. Either could trade off differently than the geometric family.
 
-**Approach:** Implement uniform and Fibonacci sizing modes in the Martingale strategy. Run full 18-year backtests and compare N-to-1, win_rate, and EV.
+**Approach:** Run 18-year backtests with sizing_curve ∈ {fibonacci, sqrt, linear, anti_martingale} at representative ml values (3, 5, 7). Compare N-to-1, win_rate, and total_pnl to the geometric reference.
 
 ---
 
@@ -87,11 +90,15 @@ Empirically, this threshold should be found by re-running the canonical backtest
 
 ---
 
-## Q8: Does the high-sf level capping anomaly reflect a configurable strategy parameter or a bug?
-**From:** anomalies.md — sf=2.5 caps at level 5 stats despite max_levels=8; sf=3.0 caps at level 4-5
+## Q8 (RESOLVED): The high-sf effective_max cap is a designed safety feature
+**From:** Finding 19, anomalies.md (resolved entry)
 
-The N-to-1 results confirm: for sf≥2.5, increasing max_levels beyond ~5 produces no change in N ratio, win_rate, or avg_bust. This strongly suggests an internal strategy limit at ~level 5 for high sf values.
+The cap is not a bug. The strategy's `_max_affordable_levels()` method at `strategies/_admin/Martingale/__init__.py:481` computes `effective_max_levels = min(configured_max, affordable_at_session_start)`. For high sf at fixed equity/leverage/base_pct, geometric growth exhausts the margin budget before the configured depth; the pre-session feasibility check caps the session at the affordable depth. Empirically:
+- sf=2.0: effective_max = 7 at $10k equity
+- sf=2.5: effective_max = 6 at $10k equity  
+- sf=3.0: effective_max = 5 at $10k equity
+- sf ≤ 1.7: effective_max = configured (margin not binding over tested ml range)
 
-**Hypothesis:** The Martingale strategy has an internal equity check: if adding a new hedge would reduce equity below some threshold (e.g., 50%), the cycle terminates before reaching configured max_levels. With sf=3.0 and base_size=0.5%, the L5 position is 0.5% × 3^5 = 12.2% of equity — at this point, unrealized losses may trigger a pre-configured internal guard.
+This is a designed safety feature — the strategy refuses to enter a session it cannot fund to the configured max_levels. Zero margin calls across 772 bust events tested (F13) is consistent with this: sessions that would hit margin are never opened.
 
-**Why it matters:** If this is a bug (unintended early termination), it should be fixed. If it's a feature (implicit safety limit), it should be documented as an HP interaction that reduces effective max_levels for high sf values — the configured max_levels may not be the actual limit in live trading.
+**Remaining work:** The effective_max lookup is equity-dependent and broker-dependent (leverage). A complete `effective_max_levels(sf, equity, leverage, base_pct)` table for pipeline consumption is a follow-on — currently documented only at $10k × 30:1 × 0.5%.

@@ -43,27 +43,27 @@ Research program studying each aspect of the Surefire Hedge strategy in isolatio
 
 See `09_synthesis/01_novel_findings.md` for detailed findings.
 
-- F1: Structural negative EV (break-even 99.58% > actual 98.41%)
-- F2: Deterministic bust structure (std=0 trade count, always level 6)
-- F3: Margin not binding constraint (0/1200 bust events = margin call)
+- F1: Structural negative EV at ml=8 override (break-even 99.58% > actual 98.41%); canonical ml=6 similar (98.98% > 97.43%)
+- F2: Deterministic bust structure (std=0 position count; canonical ml=6 busts at level 5, ml=8 override at level 6)
+- F3: Margin not binding at realistic 0.5% base sizing (cumulative utilization ≤ 8.5% at level 8)
 - F4: N-to-1 bifurcation at ml=5-6 — complete 25-config heatmap
-- F5: Spread kills edge at level 1 for all configurations
-- F6: EV negative at all levels — abort cannot rescue strategy EV
-- F7: Margin consumption 8.4x higher in bust vs win sessions
-- F7b: 0/25 HP configs viable with 2-pip spread
-- F8: Wider hedge reduces bust 7x AND increases avg_win 5x
-- F9: Higher max_levels decreases bust rate (counterintuitive)
-- F10: TP>hedge monotonically increases bust rate
-- F11: Bust rate equity-invariant
-- F12: Two failure modes for hedge/TP ratio
-- F13: Zero margin calls at any tested config
-- F14: Sub-12-pip hedge mathematically unprofitable
-- F15/18 (merged): Optimal abort K=1 by total loss; active aborts raise bust_rate (not lower)
-- F15b: Bust rate sizing-factor-independent
-- F16: Lot rounding 10% error at $1k equity
-- F17: NAV closeout triggers 22pp higher margin utilization (at stress-test base sizing)
-- F19: Configured max_levels ≠ effective max_levels for high sf
-- F20: Total PnL degrades monotonically with sf — sf=1.3 is Pareto-optimal
+- F5: Methodological caveat — 04_cost_kills_edge.py compares costs at 22× stress-test sizing to strategy's real avg_win. The "level 1" crossover is an artifact; at consistent sizing, crossover is at level 5.
+- F6: EV negative at all levels — abort cannot create positive EV, only caps downside
+- F7: Peak-equity-per-leg ratio 8.4× higher in bust sessions (peak drawdown differential ~27×)
+- F7b: 0/25 HP configs viable with 2-pip spread — margins of safety −1pp to −7pp (−4σ to −100σ)
+- F8: Wider hedge (5→40 pips) reduces bust_rate 7.3×; avg_win flips sign from −$0.11 to +$3.00
+- F9: Higher max_levels decreases bust_rate by ~1.8× per added level (partly definitional)
+- F10: TP<hedge gives lowest bust_rate but worst PnL (spread dominates); TP>hedge monotonically raises bust_rate
+- F11: Bust rate equity-invariant in simulation; lot rounding breaks this below $5k in live
+- F12: Two failure modes: TP<hedge (spread-dominated) vs TP>hedge (recovery-dominated)
+- F13: Zero margin calls across 772 bust events tested
+- F14: Hedge ≤ ~10 pips gives non-positive avg_win at 2-pip spread
+- F15/18 (merged): Optimal abort K=1 by total loss AND catastrophic-bust count (1 vs 60 baseline). Active aborts inflate "is_bust" metric because the flag absorbs abort outcomes by definition.
+- F15b: Bust rate sizing-factor-independent within effective_max range
+- F16: Lot rounding 10% error at $1k equity, <1.2% at $5k+
+- F17: NAV closeout triggers 22pp higher margin utilization vs equity-based (at stress-test base sizing)
+- F19: Configured max_levels silently capped by `_max_affordable_levels()` for high sf
+- F20: Total PnL degrades monotonically with sf; sf=1.3 ml=3 is total-P&L-optimal (but NOT best by avg_win or margin of safety)
 
 ## Pipeline Implications
 
@@ -71,14 +71,15 @@ See `09_synthesis/02_pipeline_implications.md` for full details.
 
 **IslandPilot:**
 - Add effective_max_levels feasibility constraint
-- Safe (sf, ml) region: sf=1.5→ml≤5, sf=2.0→ml≤7, sf=2.5→ml≤6, sf=3.0→ml≤5
+- Safe (sf, ml) region (combined avg_win>0 and effective_max filters):
+  sf=1.3→ml≤4; sf=1.5→ml≤5; sf=1.7→ml≤5 (conservative); sf=2.0→ml≤7; sf=2.5→ml≤6; sf=3.0→ml≤5
 - Reject individuals with N=nan (avg_win ≤ 0)
 
 **ARIA:**
-- Abort objective must shift from bust-rate to total-loss minimization
-- K=6 recommended for live trading (eliminates catastrophic busts, minimal PnL sacrifice)
-- Add equity_per_leg_pct as primary danger feature (>3% = elevated, >5% = abort territory)
+- Abort objective must shift from "is_bust rate" to (1) total dollar loss + (2) catastrophic (max_level_bust) count — tracked separately, since aborts inflate the aggregated is_bust metric
+- K=1 is optimal on BOTH axes (cuts total loss 46% and catastrophic busts 60→1); K=6 is a compromise for session continuity (3 catastrophic busts remain, $728 less PnL vs K=1)
+- Add `peak_equity_pct / trade_count` ratio as a within-session danger feature (>3 = elevated)
 
 **Live trading:**
-- Minimum equity: $5k for accurate position sizing at OANDA
-- NAV-based margin gap: monitor closer than equity-based models predict
+- Minimum equity: $5k for accurate position sizing at OANDA (lot rounding)
+- NAV-based margin gap: immaterial at the strategy's 0.5% base sizing (Finding 3), but becomes material if base_pct is increased ≥10×
