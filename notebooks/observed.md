@@ -25,7 +25,7 @@ Format:
 **Observation:** Unconditional session EV is negative at $−1.70 (this is what the "level 0" row in the CSV reports — averaged over all 3,771 sessions, not a snapshot of the level-0 holding itself). Conditional EV given level k reached is more negative at every deeper level.
 **Expected (math):** Positive EV should hold at low levels where win rate is high (98.4%).
 **Delta:** EV is negative unconditionally — the strategy is structurally below break-even.
-**Status:** explained — observed avg_win is $0.60 after 2-pip spread (ml=8 override) or $0.85 at canonical ml=6; break-even win rate is 99.58% (ml=8) or 98.98% (ml=6), both above actual win rates. Negative EV is a consequence of the cost model applied to the strategy structure. The pre-spread avg_win would depend on the TP distance and average level reached; a specific "no-spread avg_win" figure was not separately measured in this research.
+**Status:** explained — observed avg_win is $0.60 under real OANDA spread (~1.5 pips mean) at ml=8 override, or $0.85 at canonical ml=6; break-even win rate is 99.58% (ml=8) or 98.98% (ml=6), both above actual win rates. Negative EV is a consequence of real broker cost applied to the strategy structure. The pre-spread avg_win was not separately measured.
 
 ---
 
@@ -88,8 +88,8 @@ Format:
 ## [2026-04-22] Script: `05_market_structure/03_volatility_vs_hedge.py`
 **Observation:** At 5-pip hedge, avg_win = −$0.113 (negative). At 10-pip hedge, avg_win = +$0.036 (barely positive). At 40-pip hedge, avg_win = $3.00. Relationship is strictly monotonic but non-linear.
 **Expected (math):** avg_win should scale roughly linearly with hedge distance.
-**Delta:** 5-pip hedge is structurally unprofitable (negative avg_win) due to spread overhead at 40% of TP.
-**Status:** explained — 2 pips spread on a 5-pip TP = 40% overhead. Multiple levels add cumulative spread. Data shows avg_win crosses zero between 5 and 10 pips (closer to 10). Sub-10-pip hedges produce non-positive avg_win at 2-pip spread; the strict "structurally unprofitable" regime is hedge ≤ ~8 pips rather than a round "12-pip" threshold.
+**Delta:** 5-pip hedge is structurally unprofitable (negative avg_win).
+**Status:** explained — under real OANDA spread (~1.5 pips mean), a 5-pip TP carries ~30% spread overhead per leg. Multiple levels add cumulative spread. Data shows avg_win crosses zero between 5 and 10 pips. Sub-10-pip hedges produce non-positive avg_win under real broker spread; the strict "structurally unprofitable" regime is hedge ≤ ~8 pips.
 
 ---
 

@@ -3,13 +3,15 @@
 Research program studying each aspect of the Surefire Hedge strategy in isolation to find novel insights not present in the academic literature.
 
 **Data:** OANDA EUR-USD 5m, 2006–2024 (18 years, ~2.1M candles)
-**Engine:** Real qengine backtester with 2-pip spread, 30:1 leverage, proportional sizing
+**Engine:** Real qengine backtester with **real per-candle OANDA bid/ask spread** (mean ~1.5 pips, median 1.4, p95 2.2; verified hit_rate=100% on the full dataset), 30:1 leverage, proportional sizing
 **Config:** Canonical HP = sf=2.0, ml=6, hedge=20, tp=20, random signal, 0.5% base size
+
+**Spread model note:** Empirical backtests use real per-candle broker spread via `qengine/services/spread_data.py` (loaded automatically during candle loading). Previous drafts of the findings labeled results as "at 2-pip spread" — that label was incorrect. The 2-pip assumption appears only in the analytical cost-model scripts (`04_cost_model/*.py`, `08_broker_mechanics/02_margin_closeout_model.py`), not in the empirical backtest-derived findings.
 
 ## Executive Summary (2026-04-22)
 
 ### The Core Finding
-**No static HP configuration produces positive EV in 2006-2024 EUR-USD at 2-pip spread.** Break-even win rate (99.58% for sf=2.0/ml=8, 98.98% for canonical sf=2.0/ml=6) exceeds empirical win rate (98.41% / 97.43% respectively). All 25 tested configurations across (sf, ml) space have negative margin of safety; the least marginal configs are statistically >4σ below break-even. The tested parameter space has no observed feasible region.
+**No static HP configuration produces positive EV in 2006-2024 EUR-USD under real OANDA spreads** (mean ~1.5 pips). Break-even win rate (99.58% for sf=2.0/ml=8, 98.98% for canonical sf=2.0/ml=6) exceeds empirical win rate (98.41% / 97.43% respectively). All 25 tested configurations across (sf, ml) space have negative margin of safety; the least marginal configs are statistically >4σ below break-even. The tested parameter space has no observed feasible region.
 
 **What this means for pipelines:** The strategy's value proposition depends on *adaptive HP selection* or on a directional entry edge that adds ≥2pp to the level-0 win rate. IslandPilot's role is regime-conditional adaptation — selecting configurations (and/or entry filters) whose break-even threshold is achievable in the current market structure.
 
@@ -50,14 +52,14 @@ See `09_synthesis/01_novel_findings.md` for detailed findings.
 - F5: Methodological caveat — 04_cost_kills_edge.py compares costs at 22× stress-test sizing to strategy's real avg_win. The "level 1" crossover is an artifact; at consistent sizing, crossover is at level 5.
 - F6: EV negative at all levels — abort cannot create positive EV, only caps downside
 - F7: Peak-equity-per-leg ratio 8.4× higher in bust sessions (peak drawdown differential ~27×)
-- F7b: 0/25 HP configs viable with 2-pip spread — margins of safety −1pp to −7pp (−4σ to −100σ)
+- F7b: 0/25 HP configs viable under real OANDA spread (~1.5 pips mean) — margins of safety −1pp to −7pp (−4σ to −100σ)
 - F8: Wider hedge (5→40 pips) reduces bust_rate 7.3×; avg_win flips sign from −$0.11 to +$3.00
 - F9: Higher max_levels decreases bust_rate by ~1.8× per added level (partly definitional)
 - F10: TP<hedge gives lowest bust_rate but worst PnL (spread dominates); TP>hedge monotonically raises bust_rate
 - F11: Bust rate equity-invariant in simulation; lot rounding breaks this below $5k in live
 - F12: Two failure modes: TP<hedge (spread-dominated) vs TP>hedge (recovery-dominated)
 - F13: Zero margin calls across 772 bust events tested
-- F14: Hedge ≤ ~10 pips gives non-positive avg_win at 2-pip spread
+- F14: Hedge ≤ ~8-10 pips gives non-positive avg_win under real OANDA spread (~1.5 pips mean)
 - F15/18 (merged): Optimal abort K=1 by total loss AND catastrophic-bust count (1 vs 60 baseline). Active aborts inflate "is_bust" metric because the flag absorbs abort outcomes by definition.
 - F15b: Bust rate sizing-factor-independent within effective_max range
 - F16: Lot rounding 10% error at $1k equity, <1.2% at $5k+

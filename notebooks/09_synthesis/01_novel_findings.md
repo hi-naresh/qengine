@@ -2,15 +2,25 @@
 
 Results that extend or contradict established facts in `../facts.md`. Each entry must reference the script that produced it.
 
+## Methodology: Spread Model
+
+**Empirical backtests** (all findings derived from `run_backtest()`): the CFDExchange model queries real per-candle OANDA bid/ask spread from the database on every trade. Verified via `spread_data.stats()`: hit_rate=100% on the 2006-2024 EUR-USD dataset. Real-spread statistics (2020 reference sample):
+- mean **1.53 pips**, median **1.4 pips**, p25 **1.2 pips**, p75 **1.5 pips**, p95 **2.2 pips**
+- range 1.0 – 10 pips (rollover/news windows spike up to 10 pips)
+
+**Analytical / cost-model scripts** (`04_cost_model/*.py`, `08_broker_mechanics/02_margin_closeout_model.py`): hard-code `SPREAD_PIPS=2.0` for illustrative calculations. These are theoretical projections, not backtests — their "2-pip" assumption does not propagate into the empirical findings.
+
+**Implication for findings:** All `avg_win`, `avg_bust`, `bust_rate`, `margin_of_safety`, and `total_pnl` values reflect behavior under **real broker spread** (mean ~1.5 pips), not a fictitious 2-pip fixed. Previous drafts of this document incorrectly labeled empirical results as "at 2-pip spread" — that label was wrong; the numbers are from real-spread runs.
+
 ---
 
 ## Finding 1: Strategy is structurally negative EV even at 98.41% win rate
 **Source:** `02_bust_anatomy/results/all_sessions.csv` (sf=2.0, ml=8 override) + `06_abort_theory/02_point_of_no_return.py`
 
-**What:** With the bust-anatomy HP (sf=2.0, **ml=8 override of canonical** to observe deeper per-bust paths, hedge=20, tp=20, 2-pip spread), the break-even win rate is **99.58%** but the empirical win rate over 18 years is **98.41%**. The margin of safety is **−0.012** — i.e., the strategy is structurally below break-even.
+**What:** With the bust-anatomy HP (sf=2.0, **ml=8 override of canonical** to observe deeper per-bust paths, hedge=20, tp=20, real OANDA per-candle spread averaging ~1.5 pips), the break-even win rate is **99.58%** but the empirical win rate over 18 years is **98.41%**. The margin of safety is **−0.012** — i.e., the strategy is structurally below break-even.
 
-Detail (ml=8 configuration):
-- Avg win = $0.60 (after 2-pip spread)
+Detail (ml=8 configuration, real broker spread):
+- Avg win = $0.60 (after real OANDA spread, mean ~1.5 pips)
 - Avg bust = −$144.14
 - N-to-1 ratio = 238.5 (one bust erases 238 wins)
 - Break-even win rate = |avg_bust| / (avg_win + |avg_bust|) = 0.9958
@@ -25,7 +35,7 @@ Both configurations confirm negative EV. The ml=8 override was used in bust-anat
 
 **Note on sample size:** For p=0.9841 over n=3,771 sessions, the binomial standard error is SE≈0.20pp, giving a 95% margin of error of ±0.40pp (full 95% CI width ≈ 0.8pp). The margin of safety (−1.17pp) is **5.7σ below the break-even win rate** — statistically robust as negative EV, not sampling noise. (Testing H0: p_true ≥ 0.9958: z = (0.9841 − 0.9958)/0.00204 = −5.74.)
 
-**Why novel:** Academic papers on grid Martingale acknowledge the N-to-1 asymmetry as "a known risk" but never compute the break-even win rate for realistic parameters + spread. This shows that even a well-parameterized strategy with a 2-pip realistic spread is structurally losing — the win rate required to be break-even is unachievable in practice.
+**Why novel:** Academic papers on grid Martingale acknowledge the N-to-1 asymmetry as "a known risk" but never compute the break-even win rate under realistic per-candle broker spreads. This shows that even with actual OANDA EUR-USD spreads (averaging 1.5 pips, not the simplified 2-pip assumption common in academic examples), the strategy is structurally losing — the win rate required to be break-even is unachievable in practice over 18 years.
 
 ---
 
@@ -78,14 +88,17 @@ N ratio range: **7.4 to 4827** (650x variation). This means the win-to-bust trad
 
 ---
 
-## Finding 5: The cost model script compares spread at a 22× stress-test sizing to avg_win at actual strategy sizing — methodology caveat
+## Finding 5: The cost model script uses inconsistent sizing AND an outdated fixed-spread assumption — methodology caveat
 **Source:** `04_cost_model/04_cost_kills_edge.py`
 
-**What:** The script takes `avg_win` from the bust-anatomy backtest (sf=2.0 ml=8, 0.5% base sizing → avg_win ≈ $0.60) and compares it to cumulative spread+swap cost computed at `BASE_LOTS=0.01` lots (= $1,100 notional ≈ 11% of $10k equity, i.e. 22× the strategy's actual 0.5% base — same stress-test sizing as Finding 17). At BASE_LOTS=0.01, cumulative cost reaches ~$0.78 by level 1 and exceeds the $0.60 `avg_win` baseline. Rescaled to the strategy's actual 0.5% base sizing, cumulative spread through level 1 is only ≈ $0.03 — below $0.60 by a factor of ~20.
+**What:** The script has two methodology problems:
 
-**Correctly rescaled crossover (0.5% base, sf=2.0):** Per-level spread cost grows as $0.01 × 2^n (entry at level 0 = $0.01; each subsequent level doubles under sf=2). Cumulative spread through level N = $0.01 × (2^(N+1) − 1). Setting this ≥ $0.60 → N+1 ≥ 61 → **crossover at N ≈ 5** (cumulative $0.63). Adding swap cost brings the effective crossover fractionally earlier, still near level 5. The conclusion "level 1 crossover" in the original script is off by ~4 levels at the strategy's real sizing.
+1. **Inconsistent sizing:** Compares `avg_win` from the bust-anatomy backtest (sf=2.0 ml=8, 0.5% base sizing → avg_win ≈ $0.60) to cumulative spread+swap cost computed at `BASE_LOTS=0.01` lots (= $1,100 notional ≈ 11% of $10k equity, i.e. 22× the strategy's actual 0.5% base — same stress-test sizing as Finding 17). At BASE_LOTS=0.01, cumulative cost reaches ~$0.78 by level 1. Rescaled to the strategy's actual 0.5% base, cumulative spread through level 1 is only ≈ $0.03.
+2. **Fixed 2-pip spread assumption:** Script hard-codes `SPREAD_PIPS=2.0`. Real OANDA EUR-USD average is ~1.5 pips (per the methodology note above). At real spread, costs are ~25% lower than the script assumes.
 
-**Takeaway:** The underlying observation remains valid — **cost-to-edge ratio is unfavorable and by effective_max the cumulative spread consumes a majority of any potential win** (at level 6-7 the cumulative spread is $1.27-$2.55 vs avg_win $0.60, so the cost is 2-4× avg_win). But the "level 1" framing was an artifact. Findings 1, 7b, and 14 confirm structural negative EV through the backtest itself (where spread is applied consistently); this finding is partly redundant with them and primarily serves as a cautionary example of sizing-inconsistent comparisons.
+**Correctly rescaled crossover (0.5% base, sf=2.0, **real mean spread ~1.5 pips**):** Per-level spread cost grows as $0.0075 × 2^n at level n. Cumulative spread through level N = $0.0075 × (2^(N+1) − 1). Setting this ≥ $0.60 → N+1 ≥ 81 → **crossover at N ≈ 6** (cumulative $0.94). At 2-pip fixed spread, crossover is at N ≈ 5 ($0.63 cumulative).
+
+**Takeaway:** The underlying observation remains valid — cost-to-edge ratio is unfavorable and cumulative spread consumes a large fraction of any potential win by the max reachable level. But the "level 1" framing was an artifact of mixed sizing, and the exact crossover level depends on which spread model you use. Findings 1, 7b, and 14 confirm structural negative EV through the backtest itself with real spreads; this finding is mostly redundant with them and primarily serves as a cautionary example that analytical calculations using fixed spread assumptions won't match backtest results driven by real per-candle spread.
 
 **Why novel:** The general insight — that cumulative spread grows geometrically under geometric sizing and therefore scales with ml — is correct. The specific "level 1" framing should not be used. The cleaner formulation is in Findings 1/7b (break-even win rate exceeds empirical) and Finding 14 (at 5-pip hedge, avg_win is already negative because spread is 40% of TP).
 
@@ -125,7 +138,7 @@ For sf≤1.5 at ml≥6: p_min > 1.0 (literally requires >100% win rate — mathe
 
 Every config tested rejects the break-even hypothesis at >2σ, and most at >4σ. The **directional conclusion (all configs below break-even in this dataset) is statistically robust**, not a sampling artifact. The caveat remains that our observed win rate is the population estimate for this specific 18-year window — a different historical slice (or a prospective live deployment) could realize different p_true values. The claim should be read as "empirically negative EV in 2006-2024 EUR-USD", not "mathematically proven infeasible in all possible markets."
 
-**Why novel:** The implicit assumption in Martingale optimization literature is that there EXISTS a valid parameter set that produces positive EV. This finding shows that with 2-pip spread (realistic OANDA EUR-USD), **no static HP configuration produces positive EV over the 18-year EUR-USD dataset**. The parameter space has no clear feasible region in the tested grid. The only paths to profitability are: (1) spread below ~0.5 pip, (2) directional entry edge >2 pip at level 0, or (3) dynamic HP conditioned on regime. This makes the strategy a pure pipeline design problem: a static parameter set cannot be reliably profitable, so the value proposition is the adaptive selection of configurations.
+**Why novel:** The implicit assumption in Martingale optimization literature is that there EXISTS a valid parameter set that produces positive EV. This finding shows that under **real OANDA EUR-USD per-candle spreads** (mean ~1.5 pips), **no static HP configuration produces positive EV over the 18-year dataset**. The parameter space has no clear feasible region in the tested grid. Even with the more-favorable real spread (vs the 2-pip assumption common in academic examples), break-even is not reached. The only paths to profitability are: (1) a directional entry edge that adds >2pp to level-0 win rate, (2) a dynamic HP policy conditioned on regime, or (3) a broker with sub-1-pip mean spread (rare for OANDA EUR-USD). This makes the strategy a pure pipeline design problem.
 
 ---
 
@@ -304,11 +317,11 @@ The "safe zone" is TP ≈ hedge (degenerate), but that also has poor PnL.
 ---
 
 ## Finding 14: At 5-pip hedge, avg_win is negative (strategy cannot be profitable)
-**Source:** `05_market_structure/03_volatility_vs_hedge.py`
+**Source:** `05_market_structure/03_volatility_vs_hedge.py` (real OANDA spread, mean ~1.5 pips)
 
-**What:** At hedge=tp=5 pips: avg_win = −$0.113 (negative). The 2-pip spread consumes 40% of a 5-pip TP, and the multi-level nature means cumulative spread exceeds any possible win. n_sessions=7,771 (7.4x more sessions than at 40 pips) because tight hedges trigger rapidly.
+**What:** At hedge=tp=5 pips: avg_win = −$0.113 (negative). With real broker spread (~1.5 pips mean) on a 5-pip TP, spread consumes ~30% of TP per leg, and cumulative cross-leg spread on a multi-level cycle erodes the net win below zero. n_sessions=7,771 (7.4× more sessions than at 40 pips) because tight hedges trigger rapidly. At 10-pip hedge, avg_win recovers to +$0.036 (barely positive); at 15 pips, +$0.30.
 
-**Why novel:** Papers discussing tight grid Martingale strategies often use illustrative examples with 5-10 pip grids. This finding shows that at realistic 2-pip spreads, sub-12-pip hedge distances produce structurally unprofitable sessions — not just inefficient, but mathematically impossible to be net positive after costs. This sets a hard floor on minimum viable grid distance given spread.
+**Why novel:** Papers discussing tight grid Martingale strategies often use illustrative examples with 5-10 pip grids, implicitly assuming any positive TP yields positive session PnL. Under real OANDA EUR-USD spreads (~1.5 pips average), hedge ≤ ~8 pips produces non-positive avg_win — the strict unprofitable regime is hedge ≤ ~8 pips, with a fuzzy boundary through 10 pips. This sets a hard floor on minimum viable grid distance for this broker environment.
 
 ---
 
