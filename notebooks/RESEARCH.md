@@ -15,15 +15,15 @@ Research program studying each aspect of the Surefire Hedge strategy in isolatio
 
 ### Top 5 Novel Findings
 
-1. **N-to-1 bifurcation at ml=5-6**: avg_win turns negative for sf≤1.5 at ml≥6 (spread erodes all win value). Range: N=7.4 to 4827 across the HP space. sf=2.0 is the only value with positive avg_win at all ml levels.
+1. **N-to-1 bifurcation at ml=5-6**: avg_win turns negative for sf≤1.5 at ml≥6 (spread erodes all win value). Range: N=7.4 to 4827 across the HP space. sf=2.0 is the only value with positive avg_win at all 5 tested ml points.
 
 2. **Bust rate is sizing-factor-independent**: At each ml value, bust_rate is identical for all sf values (1.3 through 3.0). Only max_levels and hedge_distance determine bust probability. Adjusting sf is irrelevant for bust risk management.
 
 3. **Configured max_levels ≠ effective max_levels for high sf**: The strategy applies `effective_max = min(configured, affordable)` at session start. sf=2.5 caps at effective ~6, sf=3.0 at ~5, regardless of configured value. Pipeline parameters silently become incorrect.
 
-4. **PnL-optimal and bust-rate-optimal abort levels are maximally divergent**: K=1 (abort at first hedge) cuts total loss by 46% but increases bust frequency 33x. K=7 is a no-op. Bust rate is the wrong optimization objective when strategy EV is negative.
+4. **Active aborts RAISE bust_rate, not lower it — K=1 is total-loss optimal**: Every active abort level (K=1-6) has higher bust_rate than baseline because aborts increase session throughput. K=1 cuts total loss by 46% despite 33.5× bust_rate increase. K=7 is a degenerate no-op. Bust rate is the wrong optimization objective when strategy EV is negative.
 
-5. **Lot rounding imposes $5k minimum equity**: At $1k equity, OANDA integer unit rounding causes 10% position sizing error. At $5k+, this falls below 1.2%.
+5. **Lot rounding imposes $5k minimum equity (live only)**: At $1k equity, OANDA integer unit rounding causes 10% position sizing error. At $5k+, this falls below 1.2%. In simulation this effect is absent (fractional units).
 
 ## Research Structure
 
@@ -58,11 +58,10 @@ See `09_synthesis/01_novel_findings.md` for detailed findings.
 - F12: Two failure modes for hedge/TP ratio
 - F13: Zero margin calls at any tested config
 - F14: Sub-12-pip hedge mathematically unprofitable
-- F15: Optimal abort K=1 (minimize total loss)
+- F15/18 (merged): Optimal abort K=1 by total loss; active aborts raise bust_rate (not lower)
 - F15b: Bust rate sizing-factor-independent
 - F16: Lot rounding 10% error at $1k equity
-- F17: NAV closeout triggers 22pp higher margin utilization
-- F18: PnL-optimal vs bust-rate-optimal abort maximally divergent
+- F17: NAV closeout triggers 22pp higher margin utilization (at stress-test base sizing)
 - F19: Configured max_levels ≠ effective max_levels for high sf
 - F20: Total PnL degrades monotonically with sf — sf=1.3 is Pareto-optimal
 
