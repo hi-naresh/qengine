@@ -7,7 +7,7 @@ Results that extend or contradict established facts in `../facts.md`. Each entry
 ## Finding 1: Strategy is structurally negative EV even at 98.41% win rate
 **Source:** `02_bust_anatomy/results/all_sessions.csv` (sf=2.0, ml=8 override) + `06_abort_theory/02_point_of_no_return.py`
 
-**What:** With the bust-anatomy HP (sf=2.0, **ml=8 override of canonical** for larger bust sample, hedge=20, tp=20, 2-pip spread), the break-even win rate is **99.58%** but the empirical win rate over 18 years is **98.41%**. The margin of safety is **−0.012** — i.e., the strategy is structurally below break-even.
+**What:** With the bust-anatomy HP (sf=2.0, **ml=8 override of canonical** to observe deeper per-bust paths, hedge=20, tp=20, 2-pip spread), the break-even win rate is **99.58%** but the empirical win rate over 18 years is **98.41%**. The margin of safety is **−0.012** — i.e., the strategy is structurally below break-even.
 
 Detail (ml=8 configuration):
 - Avg win = $0.60 (after 2-pip spread)
@@ -62,7 +62,7 @@ Both configurations confirm negative EV. The ml=8 override was used in bust-anat
 | 2.5 | 7.7 | 16.7 | 33.9 | 66.0 | 66.0† |
 | 3.0 | 7.4 | 15.7 | 30.6 | 30.6† | 30.6† |
 
-† identical value = actual bust level capped below configured max_levels (anomaly: sf≥2.5 hits internal level limit ~5)
+† identical value = actual bust level capped below configured max_levels (per Finding 19: sf=2.5 hits internal level limit 6, sf=3.0 hits 5). sf=2.5 at ml=8 uses effective_max=6; sf=3.0 at ml=5,6,8 uses effective_max=5.
 
 **nan** = avg_win ≤ 0 (spread erases all win value at that ml). Breakdown by sf of where avg_win turns negative:
 - sf=1.3: avg_win turns 0 at ml=5, negative at ml=6,8
@@ -78,12 +78,14 @@ N ratio range: **7.4 to 4827** (650x variation). This means the win-to-bust trad
 
 ---
 
-## Finding 5: The spread at level 1 already exceeds avg_win for all sizing factors
+## Finding 5: The cost model script compares spread at a 22× stress-test sizing to avg_win at actual strategy sizing — methodology caveat
 **Source:** `04_cost_model/04_cost_kills_edge.py`
 
-**What:** At 2-pip spread, cumulative spread cost at level 1 exceeds $0.60 (avg_win) for all tested configurations. The cost model makes positive session EV structurally impossible without unusually favorable entry timing.
+**What:** The script takes `avg_win` from the bust-anatomy backtest (sf=2.0 ml=8, 0.5% base sizing → avg_win ≈ $0.60) and compares it to cumulative spread+swap cost computed at `BASE_LOTS=0.01` lots (= $1,100 notional ≈ 11% of $10k equity, i.e. 22× the strategy's actual 0.5% base — same stress-test sizing as Finding 17). At BASE_LOTS=0.01, cumulative cost reaches ~$0.78 by level 1 and exceeds the $0.60 `avg_win` baseline. Rescaled to the strategy's actual 0.5% base sizing, cumulative spread through level 1 is only ≈ $0.03 — below $0.60 by a factor of ~20, and the cost curve would not cross avg_win until ~level 6.
 
-**Why novel:** Papers separate "the strategy" from "transaction costs." This finding shows they cannot be decoupled — the spread structure is integral to understanding strategy viability. A profitable Martingale hedge strategy requires either sub-2-pip spreads or entry timing that adds >2 pips of edge at the first level.
+**Corrected takeaway:** The strategy's avg_win vs cumulative-cost crossover occurs at level 6-7 with realistic sizing, not level 1. The underlying observation remains valid: **cost-to-edge ratio is unfavorable and grows with level depth**, and by max_levels the cumulative spread consumes a large fraction of any potential win. Findings 1, 7b, and 14 confirm structural negative EV through the backtest itself (where spread is applied consistently), so this finding is redundant with them; the "level 1 crossover" framing is an artifact of the script's mixed-sizing comparison.
+
+**Why novel:** The general insight — that cumulative spread grows geometrically under geometric sizing and therefore scales with ml — is correct. The specific "level 1" framing should not be used. The cleaner formulation is in Findings 1/7b (break-even win rate exceeds empirical) and Finding 14 (at 5-pip hedge, avg_win is already negative because spread is 40% of TP).
 
 ---
 
@@ -125,12 +127,16 @@ Every config tested rejects the break-even hypothesis at >2σ, and most at >4σ.
 
 ---
 
-## Finding 7: Margin consumption rate is 8.4x higher in bust sessions vs wins
+## Finding 7: Peak-equity-per-leg metric is 8.4× higher in bust sessions vs wins
 **Source:** `05_market_structure/02_margin_consumption_rate.py` (sf=2.0, ml=8 override — uses all_sessions.csv)
 
-**What:** Bust sessions consume 9.05% of equity per leg (**mean of margin_rate = peak_equity_pct / trade_count**), vs 1.08% per leg in winning sessions. This 8.4x differential emerges because bust sessions reach deeper levels where geometric sizing concentrates margin.
+**What:** Define `margin_rate = peak_equity_pct / trade_count` where `peak_equity_pct` is the maximum equity drawdown (%) experienced during the session and `trade_count` is the number of positions opened. Mean values:
+- Bust sessions: margin_rate = **9.05%** (7 positions, peak ≈ 63% drawdown)
+- Winning sessions: margin_rate = **1.08%** (mean 2.13 positions, peak ≈ 2.3% drawdown)
 
-**Why novel:** This creates a practical early-warning signal: a session consuming >3% equity per leg is disproportionately likely to be a bust trajectory. ARIA danger scoring should weight margin consumption rate as a primary signal, not a secondary one.
+The ratio is 8.4×. **This is a ratio — peak drawdown normalized by number of legs — not a rate of consumption per leg.** The underlying peak_equity_pct differential is actually ~27×; the 8.4× is tempered because busts open ~3× more positions.
+
+**Why novel:** Provides a practical early-warning signal for live trading: a session whose running `peak_equity_pct / trade_count` exceeds ~3% is on a trajectory qualitatively closer to busts than wins. ARIA danger scoring should incorporate this normalized peak-drawdown feature. The pure `peak_equity_pct` alone (27× differential) is even more discriminative but only becomes informative late in the session; the normalized version gives earlier warning by capturing per-leg severity.
 
 ---
 
