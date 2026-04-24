@@ -13,11 +13,11 @@ Format:
 
 ---
 
-## IslandPilot — max_levels upper bound tightened
+## IslandPilot — max_levels upper bound tightened (superseded by the N-to-1 aware safe region below)
 **Source:** `01_finite_capital/01_n_to_1_ratio.py`, `06_abort_theory/02_point_of_no_return.py`
 **Before:** max_levels upper bound = 6 (in _BOUND_OVERRIDES or gene bounds)
-**After:** max_levels hard cap = **5** for any config where sf ≥ 1.5
-**Why:** At ml=6 with any realistic sf, the N-to-1 ratio becomes undefined (avg_win ≤ 0 after spread). The strategy becomes structurally unresolvable. ml=5 is the last level where some sf values (≤ 1.5) have finite N. See Finding 4.
+**After (superseded):** max_levels hard cap = 5 for any config where sf ≤ 1.5; see later "N-to-1 aware safe region" entry for the complete sf-conditioned bounds.
+**Why:** At ml=6 with sf ≤ 1.5, the N-to-1 ratio becomes undefined (avg_win ≤ 0 after spread). For sf ≥ 2.0, avg_win remains positive at ml=6 so this cap does not apply uniformly. See Finding 4 and the consolidated safe-region entry below.
 
 ---
 
@@ -37,14 +37,14 @@ Format:
 
 ---
 
-## ARIA Abort Policy — abort objective must change from bust-rate to total-loss
+## ARIA Abort Policy — abort objective must change from "is_bust rate" to total-loss (or catastrophic-bust-only rate)
 **Source:** `06_abort_theory/01_abort_vs_no_abort.py` (complete), `06_abort_theory/02_point_of_no_return.py`
-**Before:** Abort level K = 4 (from prior Phase 2 research), objective = reduce bust_rate
+**Before:** Abort level K = 4 (from prior Phase 2 research), objective = reduce is_bust rate
 **After:** Two valid abort policies:
-  - **Policy A (loss minimization):** K=1 — reduces total loss by 46% ($−6,405 → $−3,475) at cost of 53.2% abort rate (most sessions cut at first hedge)
-  - **Policy B (catastrophic bust elimination):** K=6 — eliminates level-6 busts, costs only $728 more vs K=1 in total PnL sacrifice, reduces bust_rate from 1.6% → 2.4%
-  - K=7/8 are no-ops (max bust level is 6 for sf=2.0)
-**Why:** Complete abort sweep shows PnL-optimal and bust-rate-optimal abort levels are maximally divergent (Finding 18). Bust rate as an objective leads to K=7 (no-op). Since strategy EV is universally negative, the correct objective is minimizing total loss. Policy B (K=6) is recommended for live trading: it eliminates catastrophic drawdowns while preserving more session-level continuity than K=1.
+  - **Policy A (loss minimization):** K=1 — reduces total loss by 46% ($−6,406 → $−3,475); aborts 4,238 sessions (53% abort rate); reduces **catastrophic busts** from 60 → 1
+  - **Policy B (balance continuity with catastrophic-bust reduction):** K=6 — total loss $−5,677 ($728 worse than K=1); aborts 90 sessions (2.4% abort rate); reduces catastrophic busts from 60 → 3
+  - K=7/8 are no-ops (sf=2.0's effective_max is 7, so abort@7 never fires)
+**Why:** Complete abort sweep shows the `is_bust` flag in the backtester includes aborts by definition (see F15/F18), so any policy that fires aborts will mechanically raise "bust_rate". The correct objectives are (1) total dollar loss and (2) count of max_level_bust events specifically. Both favor K=1 strongly. Policy B (K=6) is only justified if operational/regime-learning reasons require more session continuity than K=1 permits.
 
 ---
 
@@ -60,22 +60,28 @@ Format:
 **Source:** `05_market_structure/02_margin_consumption_rate.py`, `02_bust_anatomy/03_bust_path_patterns.py`
 **Before:** Session danger gauge uses level count as primary signal
 **After:** Use two signals simultaneously:
-  1. Level count ≥ 4 → yellow (elevated)
+  1. Level count ≥ (effective_max − 2) → yellow (elevated)
   2. Equity-per-leg-pct > 3% → orange (high)
-  3. Both level ≥ 5 AND equity-per-leg > 5% → red (abort territory)
-**Why:** All busts are at exactly level 6 with 7 trades and std=0 — the level count signal is nearly deterministic. Adding equity-per-leg as a secondary signal provides earlier warning at levels 4-5 where the path to bust is still reversible.
+  3. Both level ≥ (effective_max − 1) AND equity-per-leg > 5% → red (abort territory)
+
+Concrete thresholds for the canonical live config (sf=2.0, ml=6, effective_max=6):
+  - Level ≥ 4 → yellow; level ≥ 5 + high margin rate → red
+
+**Why:** In the bust-anatomy dataset (ml=8 override), all 60 busts terminated at level 6 with 7 trades and std=0 — bust depth is deterministic given sf. For canonical ml=6, busts terminate at level 5/6 (the effective_max). The level-count signal is nearly deterministic once bust trajectory begins. Adding equity-per-leg as a secondary signal provides earlier warning during the adverse run before the final bust level is reached (Finding 7: bust sessions consume 8.4× more equity per leg than wins).
 
 ---
 
 ## IslandPilot — N-to-1 aware safe region in (sf, ml) space
-**Source:** `01_finite_capital/01_n_to_1_ratio.py`, `01_finite_capital/02_break_even_formula.py`
+**Source:** `01_finite_capital/01_n_to_1_ratio.py`, `01_finite_capital/02_break_even_formula.py`, `07_hp_interactions/01_sizing_x_levels.py`
 **Before:** sf and ml evolved with independent bounds
-**After:** Add feasibility filter: reject any (sf, ml) individual where avg_win ≤ 0 (i.e., where N=nan). From the complete heatmap:
-- sf ≤ 1.3: max_levels ≤ 4 (avg_win turns 0 at ml=5)
-- sf ≤ 1.5: max_levels ≤ 5 (avg_win turns 0 at ml=6)
-- sf = 2.0: max_levels ≤ 8 (avg_win positive throughout, min $0.60)
-- sf ≥ 2.5: max_levels ≤ 5 (level capping anomaly — ml>5 gives no extra recovery)
-**Why:** The complete N-to-1 heatmap shows that the "feasible" region is a non-rectangular diagonal band. The current rectangular bounds (sf ∈ [1.3, 3.0] × ml ∈ [3, 8]) include many configurations where avg_win ≤ 0 (structurally impossible to profit). Filtering these reduces search space and avoids degenerate solutions.
+**After:** Add two filters jointly: (a) avg_win > 0 (reject N=nan configs) and (b) configured ml ≤ effective_max(sf) to avoid wasted depth. Combined bounds:
+- sf=1.3: max_levels ≤ 4 (avg_win turns 0 at ml=5)
+- sf=1.5: max_levels ≤ 5 (avg_win turns 0 at ml=6)
+- sf=1.7: max_levels ≤ 5 (by similar logic — conservative reading)
+- sf=2.0: max_levels ≤ 7 (effective_max cap; avg_win positive up to this point)
+- sf=2.5: max_levels ≤ 6 (effective_max cap; any ml>6 wasted)
+- sf=3.0: max_levels ≤ 5 (effective_max cap; any ml>5 wasted)
+**Why:** The complete N-to-1 heatmap shows the feasible region is a non-rectangular diagonal band. Existing rectangular bounds (sf ∈ [1.3, 3.0] × ml ∈ [3, 8]) include configurations that are either (a) structurally unprofitable because avg_win ≤ 0, or (b) waste optimizer effort because ml > effective_max silently collapses to effective_max. Enforcing both filters eliminates degenerate individuals from the search space.
 
 ## Live Trading Position Sizing — minimum equity $5k for OANDA
 **Source:** `08_broker_mechanics/01_lot_rounding.py`
@@ -93,11 +99,15 @@ Format:
 - sf=3.0: effective_max ≈ 5 (configured ml≥6 behaves as ml=5)
 **Why:** Without this constraint, the optimizer believes it's exploring higher max_levels territory when it's actually constrained to lower effective levels. Parameter estimates become unreliable and the evolved hp doesn't reflect actual behavior.
 
-## IslandPilot — minimize sf for risk reduction (inverted from prior intuition)
+## IslandPilot — minimize sf for total-loss reduction (inverted from prior intuition)
 **Source:** `07_hp_interactions/01_sizing_x_levels.py` (Finding 20)
 **Before:** sf treated as "aggressive vs conservative" knob, often biased toward moderate values (2.0)
-**After:** Bias sf toward LOW values (1.3-1.5) unless avg_win per session is a critical objective
-**Why:** Bust_rate is sf-invariant (Finding 15b) but total realized loss scales 2-3x with sf. At ml=5: sf=1.3 loses $2,968 vs sf=3.0 loses $8,877 over 18 years for identical bust frequency. Low sf is dominated-free on the risk dimension. The only argument for higher sf is per-session avg_win (sf=2.0: $0.60 vs sf=1.3: $0.71 — actually lower too). sf=1.3 ml=3 is the Pareto-optimal starting point for any pipeline search.
+**After:** Bias sf toward LOW values (1.3-1.5) when minimizing total dollar loss is the objective.
+**Why:** Bust_rate is sf-invariant at each fixed ml (Finding 15b), but total realized loss scales 2-3x with sf. At ml=5: sf=1.3 loses $2,968 vs sf=3.0 loses $8,877 over 18 years for identical bust frequency. Low sf is dominance-free on the risk dimension.
+
+**Caveat on avg_win interpretation:** At fixed ml, HIGHER sf produces HIGHER avg_win per session (larger position sizes → larger realized dollar wins). For ml=3: sf=1.3 → $0.71, sf=2.0 → $1.38, sf=3.0 → $2.56. However, at fixed ml, higher sf also produces proportionally larger avg_bust — and over 18 years, the bust-loss term dominates. Hence despite higher per-session avg_win, total cumulative PnL is worse at higher sf. The "best avg_win" and "best total PnL" criteria pick different sf values; total PnL is the correct criterion when evaluating long-run performance.
+
+sf=1.3 ml=3 is the Pareto-optimal starting point by **total_pnl** (−$2,438 over 18 years), though sf=2.0 ml=3 yields higher per-session avg_win ($1.38 vs $0.71) at the cost of 40% more total loss.
 
 ## IslandPilot — max_levels hard cap at 5 for sf=2.0 (revised from prior cap of 6)
 **Source:** `01_finite_capital/01_n_to_1_ratio.py` (complete), `01_finite_capital/02_break_even_formula.py`

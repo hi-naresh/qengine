@@ -23,7 +23,7 @@ Detail (ml=8 configuration):
 
 Both configurations confirm negative EV. The ml=8 override was used in bust-anatomy scripts to obtain a larger bust sample for path analysis; canonical ml=6 has only 100 busts over 18 years vs ml=8's 60 busts — both suffice, but the margin-of-safety numbers differ slightly.
 
-**Note on sample size:** With only 60 busts over 18 years, the 95% CI on win_rate spans roughly ±0.4pp. Margin of safety −1.2pp exceeds 3× this CI width, supporting the claim of genuine negative EV rather than sampling noise.
+**Note on sample size:** For p=0.9841 over n=3,771 sessions, the binomial standard error is SE≈0.20pp, giving a 95% margin of error of ±0.40pp (full 95% CI width ≈ 0.8pp). The margin of safety (−1.17pp) is **5.7σ below the break-even win rate** — statistically robust as negative EV, not sampling noise. (Testing H0: p_true ≥ 0.9958: z = (0.9841 − 0.9958)/0.00204 = −5.74.)
 
 **Why novel:** Academic papers on grid Martingale acknowledge the N-to-1 asymmetry as "a known risk" but never compute the break-even win rate for realistic parameters + spread. This shows that even a well-parameterized strategy with a 2-pip realistic spread is structurally losing — the win rate required to be break-even is unachievable in practice.
 
@@ -115,7 +115,11 @@ Best (least bad):
 
 For sf≤1.5 at ml≥6: p_min > 1.0 (literally requires >100% win rate — mathematically impossible).
 
-**Sample-size caveat:** bust counts per config range from 33 (sf≤1.5 at ml=8) to 765 (ml=3). At low bust counts, win_rate CI is wider. For configs with ≥100 busts, the 95% CI on win_rate is approximately ±0.5pp or tighter; margins of safety of ±1pp exceed this threshold. For the marginal configs (best-case −0.011), the margin is within the CI width — so we cannot rule out viability at those specific points with 18 years of data alone. The **directional conclusion (all configs below break-even in this dataset) is robust**; individual marginal cases should be treated as "not positively confirmed profitable" rather than "proven infeasible."
+**Sample-size caveat:** bust counts per config range from 33 (sf≤1.5 at ml=8) to 765 (ml=3). For large configs (ml=3, 765 busts), SE ≈ 0.055pp — margins of −6pp+ are >100σ, unambiguous. For the marginal configs:
+- sf=2.5 ml=6: p=0.9743, n=3885, SE ≈ 0.254pp, 95% margin of error ±0.5pp. Margin of safety −1.08pp = **−4.3σ** (robust below break-even).
+- sf=2.0 ml=8: p=0.9841, n=3771, SE ≈ 0.204pp. Margin of safety −1.17pp = **−5.7σ** (robust).
+
+Every config tested rejects the break-even hypothesis at >2σ, and most at >4σ. The **directional conclusion (all configs below break-even in this dataset) is statistically robust**, not a sampling artifact. The caveat remains that our observed win rate is the population estimate for this specific 18-year window — a different historical slice (or a prospective live deployment) could realize different p_true values. The claim should be read as "empirically negative EV in 2006-2024 EUR-USD", not "mathematically proven infeasible in all possible markets."
 
 **Why novel:** The implicit assumption in Martingale optimization literature is that there EXISTS a valid parameter set that produces positive EV. This finding shows that with 2-pip spread (realistic OANDA EUR-USD), **no static HP configuration produces positive EV over the 18-year EUR-USD dataset**. The parameter space has no clear feasible region in the tested grid. The only paths to profitability are: (1) spread below ~0.5 pip, (2) directional entry edge >2 pip at level 0, or (3) dynamic HP conditioned on regime. This makes the strategy a pure pipeline design problem: a static parameter set cannot be reliably profitable, so the value proposition is the adaptive selection of configurations.
 
@@ -143,9 +147,11 @@ For sf≤1.5 at ml≥6: p_min > 1.0 (literally requires >100% win rate — mathe
 
 All 36 configs have NEGATIVE total PnL. Ratio of worst-to-best sf at each ml: ~2-3x. Lower sf produces smaller individual bust magnitudes, yielding less total loss over the same number of bust events.
 
-**Why novel:** The Martingale literature treats high sf as aggressive/risky and low sf as conservative. This finding inverts the optimization: **sf should be MINIMIZED, not maximized, for total-loss reduction**. Since bust_rate is independent of sf, there is no compensating benefit from larger sf values — they only amplify loss magnitudes. The "aggressive vs conservative sf" framing is misleading; all sf values have identical bust frequency but different loss scales.
+**Why novel:** The Martingale literature treats high sf as aggressive/risky and low sf as conservative. This finding partially inverts the optimization: for **total dollar loss**, sf should be MINIMIZED, not maximized. Since bust_rate is independent of sf (Finding 15b), higher sf provides no compensating benefit on bust frequency — it only amplifies loss magnitudes.
 
-**Pipeline implication:** IslandPilot should bias sf toward the low end (1.3-1.5) when selecting from the feasible region. The only argument for higher sf is larger avg_win per session — but the N-to-1 heatmap shows sf=1.3 at ml=3 achieves N=9.4 (best in class), making it the Pareto-optimal starting point for any viable-EV search.
+**Important caveat on avg_win:** At fixed ml, HIGHER sf gives HIGHER avg_win per session (bigger positions → bigger realized wins). Example at ml=3: sf=1.3 avg_win = $0.71, sf=2.0 avg_win = $1.38, sf=3.0 avg_win = $2.56. The reason total_pnl still favors low sf is that at fixed ml, higher sf also gives proportionally larger avg_bust, and the bust term dominates over 18 years. So "minimize sf" is specifically an *total-loss* optimization — it maximizes number-of-wins-per-bust but sacrifices per-win dollar magnitude.
+
+**Pipeline implication:** IslandPilot should bias sf toward the low end (1.3-1.5) when long-run dollar P&L is the fitness criterion. sf=1.3 ml=3 yields best total P&L (−$2,438 over 18y); sf=2.0 ml=3 gives higher per-session avg_win ($1.38) but 42% worse total P&L (−$3,461). The correct choice depends on which objective the pipeline is optimizing.
 
 ---
 
@@ -166,23 +172,23 @@ The N-to-1 heatmap confirms: identical N values for sf=2.5 at ml=6/8, and for sf
 
 ---
 
-## Finding 15b: Bust rate is purely a function of max_levels — sizing_factor has zero effect
+## Finding 15b: Bust rate is purely a function of effective_max_levels — sizing_factor has zero effect
 **Source:** `07_hp_interactions/01_sizing_x_levels.py` (complete: 36 configs, 18yr backtest)
 
-**What:** Complete sizing×levels sweep confirms the bust_rate pattern is PERFECTLY UNIFORM across all sf values at each ml level. Key values (all sf: 1.3, 1.5, 1.7, 2.0, 2.5, 3.0 produce identical bust_rates):
+**What:** Complete sizing×levels sweep (bust_rate as a function of configured ml, per sf value):
 
-| ml | bust_rate | note |
-|----|-----------|------|
-| 3  | 0.1698 | uniform across ALL sf |
-| 4  | 0.0957 | uniform across ALL sf |
-| 5  | 0.0569 | uniform across ALL sf |
-| 6  | 0.0257 | uniform for sf≤2.0; sf≥2.5 caps here |
-| 7  | 0.0159 | sf≤2.0 only; sf=2.5 still 0.0257 |
-| 8  | 0.0088 | sf≤1.7; sf=2.0 still 0.0159 |
+| configured ml | sf=1.3,1.5,1.7 | sf=2.0 | sf=2.5 | sf=3.0 |
+|---------------|----------------|--------|--------|--------|
+| 3 | 0.1698 | 0.1698 | 0.1698 | 0.1698 |
+| 4 | 0.0957 | 0.0957 | 0.0957 | 0.0957 |
+| 5 | 0.0569 | 0.0569 | 0.0569 | 0.0569 |
+| 6 | 0.0257 | 0.0257 | 0.0257 | **0.0569** (capped from ml=5) |
+| 7 | 0.0159 | 0.0159 | **0.0257** (capped from ml=6) | **0.0569** |
+| 8 | 0.0088 | **0.0159** (capped from ml=7) | **0.0257** | **0.0569** |
 
-Exception for high sf: bust_rate plateaus at the effective_max level (not the configured ml), due to the pre-session margin affordability cap (Finding 19). Within the achievable level range, sf still has zero effect on bust_rate.
+Bolded cells are where configured ml exceeds effective_max — bust_rate plateaus at the effective_max value. Observed effective_max thresholds: sf≤1.7 → effective_max=configured (margin not binding in this range); sf=2.0 → ~7; sf=2.5 → ~6; sf=3.0 → ~5. **Within each sf's achievable range, bust_rate is identical across ALL sf values at each ml level** — sf has zero effect on bust probability once the effective_max cap is respected.
 
-**Why novel:** All HP interaction research assumes sf and ml jointly determine risk. This finding proves bust_rate is univariate in effective_max_levels (given fixed hedge distance). Adjusting sf is irrelevant for bust frequency management — the only lever is max_levels or hedge_distance. This has critical implications for ARIA: danger scoring that incorporates sizing_factor as a bust_rate predictor is adding noise, not signal.
+**Why novel:** All HP interaction research assumes sf and ml jointly determine risk. This finding proves bust_rate is univariate in effective_max_levels (given fixed hedge distance). Adjusting sf is irrelevant for bust frequency management — the only lever is effective_max_levels (itself a function of sf, equity, leverage, base_pct) or hedge_distance. This has critical implications for ARIA: danger scoring that incorporates sizing_factor as a bust_rate predictor is adding noise, not signal.
 
 ---
 
@@ -219,9 +225,16 @@ Moving from 5 to 40 pips: **bust_rate drops 7.3× (0.125 → 0.017)**. avg_win f
 
 More levels allowed → fewer max_level_busts. The mechanism: cycles that would terminate as bust at max_levels=3 can continue and recover if ml=4 or 5 is allowed.
 
-**Definitional note:** A "bust" is defined as *reaching max_levels without TP*. Raising ml mechanically moves the threshold deeper, so fewer cycles qualify — this is partly definitional. The **non-trivial part** is the *rate* of decrease: bust_rate drops approximately 2x per added level (sf=1.3: 0.170 → 0.096 → 0.057 → 0.026 → 0.016 → 0.009 is close to halving each step). This empirical decay rate is what's novel, not the direction.
+**Definitional note:** A "bust" is defined as *reaching max_levels without TP*. Raising ml mechanically moves the threshold deeper, so fewer cycles qualify — this is partly definitional. The **non-trivial part** is the *rate* of decrease. Per-step ratios from sf=1.3 data (bust_rate_prev / bust_rate_next):
+- ml=3→4: 0.170/0.096 = 1.77
+- ml=4→5: 0.096/0.057 = 1.68
+- ml=5→6: 0.057/0.026 = 2.19
+- ml=6→7: 0.026/0.016 = 1.63
+- ml=7→8: 0.016/0.009 = 1.78
 
-**Why novel:** Authors often assume "more levels = more risk" without quantifying the frequency/magnitude tradeoff. This empirical finding quantifies it: **approximately halving bust frequency per added level**, while bust magnitude scales super-linearly (see Finding 20 for the dollar consequence). ml is a "bust frequency vs magnitude" tradeoff whose two sides don't optimize jointly.
+Geometric mean ≈ **1.80× reduction per added level**. This empirical decay rate is what's novel — not exactly halving, but close to it.
+
+**Why novel:** Authors often assume "more levels = more risk" without quantifying the frequency/magnitude tradeoff. This empirical finding quantifies it: **bust frequency falls ~1.8× per added level**, while bust magnitude scales super-linearly with sf (see Finding 20). ml is a "bust frequency vs magnitude" tradeoff whose two sides don't optimize jointly.
 
 ---
 
@@ -309,34 +322,41 @@ The "safe zone" is TP ≈ hedge (degenerate), but that also has poor PnL.
 
 ---
 
-## Finding 15/18 (merged): Optimal abort is K=1 by total loss; aborts do not reduce bust_rate
+## Finding 15/18 (merged): Optimal abort is K=1 by total loss; "bust_rate" is the wrong optimization target when aborts are enabled
 **Source:** `06_abort_theory/01_abort_vs_no_abort.py` (complete sweep K=0..8, sf=2.0, ml=8)
 
 **What:** Full abort sweep results (18-year backtest, sf=2.0, ml=8):
 
-| K | total_pnl | n_busts | bust_rate | aborts | Δ bust_rate vs baseline |
-|---|-----------|---------|-----------|--------|--------------------------|
-| 0 (baseline) | $−6,406 | 60 | 0.0159 | 0 | — |
-| 1 | $−3,475 | 4,239 | 0.5323 | 4,238 | **+33.5× higher** |
-| 2 | $−3,982 | 1,598 | 0.3020 | 1,597 | +19× |
-| 3 | $−4,430 | 738 | 0.1635 | 737 | +10× |
-| 4 | $−4,963 | 375 | 0.0900 | 374 | +5.7× |
-| 5 | $−5,618 | 191 | 0.0479 | 189 | +3.0× |
-| 6 | $−5,677 | 93 | 0.0242 | 90 | **+1.5× (still higher than baseline)** |
-| 7 (no-op) | $−6,406 | 60 | 0.0159 | 0 | 0× |
-| 8 (no-op) | $−6,406 | 60 | 0.0159 | 0 | 0× |
+| K | total_pnl | n_busts (is_bust=True) | bust_rate | aborts |
+|---|-----------|---------|-----------|--------|
+| 0 (baseline) | $−6,406 | 60 | 0.0159 | 0 |
+| 1 | $−3,475 | 4,239 | 0.5323 | 4,238 |
+| 2 | $−3,982 | 1,598 | 0.3020 | 1,597 |
+| 3 | $−4,430 | 738 | 0.1635 | 737 |
+| 4 | $−4,963 | 375 | 0.0900 | 374 |
+| 5 | $−5,618 | 191 | 0.0479 | 189 |
+| 6 | $−5,677 | 93 | 0.0242 | 90 |
+| 7 (no-op) | $−6,406 | 60 | 0.0159 | 0 |
+| 8 (no-op) | $−6,406 | 60 | 0.0159 | 0 |
+
+**Critical definitional point:** The `is_bust` flag in `sessions_to_df` includes any outcome in `{abort, terminate, max_level_bust, sl_hit, margin_call, margin_bust, max_level_sl}`. **Aborts are counted as busts by definition.** This is why n_busts at K=1 (4,239) ≈ n_aborts at K=1 (4,238) plus the 1 remaining true max_level_bust. The reported "bust_rate" under active aborts therefore conflates (a) catastrophic multi-level losses with (b) controlled early exits. The two are economically opposite — catastrophic busts average $−144, while K=1 aborts average ~$−0.40 each.
 
 **Two genuinely novel, non-trivial results:**
 
 **(a) PnL-optimal K=1, monotone decreasing in K:** total_pnl improves by 46% at K=1 vs baseline ($−6,406 → $−3,475). Every step earlier in K is better by total PnL. When EV is universally negative (Finding 7b), aborting as early as possible minimizes total loss because every session that "recovers" still has negative expected contribution.
 
-**(b) Active aborts do NOT reduce bust_rate — they raise it.** This contradicts the intuition that aborts prevent busts. At K=6, bust_rate is 0.0242 vs baseline 0.0159 — a 1.5× increase despite 90 aborts being executed. At K=1, bust_rate is 33.5× higher. The mechanism: an abort ends a session early; in the original analysis, each of those aborts is counted as a session outcome, and the downstream candles produce additional sessions that themselves can bust. Earlier abort → more sessions per 18 years → more bust events per bust opportunity. **K=7 "minimizing" bust_rate is degenerate** (K=7 is a no-op because max bust level for sf=2.0 is 6).
+**(b) `bust_rate` as an optimization metric is misleading once aborts are enabled.** Because aborts increment the "bust" counter by definition, enabling abort policy mechanically raises bust_rate — this does not represent an increase in catastrophic risk. If we separate the two populations:
+- **Catastrophic busts (max_level_bust only):** K=0→60, K=6→3, K=1→1. This number decreases monotonically with earlier abort, as intuition predicts.
+- **Total "is_bust" (includes aborts):** K=0→60, K=6→93, K=1→4,239. This rises because the definition absorbs every abort.
 
-**Why novel:** Every published study on abort thresholds minimizes bust rate as the primary objective, implicitly assuming aborts reduce bust frequency. This finding shows the opposite: **active aborts increase bust rate** (by raising session throughput), and the only correct objective for negative-EV strategies is total dollar loss. Bust rate is the wrong metric.
+**K=7 appearing as "bust-rate-optimal" is a degenerate artifact** (K=7 is a no-op because sf=2.0's effective_max is ~7, so abort@7 never fires). Taking bust_rate as the objective picks the policy that does nothing, not the policy that reduces catastrophic risk.
+
+**Why novel:** Martingale abort literature minimizes "bust rate" as the primary objective, implicitly assuming the metric captures catastrophic risk. This finding shows that when the tooling counts abort events in the bust_rate numerator, the metric ceases to correspond to catastrophic risk at all. The correct objectives are (1) total dollar loss and/or (2) count of max_level_bust events specifically, not the aggregated "is_bust" flag.
 
 **Multiple K optima for different objectives:**
-- Minimize total dollar loss → **K=1** ($−3,475)
-- Preserve session continuity while eliminating level-6 busts → K=6 ($−5,677, only 3 catastrophic busts remain)
-- Keep baseline unchanged → K≥7 (no-op at sf=2.0)
+- Minimize total dollar loss → **K=1** ($−3,475 total, 1 catastrophic bust)
+- Minimize catastrophic bust count specifically → K=1 also minimizes this (1 vs 60 baseline)
+- Minimize abort churn (preserve session continuity) → K=6 ($−5,677, 3 catastrophic busts remain, only 90 aborts)
+- "Keep baseline unchanged" → K≥7 (no-op at sf=2.0)
 
-**Pipeline implication:** ARIA danger threshold should be K=1 (abort at first significant adverse move) if the cost model is realistic. The grid recovery mechanism adds no positive value with 2-pip spread — it only delays and compounds the inevitable loss. If the pipeline requires some session continuity for other reasons (e.g., regime learning), K=6 is the weakest-impact compromise.
+**Pipeline implication:** ARIA should not use a "bust_rate" metric that aggregates aborts with max_level_busts. Separate tracking is required: `catastrophic_bust_rate` (max_level_bust only) as the danger-signal objective, and `abort_rate` as an operational cost to be minimized subject to that constraint. With 2-pip realistic spread the grid recovery mechanism adds no positive value — K=1 (abort at first significant adverse move) dominates on both catastrophic-bust and total-loss metrics.

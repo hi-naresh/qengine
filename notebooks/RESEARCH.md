@@ -9,19 +9,19 @@ Research program studying each aspect of the Surefire Hedge strategy in isolatio
 ## Executive Summary (2026-04-22)
 
 ### The Core Finding
-**No static HP configuration produces positive EV with 2-pip spread.** Break-even win rate (99.58%) exceeds empirical win rate (98.41%) for canonical HP. 0/25 tested configurations across (sf, ml) space are viable. The parameter space has no feasible region for a random-signal strategy at OANDA EUR-USD spreads.
+**No static HP configuration produces positive EV in 2006-2024 EUR-USD at 2-pip spread.** Break-even win rate (99.58% for sf=2.0/ml=8, 98.98% for canonical sf=2.0/ml=6) exceeds empirical win rate (98.41% / 97.43% respectively). All 25 tested configurations across (sf, ml) space have negative margin of safety; the least marginal configs are statistically >4σ below break-even. The tested parameter space has no observed feasible region.
 
-**What this means for pipelines:** The strategy value proposition is entirely in *adaptive HP selection*, not the static mechanical grid. IslandPilot's role is not optimization but regime-conditional adaptation — selecting configurations whose break-even threshold is achievable in the current market structure.
+**What this means for pipelines:** The strategy's value proposition depends on *adaptive HP selection* or on a directional entry edge that adds ≥2pp to the level-0 win rate. IslandPilot's role is regime-conditional adaptation — selecting configurations (and/or entry filters) whose break-even threshold is achievable in the current market structure.
 
 ### Top 5 Novel Findings
 
-1. **N-to-1 bifurcation at ml=5-6**: avg_win turns negative for sf≤1.5 at ml≥6 (spread erodes all win value). Range: N=7.4 to 4827 across the HP space. sf=2.0 is the only value with positive avg_win at all 5 tested ml points.
+1. **N-to-1 bifurcation at ml=5-6**: avg_win turns negative for sf≤1.5 at ml≥6 (spread erodes all win value). Range: N=7.4 to 4827 across the HP space. sf=2.0 is the only value with positive avg_win at all 5 tested ml points (ml=7 not directly tested).
 
-2. **Bust rate is sizing-factor-independent**: At each ml value, bust_rate is identical for all sf values (1.3 through 3.0). Only max_levels and hedge_distance determine bust probability. Adjusting sf is irrelevant for bust risk management.
+2. **Bust rate is sizing-factor-independent**: At each ml value within effective_max, bust_rate is identical for all sf values. Only effective_max_levels and hedge_distance determine bust probability. Adjusting sf is irrelevant for bust frequency.
 
-3. **Configured max_levels ≠ effective max_levels for high sf**: The strategy applies `effective_max = min(configured, affordable)` at session start. sf=2.5 caps at effective ~6, sf=3.0 at ~5, regardless of configured value. Pipeline parameters silently become incorrect.
+3. **Configured max_levels ≠ effective max_levels for high sf**: The strategy applies `effective_max = min(configured, affordable)` at session start. sf=2.0→7, sf=2.5→6, sf=3.0→5. Pipelines specifying max_levels independently of sf silently sample a smaller space than configured.
 
-4. **Active aborts RAISE bust_rate, not lower it — K=1 is total-loss optimal**: Every active abort level (K=1-6) has higher bust_rate than baseline because aborts increase session throughput. K=1 cuts total loss by 46% despite 33.5× bust_rate increase. K=7 is a degenerate no-op. Bust rate is the wrong optimization objective when strategy EV is negative.
+4. **`bust_rate` metric conflates aborts with catastrophic busts — K=1 is total-loss optimal**: `is_bust` in the backtester includes any terminal outcome (abort, max_level_bust, sl_hit, etc.). Active abort policies mechanically raise bust_rate by definition. The correct objectives are total dollar loss and max_level_bust count separately; both favor K=1 strongly.
 
 5. **Lot rounding imposes $5k minimum equity (live only)**: At $1k equity, OANDA integer unit rounding causes 10% position sizing error. At $5k+, this falls below 1.2%. In simulation this effect is absent (fractional units).
 
