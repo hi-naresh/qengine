@@ -4,13 +4,14 @@ Results that extend or contradict established facts in `../facts.md`. Each entry
 
 ## Methodology: Spread Model
 
-**Empirical backtests** (all findings derived from `run_backtest()`): the CFDExchange model queries real per-candle OANDA bid/ask spread from the database on every trade. Verified via `spread_data.stats()`: hit_rate=100% on the 2006-2024 EUR-USD dataset. Real-spread statistics (2020 reference sample):
-- mean **1.53 pips**, median **1.4 pips**, p25 **1.2 pips**, p75 **1.5 pips**, p95 **2.2 pips**
-- range 1.0 – 10 pips (rollover/news windows spike up to 10 pips)
+**Empirical backtests** (all findings derived from `run_backtest()`): the CFDExchange model queries real per-candle OANDA bid/ask spread from the database on every trade. Verified via `spread_data.stats()`: hit_rate=100% on the 2006-2024 EUR-USD dataset (1,831,333 candles). Real-spread statistics over the full 18-year research window (2006-2024):
+- mean **1.57 pips**, median **1.50 pips**
+- p25 **1.40 pips**, p75 **1.60 pips**, p95 **1.90 pips**
+- range 1.0 – 10 pips (rollover/news windows spike up to 10 pips, but 95% of candles are ≤ 1.9 pips)
 
 **Analytical / cost-model scripts** (`04_cost_model/*.py`, `08_broker_mechanics/02_margin_closeout_model.py`): hard-code `SPREAD_PIPS=2.0` for illustrative calculations. These are theoretical projections, not backtests — their "2-pip" assumption does not propagate into the empirical findings.
 
-**Implication for findings:** All `avg_win`, `avg_bust`, `bust_rate`, `margin_of_safety`, and `total_pnl` values reflect behavior under **real broker spread** (mean ~1.5 pips), not a fictitious 2-pip fixed. Previous drafts of this document incorrectly labeled empirical results as "at 2-pip spread" — that label was wrong; the numbers are from real-spread runs.
+**Implication for findings:** All `avg_win`, `avg_bust`, `bust_rate`, `margin_of_safety`, and `total_pnl` values reflect behavior under **real broker spread** (mean ~1.57 pips, tightly distributed), not a fictitious 2-pip fixed. Previous drafts of this document incorrectly labeled empirical results as "at 2-pip spread" — that label was wrong; the numbers are from real-spread runs. Note the 2-pip assumption commonly used in academic grid-Martingale studies is ~27% more pessimistic than the real OANDA spread; the strategy's negative-EV conclusion holds even under this more favorable real regime.
 
 ---
 
@@ -303,7 +304,7 @@ Two distinct failure modes:
 
 The "safe zone" is TP ≈ hedge (degenerate), but that also has poor PnL.
 
-**Why novel:** All literature assumes TP > hedge is "better." This finding shows TP > hedge monotonically increases bust_rate. The optimal configuration depends on the spread-to-TP overhead ratio, not just the TP/hedge ratio alone. For 2-pip spread, the minimum viable TP is approximately 15-20 pips regardless of hedge distance.
+**Why novel:** All literature assumes TP > hedge is "better." This finding shows TP > hedge monotonically increases bust_rate. The optimal configuration depends on the spread-to-TP overhead ratio, not just the TP/hedge ratio alone. Under real OANDA spread (~1.5 pips mean), the minimum viable TP is approximately 15-20 pips regardless of hedge distance.
 
 ---
 
@@ -380,4 +381,4 @@ The "safe zone" is TP ≈ hedge (degenerate), but that also has poor PnL.
 - Minimize abort churn (preserve session continuity) → K=6 ($−5,677, 3 catastrophic busts remain, only 90 aborts)
 - "Keep baseline unchanged" → K≥7 (no-op at sf=2.0)
 
-**Pipeline implication:** ARIA should not use a "bust_rate" metric that aggregates aborts with max_level_busts. Separate tracking is required: `catastrophic_bust_rate` (max_level_bust only) as the danger-signal objective, and `abort_rate` as an operational cost to be minimized subject to that constraint. With 2-pip realistic spread the grid recovery mechanism adds no positive value — K=1 (abort at first significant adverse move) dominates on both catastrophic-bust and total-loss metrics.
+**Pipeline implication:** ARIA should not use a "bust_rate" metric that aggregates aborts with max_level_busts. Separate tracking is required: `catastrophic_bust_rate` (max_level_bust only) as the danger-signal objective, and `abort_rate` as an operational cost to be minimized subject to that constraint. Under real OANDA spread the grid recovery mechanism adds no positive value — K=1 (abort at first significant adverse move) dominates on both catastrophic-bust and total-loss metrics.

@@ -25,7 +25,7 @@ The script approximates partial-abort EV using a simplified model: `EV_partial_k
 2. The 0.7× factor on avg_bust is a rough assumption about how much bust magnitude is saved by closing inner legs.
 3. Full simulation would require engine support for mid-session ticket selection, which is available in CFD mode (via `close_ticket(id, price)`) but was not exercised in this analysis.
 
-**Status:** heuristic indicates partial abort is likely not viable at current spreads. To be confirmed with a full backtest variant. A necessary (not sufficient) condition for partial abort to become viable: avg_win would need to be roughly >$1.50, which does not occur at any tested (sf, ml) in the current grid for spread=2 pips.
+**Status:** heuristic indicates partial abort is likely not viable at the current real-spread regime (~1.5 pips mean OANDA EUR-USD). To be confirmed with a full backtest variant. A necessary (not sufficient) condition for partial abort to become viable: avg_win would need to be roughly >$1.50, which does not occur at any tested (sf, ml) in the current grid under real broker spread.
 
 ---
 
@@ -40,14 +40,14 @@ The N-to-1 ratio was computed over the full 18-year dataset. In volatile regimes
 
 ---
 
-## Q4: What is the minimum spread at which the strategy becomes positive EV?
-**From:** Findings 1, 7b, 14 (structural negative EV at 2-pip spread across all tested HP)
+## Q4: What fixed-spread floor would the strategy need to become positive EV?
+**From:** Findings 1, 7b, 14 (structural negative EV under real OANDA spread, mean ~1.5 pips)
 
-The analysis was conducted at 2-pip spread. The break-even spread (where avg_win_after_spread > 0) is a function of (sf, ml, hedge, tp). Computing this empirically would give a "minimum broker quality" requirement.
+The empirical analysis uses real per-candle OANDA spread (2006-2024 full-range: mean 1.57, median 1.50, p95 1.90 pips). Under this regime, 0/25 tested configs are viable. An open question: at what *fixed* spread floor (or different broker with tighter spread) would the system cross from negative to positive EV?
 
-**Why it matters:** The spread threshold identifies which brokers can support this strategy. A 1-pip broker might change the entire picture.
+**Why it matters:** The spread threshold identifies which broker environments can support this strategy. A broker offering mean spread <0.5 pips (rare for retail OANDA-class, but available at some institutional venues) might change the picture.
 
-**Approach:** Rerun canonical HP backtest at spreads 0, 0.5, 1, 1.5, 2, 2.5, 3 pips. Find the spread where avg_win = 0 and where the system crosses from negative to positive EV. Note: Q7 below overlaps — consolidating them is a to-do.
+**Approach:** Temporarily disable real-spread loading (clear `spread_data` before backtest) and sweep canonical HP at fixed spreads 0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5 pips. Find the threshold where avg_win becomes positive and where the best config crosses from negative to positive margin of safety. Note: Q7 below overlaps — consolidating them is a to-do.
 
 ---
 
@@ -78,15 +78,15 @@ where `p_abort(K) = ∑_{k=K}^{max} p_level_reach[k]`
 ---
 
 ## Q7: What is the minimum spread for positive EV given optimal HP?
-**From:** Findings 1, 5, 7b — all confirmed negative EV at 2-pip spread
+**From:** Findings 1, 5, 7b — all confirmed negative EV under real OANDA spread (mean ~1.5 pips)
 
-With 2-pip spread: 0/25 configs viable. The break-even spread is where avg_win_after_spread crosses zero for the best configuration (sf=2.0, ml=3: avg_win=1.38 before spread adjustment). Analytically, break-even spread s satisfies:
+Under real OANDA per-candle spread (2006-2024 mean 1.57 pips): 0/25 configs viable. The break-even spread is where avg_win_after_spread crosses zero for the best configuration (e.g. sf=2.0 ml=3 with current avg_win=$1.38). Analytically, break-even spread s satisfies:
 
 `avg_win(s) − 2s × pip_value × n_trades = 0`
 
-Empirically, this threshold should be found by re-running the canonical backtest at spreads: 0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0 pips.
+Empirically, this threshold should be found by loading the candles but clearing the real-spread store and forcing a fixed `spread` setting at: 0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75 pips.
 
-**Why it matters:** If a 1-pip spread (available at some brokers) makes sf=2.0, ml=3 viable, it changes the entire strategy value proposition for those broker environments.
+**Why it matters:** If a sub-1-pip spread (available at some institutional venues) makes sf=2.0 ml=3 viable, it changes the strategy value proposition for those broker environments. Note: overlaps with Q4 — they should be merged.
 
 ---
 

@@ -3,7 +3,7 @@
 Research program studying each aspect of the Surefire Hedge strategy in isolation to find novel insights not present in the academic literature.
 
 **Data:** OANDA EUR-USD 5m, 2006–2024 (18 years, ~2.1M candles)
-**Engine:** Real qengine backtester with **real per-candle OANDA bid/ask spread** (mean ~1.5 pips, median 1.4, p95 2.2; verified hit_rate=100% on the full dataset), 30:1 leverage, proportional sizing
+**Engine:** Real qengine backtester with **real per-candle OANDA bid/ask spread** (2006-2024 stats: mean 1.57, median 1.50, p25 1.40, p75 1.60, p95 1.90 pips; verified hit_rate=100% on the full dataset), 30:1 leverage, proportional sizing
 **Config:** Canonical HP = sf=2.0, ml=6, hedge=20, tp=20, random signal, 0.5% base size
 
 **Spread model note:** Empirical backtests use real per-candle broker spread via `qengine/services/spread_data.py` (loaded automatically during candle loading). Previous drafts of the findings labeled results as "at 2-pip spread" — that label was incorrect. The 2-pip assumption appears only in the analytical cost-model scripts (`04_cost_model/*.py`, `08_broker_mechanics/02_margin_closeout_model.py`), not in the empirical backtest-derived findings.
