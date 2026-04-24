@@ -20,6 +20,8 @@ Box, G. E. P., & Jenkins, G. M. (1976). *Time Series Analysis: Forecasting and C
 
 Bailey, D. H., Borwein, J. M., de Prado, M. L., & Zhu, Q. J. (2014). Pseudo-mathematics and financial charlatanism: The effects of backtest overfitting on out-of-sample performance. *Notices of the American Mathematical Society*, 61(5), 458--471.
 
+Bellman, R. E. (1957). *Dynamic Programming*. Princeton University Press.
+
 Bank for International Settlements (2022). *Triennial Central Bank Survey: OTC Foreign Exchange Turnover in April 2022*. Basel: BIS.
 
 Bollinger, J. (2002). *Bollinger on Bollinger Bands*. McGraw-Hill.
@@ -42,8 +44,6 @@ Dempster, M. A. H., & Jones, C. M. (2001). A real-time adaptive trading system u
 
 Di Matteo, T., Aste, T., & Dacorogna, M. M. (2005). Long-term memories of developed and emerging markets: Using the scaling analysis to characterize their stage of development. *Journal of Banking & Finance*, 29(4), 827--851.
 
-Ding, X., Liu, Z., & Liu, H. (2022). Financial market regime identification and forecasting: A survey. *IEEE Access*, 10, 111177--111203.
-
 Doob, J. L. (1953). *Stochastic Processes*. Wiley.
 
 Dreiss, B. (1995). The Choppiness Index. *Technical Analysis of Stocks & Commodities*, 13(11).
@@ -57,6 +57,8 @@ Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimate
 Goldberg, D. E. (1989). *Genetic Algorithms in Search, Optimization, and Machine Learning*. Addison-Wesley.
 
 Goldberg, D. E., & Deb, K. (1991). A comparative analysis of selection schemes used in genetic algorithms. *Foundations of Genetic Algorithms*, 1, 69--93.
+
+Goldberg, D. E., & Richardson, J. (1987). Genetic algorithms with sharing for multimodal function optimization. *Proceedings of the Second International Conference on Genetic Algorithms*, 41--49.
 
 Gopinathan, R., et al. (2024). Advanced HMM modelling with Gaussian mixtures for financial regime identification. *Applied Intelligence*, 54, 4789--4805.
 
@@ -98,7 +100,7 @@ Nystrup, P., Madsen, H., & Lindstrom, E. (2017). Long memory of financial time s
 
 Nystrup, P., Lindstrom, E., & Madsen, H. (2020). Learning hidden Markov models with persistent states by penalizing jumps. *Expert Systems with Applications*, 150, 113307.
 
-Palupi, I., et al. (2021). Hidden Markov Model for regime classification in financial markets. *Procedia Computer Science*, 179, 542--549.
+Palupi, I., Wahyudi, B. A., & Putra, A. P. (2021). Implementation of Hidden Markov Model (HMM) to predict financial market regime. *2021 9th International Conference on Information and Communication Technology (ICoICT)*, IEEE. DOI: 10.1109/ICoICT52021.2021.9527459.
 
 Rundo, F., Trenta, F., di Stallo, A. L., & Battiato, S. (2019). Grid trading system robot (GTSBot): A novel mathematical algorithm for trading FX market. *Applied Sciences*, 9(9), 1796. DOI: 10.3390/app9091796.
 
