@@ -183,7 +183,7 @@ gcloud compute ssh islandpilot-train --zone=europe-west2-b --tunnel-through-iap 
 ## Cheat sheet — monitor from local terminal
 From inside the VM, just run these directly:
 
-cd ~/qengine && QENGINE_TRAINING_MODE=1 ~/venv/bin/python3 -u -m pipelines._shared.IslandPilot.train --generations 20 --pop-size 10 --workers 0 --candles-file candles_oanda_eurusd_1m_2022_2024.npy
+cd ~/qengine && QENGINE_TRAINING_MODE=1 ~/venv/bin/python3 -u -m pipelines._shared.IslandPilot.train --generations 20 --pop-size 10 --workers 60 --candles-file candles_oanda_eurusd_1m_2022_2024.npy
 
 # Is training running?
 pgrep -af IslandPilot.train || echo 'NOT RUNNING'
