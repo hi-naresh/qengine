@@ -27,11 +27,11 @@ Format:
 
 ---
 
-## ARIA Danger Scoring — add margin consumption rate feature
+## ARIA Danger Scoring — add peak-equity-per-leg ratio feature
 **Source:** `05_market_structure/02_margin_consumption_rate.py`
 **Before:** ARIA uses price-based features (ATR, trend strength, level count)
-**After:** Add `equity_per_leg_pct` = (peak_equity_pct / levels) as a real-time danger feature
-**Why:** Bust sessions consume 9.05% equity per leg vs 1.08% for wins (8.4x ratio). This is calculable in real time during a session and provides an early warning signal before the bust is "confirmed." Threshold: equity_per_leg_pct > 3% → escalate danger score.
+**After:** Add `peak_equity_pct / trade_count` as a real-time danger feature (the session's peak drawdown normalized by number of legs opened so far).
+**Why:** Bust sessions exhibit a mean ratio of 9.05 vs 1.08 for winning sessions (8.4× differential; F7). The underlying peak drawdown is ~27× higher in busts (63% vs 2.3%), but the normalized ratio gives earlier signal because it rises as soon as each leg sees deeper unrealized losses. Threshold: ratio > 3 → escalate danger score.
 
 ---
 
@@ -68,7 +68,7 @@ Concrete thresholds for the canonical live config (sf=2.0, configured ml=6 → D
 For the bust-anatomy dataset (sf=2.0, configured ml=8, effective_max=7 → D=6):
   - Level ≥ 4 → yellow; level ≥ 5 + high margin rate → red
 
-**Why:** In the bust-anatomy dataset (ml=8 override), all 60 busts terminated at level 6 with 7 positions and std=0. For canonical ml=6, busts terminate at level 5. Bust depth is deterministic given sf and effective_max. The level-count signal is nearly deterministic once bust trajectory begins. Adding equity-per-leg as a secondary signal provides earlier warning during the adverse run before the final bust level is reached (Finding 7: bust sessions consume 8.4× more equity per leg than wins).
+**Why:** In the bust-anatomy dataset (ml=8 override), all 60 busts terminated at level 6 with 7 positions and std=0. For canonical ml=6, busts terminate at level 5. Bust depth is deterministic given sf and effective_max. The level-count signal is nearly deterministic once bust trajectory begins. Adding the peak-equity-per-leg ratio as a secondary signal provides earlier warning during the adverse run before the final bust level is reached (F7: bust sessions show 8.4× higher peak_equity_pct/trade_count than winning sessions).
 
 ---
 
@@ -93,8 +93,8 @@ For the bust-anatomy dataset (sf=2.0, configured ml=8, effective_max=7 → D=6):
 ## IslandPilot — effective_max_levels constraint for optimizer correctness
 **Source:** `strategies/_admin/Martingale/__init__.py` line 481, N-to-1 heatmap (Finding 19)
 **Before:** Pipeline evolves (sf, ml) pairs with configured max_levels as the binding parameter
-**After:** Add `_max_affordable_levels(sf, equity, leverage, base_pct)` check to IslandPilot individual evaluation. Reject or heavily penalize any individual where `effective_max < configured_max`. The lookup table from the research:
-- sf=1.5: effective_max = configured_max (no cap at standard equity)
+**After:** Add `_max_affordable_levels(sf, equity, leverage, base_pct)` check to IslandPilot individual evaluation. Reject or heavily penalize any individual where `effective_max < configured_max`. The empirically-observed thresholds at $10k equity / 30:1 leverage / 0.5% base:
+- sf ∈ {1.3, 1.5, 1.7}: effective_max ≥ 8 over tested range — no cap applies in this range
 - sf=2.0: effective_max ≈ 7 (configured ml=8 behaves as ml=7)
 - sf=2.5: effective_max ≈ 6 (configured ml≥7 behaves as ml=6)
 - sf=3.0: effective_max ≈ 5 (configured ml≥6 behaves as ml=5)

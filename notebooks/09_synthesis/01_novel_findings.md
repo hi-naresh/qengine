@@ -81,9 +81,11 @@ N ratio range: **7.4 to 4827** (650x variation). This means the win-to-bust trad
 ## Finding 5: The cost model script compares spread at a 22× stress-test sizing to avg_win at actual strategy sizing — methodology caveat
 **Source:** `04_cost_model/04_cost_kills_edge.py`
 
-**What:** The script takes `avg_win` from the bust-anatomy backtest (sf=2.0 ml=8, 0.5% base sizing → avg_win ≈ $0.60) and compares it to cumulative spread+swap cost computed at `BASE_LOTS=0.01` lots (= $1,100 notional ≈ 11% of $10k equity, i.e. 22× the strategy's actual 0.5% base — same stress-test sizing as Finding 17). At BASE_LOTS=0.01, cumulative cost reaches ~$0.78 by level 1 and exceeds the $0.60 `avg_win` baseline. Rescaled to the strategy's actual 0.5% base sizing, cumulative spread through level 1 is only ≈ $0.03 — below $0.60 by a factor of ~20, and the cost curve would not cross avg_win until ~level 6.
+**What:** The script takes `avg_win` from the bust-anatomy backtest (sf=2.0 ml=8, 0.5% base sizing → avg_win ≈ $0.60) and compares it to cumulative spread+swap cost computed at `BASE_LOTS=0.01` lots (= $1,100 notional ≈ 11% of $10k equity, i.e. 22× the strategy's actual 0.5% base — same stress-test sizing as Finding 17). At BASE_LOTS=0.01, cumulative cost reaches ~$0.78 by level 1 and exceeds the $0.60 `avg_win` baseline. Rescaled to the strategy's actual 0.5% base sizing, cumulative spread through level 1 is only ≈ $0.03 — below $0.60 by a factor of ~20.
 
-**Corrected takeaway:** The strategy's avg_win vs cumulative-cost crossover occurs at level 6-7 with realistic sizing, not level 1. The underlying observation remains valid: **cost-to-edge ratio is unfavorable and grows with level depth**, and by max_levels the cumulative spread consumes a large fraction of any potential win. Findings 1, 7b, and 14 confirm structural negative EV through the backtest itself (where spread is applied consistently), so this finding is redundant with them; the "level 1 crossover" framing is an artifact of the script's mixed-sizing comparison.
+**Correctly rescaled crossover (0.5% base, sf=2.0):** Per-level spread cost grows as $0.01 × 2^n (entry at level 0 = $0.01; each subsequent level doubles under sf=2). Cumulative spread through level N = $0.01 × (2^(N+1) − 1). Setting this ≥ $0.60 → N+1 ≥ 61 → **crossover at N ≈ 5** (cumulative $0.63). Adding swap cost brings the effective crossover fractionally earlier, still near level 5. The conclusion "level 1 crossover" in the original script is off by ~4 levels at the strategy's real sizing.
+
+**Takeaway:** The underlying observation remains valid — **cost-to-edge ratio is unfavorable and by effective_max the cumulative spread consumes a majority of any potential win** (at level 6-7 the cumulative spread is $1.27-$2.55 vs avg_win $0.60, so the cost is 2-4× avg_win). But the "level 1" framing was an artifact. Findings 1, 7b, and 14 confirm structural negative EV through the backtest itself (where spread is applied consistently); this finding is partly redundant with them and primarily serves as a cautionary example of sizing-inconsistent comparisons.
 
 **Why novel:** The general insight — that cumulative spread grows geometrically under geometric sizing and therefore scales with ml — is correct. The specific "level 1" framing should not be used. The cleaner formulation is in Findings 1/7b (break-even win rate exceeds empirical) and Finding 14 (at 5-pip hedge, avg_win is already negative because spread is 40% of TP).
 
@@ -164,10 +166,10 @@ All 36 configs have NEGATIVE total PnL. Ratio of worst-to-best sf at each ml: ~2
 ## Finding 19: Configured max_levels is not the effective max_levels for high sf values
 **Source:** `strategies/_admin/Martingale/__init__.py` line 481 (code inspection) + `01_finite_capital/01_n_to_1_ratio.py`
 
-**What:** The Martingale strategy applies a pre-session margin feasibility check: `effective_max_levels = min(configured_max, _max_affordable_levels())`. For high sizing factors, geometric position growth exhausts the available margin budget before reaching the configured max_levels. This means:
-- sf=1.5: effective_max ≈ configured max (margin not binding)
-- sf=2.0: effective_max ≈ min(configured, 7) — ml=7 and ml=8 produce identical bust_rate
-- sf=2.5: effective_max ≈ 6 — ml=6, ml=7, ml=8 all behave as ml=6
+**What:** The Martingale strategy applies a pre-session margin feasibility check: `effective_max_levels = min(configured_max, _max_affordable_levels())`. For high sizing factors, geometric position growth exhausts the available margin budget before reaching the configured max_levels. From the 36-config sizing×levels sweep (all at $10k equity, 30:1 leverage, 0.5% base):
+- sf ∈ {1.3, 1.5, 1.7}: effective_max ≥ 8 at tested range — margin not binding across the full configured ml ∈ {3..8}
+- sf=2.0: effective_max ≈ 7 — configured ml=7 and ml=8 produce identical bust_rate (0.0159) and total_pnl (−$6,406)
+- sf=2.5: effective_max ≈ 6 — ml=6, 7, 8 all behave as ml=6
 - sf=3.0: effective_max ≈ 5 — ml≥5 all behave as ml=5
 
 The N-to-1 heatmap confirms: identical N values for sf=2.5 at ml=6/8, and for sf=3.0 at ml=5/6/8.
@@ -212,7 +214,7 @@ Bolded cells are where configured ml exceeds effective_max — bust_rate plateau
 | 30    | 0.0207 | $1.794 | 1,832 |
 | 40    | 0.0171 | $3.000 | 1,051 |
 
-Moving from 5 to 40 pips: **bust_rate drops 7.3× (0.125 → 0.017)**. avg_win flips sign from −$0.11 to +$3.00 — no meaningful multiplicative ratio applies across the sign flip. Over the positive-only range (10 → 40 pips), avg_win scales **84×** ($0.036 → $3.00); over 20 → 40 pips, avg_win scales **3.5×** ($0.85 → $3.00). The N-to-1 tradeoff improves non-linearly at wider distances.
+Moving from 5 to 40 pips: **bust_rate drops 7.3× (0.125 → 0.017)**. avg_win flips sign from −$0.113 to +$3.00 — no meaningful multiplicative ratio applies across the sign flip. Over the positive-only range (10 → 40 pips), avg_win scales **84×** ($0.036 → $3.00); over 20 → 40 pips, avg_win scales **3.5×** ($0.85 → $3.00). The N-to-1 tradeoff improves non-linearly at wider distances.
 
 **Why novel:** The conventional wisdom is wider hedge distances mean bigger busts and fewer wins. While the bust magnitude does increase, the bust_rate falls faster — a wider hedge gives the market more room to reverse before triggering another level. The net effect is a significant improvement in both win frequency and win magnitude simultaneously.
 
@@ -231,7 +233,7 @@ Moving from 5 to 40 pips: **bust_rate drops 7.3× (0.125 → 0.017)**. avg_win f
 
 More levels allowed → fewer max_level_busts. The mechanism: cycles that would terminate as bust at max_levels=3 can continue and recover if ml=4 or 5 is allowed.
 
-**Definitional note:** A "bust" is defined as *reaching max_levels without TP*. Raising ml mechanically moves the threshold deeper, so fewer cycles qualify — this is partly definitional. The **non-trivial part** is the *rate* of decrease. Per-step ratios from sf=1.3 data (bust_rate_prev / bust_rate_next):
+**Definitional note:** A "bust" in this sweep — where `abort_mode=none` — is `is_bust=True` which reduces to `max_level_bust` (the only terminal outcome in the BUST_REASONS set that actually fires without aborts). Raising ml mechanically moves the max_level_bust threshold deeper, so fewer cycles qualify — this is partly definitional. (Note: when `abort_mode` is active, `is_bust` also absorbs abort outcomes — see F15/F18 — so the same metric means different things across sweeps. In F9's sweep, it means max_level_bust only.) The **non-trivial part** of the F9 observation is the *rate* of decrease. Per-step ratios from sf=1.3 data (bust_rate_prev / bust_rate_next):
 - ml=3→4: 0.170/0.096 = 1.77
 - ml=4→5: 0.096/0.057 = 1.68
 - ml=5→6: 0.057/0.026 = 2.19
