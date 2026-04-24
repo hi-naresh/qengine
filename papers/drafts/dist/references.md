@@ -10,6 +10,8 @@ Alba, E., & Tomassini, M. (2002). Parallelism and evolutionary algorithms. *IEEE
 
 Allen, F., & Karjalainen, R. (1999). Using genetic algorithms to find technical trading rules. *Journal of Financial Economics*, 51(2), 245--271.
 
+Ang, A., & Timmermann, A. (2012). Regime changes and financial markets. *Annual Review of Financial Economics*, 4, 313--337.
+
 Andersen, T. G., & Bollerslev, T. (1997). Intraday periodicity and volatility persistence in financial markets. *Journal of Empirical Finance*, 4(2--3), 115--158.
 
 Astrom, K. J., & Murray, R. M. (2008). *Feedback Systems: An Introduction for Scientists and Engineers*. Princeton University Press.
@@ -26,7 +28,9 @@ Bank for International Settlements (2022). *Triennial Central Bank Survey: OTC F
 
 Bollinger, J. (2002). *Bollinger on Bollinger Bands*. McGraw-Hill.
 
-Cantu-Paz, E. (2000). *Efficient and Accurate Parallel Genetic Algorithms*. Springer.
+Cantu-Paz, E. (2000). *Efficient and Accurate Parallel Genetic Algorithms*. Kluwer Academic Publishers.
+
+Carricaburu, J. (c. 2004). *The "Sure-Fire" Forex Hedging Strategy* [white paper]. Forex Factory. Retrieved from https://www.forexfactory.com/attachment/file/1057341 (accessed 2026-04-24).
 
 Chande, T. S. (1997). *Beyond Technical Analysis*. Wiley.
 
@@ -48,8 +52,6 @@ Doob, J. L. (1953). *Stochastic Processes*. Wiley.
 
 Dreiss, B. (1995). The Choppiness Index. *Technical Analysis of Stocks & Commodities*, 13(11).
 
-DuPloy, A. (2008). The Surefire Forex hedging strategy. *Forex Trading Guide*.
-
 Eiben, A. E., & Smith, J. E. (2015). *Introduction to Evolutionary Computing* (2nd ed.). Springer.
 
 Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation. *Econometrica*, 50(4), 987--1007.
@@ -60,7 +62,7 @@ Goldberg, D. E., & Deb, K. (1991). A comparative analysis of selection schemes u
 
 Goldberg, D. E., & Richardson, J. (1987). Genetic algorithms with sharing for multimodal function optimization. *Proceedings of the Second International Conference on Genetic Algorithms*, 41--49.
 
-Gopinathan, R., et al. (2024). Advanced HMM modelling with Gaussian mixtures for financial regime identification. *Applied Intelligence*, 54, 4789--4805.
+Gopinathan, K. N., Murugesan, P., & Jeyaraj, J. J. (2024). Stock price prediction using a novel approach in Gaussian mixture model-hidden Markov model. *International Journal of Intelligent Computing and Cybernetics*, 17(1), 61--100. DOI: 10.1108/IJICC-03-2023-0050.
 
 Hamilton, J. D. (1989). A new approach to the economic analysis of nonstationary time series and the business cycle. *Econometrica*, 57(2), 357--384.
 
@@ -71,8 +73,6 @@ Hurst, H. E. (1951). Long-term storage capacity of reservoirs. *Transactions of 
 Katz, J. O., & McCormick, D. L. (2000). *The Encyclopedia of Trading Strategies*. McGraw-Hill.
 
 Kaufman, P. J. (2013). *Trading Systems and Methods* (5th ed.). Wiley.
-
-Kerstens, K., et al. (2022). Financial market regimes and trading strategies: A survey. *European Journal of Operational Research*, 301(1), 1--22.
 
 Kraskov, A., Stogbauer, H., & Grassberger, P. (2004). Estimating mutual information. *Physical Review E*, 69(6), 066138.
 
@@ -86,7 +86,7 @@ Liu, X.-Y., Yang, H., Chen, Q., Zhang, R., Yang, L., Xiao, B., & Wang, C. D. (20
 
 Lo, A. W., & MacKinlay, A. C. (1988). Stock market prices do not follow random walks: Evidence from a simple specification test. *Review of Financial Studies*, 1(1), 41--66.
 
-Lopes, R. A., Silva, R. C. P., Campelo, F., & Guimaraes, F. G. (2012). A multi-agent approach to the adaptation of migration topology in island model evolutionary algorithms. *Proceedings of the 2012 Brazilian Symposium on Neural Networks*, 160--165.
+Lopes, R. A., Silva, R. P., Campelo, F., & Guimaraes, F. G. (2012). A multi-agent approach to the adaptation of migration topology in island model evolutionary algorithms. *Proceedings of the 2012 Brazilian Symposium on Neural Networks*, 160--165. DOI: 10.1109/SBRN.2012.37.
 
 McLachlan, G. J., & Peel, D. (2000). *Finite Mixture Models*. Wiley.
 
@@ -110,7 +110,7 @@ Syswerda, G. (1989). Uniform crossover in genetic algorithms. *Proceedings of th
 
 Tobin, J., Fong, R., Ray, A., Schneider, J., Zaremba, W., & Abbeel, P. (2017). Domain randomization for transferring deep neural networks from simulation to the real world. *Proceedings of the 2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)*, 23--30.
 
-Wang, Y., & Aste, T. (2023). Inverse covariance clustering for portfolio optimization. *Applied Mathematics and Computation*, 443, 127769.
+Wang, Y., & Aste, T. (2023). Dynamic portfolio optimization with inverse covariance clustering. *Expert Systems with Applications*, 213, 118739. DOI: 10.1016/j.eswa.2022.118739.
 
 Whitley, D., Rana, S., & Heckendorn, R. B. (1999). The island model genetic algorithm: On separability, population size and convergence. *Journal of Computing and Information Technology*, 7(1), 33--47.
 
@@ -118,6 +118,6 @@ Wilder, J. W. (1978). *New Concepts in Technical Trading Systems*. Trend Researc
 
 Wright, S. (1931). Evolution in Mendelian populations. *Genetics*, 16(2), 97--159.
 
-Yang, S., Xin, J., Ye, Q., & Xia, H. (2025). A co-evolutionary genetic programming framework for market-adaptive formulaic alpha generation. *SSRN preprint*, 5614909.
+Yang, S., Xin, J., Ye, Q., & Xia, H. (2025). A co-evolutionary genetic programming framework for market-adaptive formulaic alpha generation. *SSRN Working Paper 5614908*. DOI: 10.2139/ssrn.5614908.
 
-Zhang, Y., et al. (2020). AutoAlpha: An efficient hierarchical evolutionary algorithm for mining alpha factors in quantitative investment. *arXiv preprint*, arXiv:2002.08245.
+Zhang, T., Li, Y., Jin, Y., & Li, J. (2020). AutoAlpha: An efficient hierarchical evolutionary algorithm for mining alpha factors in quantitative investment. *arXiv preprint*, arXiv:2002.08245.
