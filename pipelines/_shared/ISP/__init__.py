@@ -12,11 +12,11 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from qengine.framework.base import Pipeline, OrderIntent
-from .feature_selector import FeaturePool
-from .regime_tree import RegimeTree
-from .island_evolver import IslandEvolver, Genome, SIZING_CURVE_MAP
-from .regime_inferencer import RegimeInferencer
-from .adaptive_sizer import AdaptiveSizer
+from qengine.framework.components.feature_selector import FeaturePool
+from qengine.framework.components.regime_tree import RegimeTree
+from qengine.framework.components.island_evolver import IslandEvolver, Genome, SIZING_CURVE_MAP
+from qengine.framework.components.regime_inferencer import RegimeInferencer
+from qengine.framework.components.adaptive_sizer import AdaptiveSizer
 
 from .config import DEFAULT_CONFIG, merge_config
 
@@ -42,28 +42,14 @@ def _load_pretrained() -> dict:
             try:
                 result['evolver'] = IslandEvolver.load(evolver_path)
             except (KeyError, Exception):
-                # Simple genomes format — build a minimal evolver from it.
-                # IMPORTANT: Genome.from_dict(bounds=None) uses the framework's
-                # default 6-gene bounds and drops all other keys. To preserve
-                # strategy execution genes (signal_mode, direction_bias,
-                # hedge_value, tp_value, sizing_*, max_levels, filters, halts),
-                # we bypass Genome.from_dict and store raw gene dicts directly.
+                # Simple genomes format — build a minimal evolver from it
                 import json
                 with open(evolver_path) as f:
                     genomes_data = json.load(f)
                 leaf_ids = list(genomes_data.keys())
                 evolver = IslandEvolver(leaf_ids=leaf_ids, config={})
                 for lid, gdata in genomes_data.items():
-                    raw_genes = gdata.get('genes', gdata) if isinstance(gdata, dict) else {}
-                    # Drop non-gene metadata if caller embedded it at top level
-                    if 'genes' not in gdata:
-                        raw_genes = {k: v for k, v in raw_genes.items() if k not in ('id', 'fitness')}
-                    # Bypass Genome.from_dict entirely — just build a Genome
-                    # with the full raw dict as genes. The pipeline's
-                    # _apply_genome reads from genome['genes'] and tunes ANY
-                    # key that matches a strategy HP, not just the framework's
-                    # default 6-gene bounds.
-                    genome = Genome(genes=raw_genes)
+                    genome = Genome.from_dict(gdata if 'genes' not in gdata else gdata['genes'])
                     genome.fitness = gdata.get('fitness', 0.0)
                     if lid in evolver.populations:
                         evolver.populations[lid].individuals[0] = genome
@@ -106,16 +92,14 @@ class IslandPilot(Pipeline):
         self._last_recorded_session: Optional[int] = None
         self._sibling_groups: Dict[str, List[str]] = {}
 
-        # ── Online regime performance tracking (used by gate_entry) ──
+        # ── Improvement 1: Online regime performance tracking ──
+        # Tracks rolling PF per regime from completed cycles.
+        # Used by gate_entry to block entries in historically bad regimes,
+        # and by adjust_size to scale position size by regime quality.
         self._regime_wins: Dict[str, float] = {}    # regime_id -> gross wins
         self._regime_losses: Dict[str, float] = {}  # regime_id -> gross losses
         self._regime_cycles: Dict[str, int] = {}    # regime_id -> cycle count
         self._regime_busts: Dict[str, int] = {}     # regime_id -> bust count
-
-        # PHASE6: Recent PnLs for drift detection
-        self._recent_pnls: List[float] = []
-        self._last_block_reason: Optional[str] = None
-        self._drift_block_count: int = 0
 
         # Auto-load pre-trained models if available
         self._load_pretrained_models()
@@ -130,18 +114,6 @@ class IslandPilot(Pipeline):
 
         candles = getattr(strategy, 'candles', None)
         if candles is None or len(candles) < self.cfg['warmup']:
-            return
-
-        # Only recompute features at the strategy's timeframe boundaries.
-        # Between 5m candles (on 1m ticks), the pipeline's regime classification
-        # and genome application don't change. This saves 80% of compute.
-        # Safe: no future data used, same result as computing every bar.
-        tf_minutes = getattr(strategy, '_timeframe_minutes', None)
-        if tf_minutes is None:
-            import qengine.helpers as _jh
-            tf_minutes = _jh.timeframe_to_one_minutes(getattr(strategy, 'timeframe', '5m'))
-            strategy._timeframe_minutes = tf_minutes
-        if tf_minutes > 1 and self._candle_count % tf_minutes != 0:
             return
 
         # Only compute features on a FIXED tail window (not the whole array).
@@ -244,83 +216,38 @@ class IslandPilot(Pipeline):
             self._active_genome = None
 
     def gate_entry(self, strategy) -> bool:
-        """Block entry based on genome availability, confidence, and online
-        per-regime rolling performance.
+        """Block entry if no genome available or low confidence.
 
-        PHASE6 EXPANSION (2026-04-21): Now uses online per-regime PF tracking.
-        A regime that has underperformed (rolling PF < min_regime_pf after
-        min_cycles_for_gate cycles) is blocked. This is the meta-learning /
-        risk-management layer the user asked for — losing regimes self-gate.
+        Grace period is NOT used for entry gating — it only prevents genome
+        switching in on_before(). Blocking entries during grace period was
+        causing 70%+ rejection rates because with 73 regime leaves, regime
+        transitions happen every ~9 candles on 5m data, and a 5-candle grace
+        period blocks entries more than half the time.
         """
         # During warmup, block
         if self._candle_count < self.cfg['warmup']:
             self._gate_block_count += 1
-            self._last_block_reason = 'warmup'
             return False
 
         # No genome means the regime/evolver isn't ready
         if self._active_genome is None:
             self._gate_block_count += 1
-            self._last_block_reason = 'no_genome'
             return False
 
         # Low confidence
         min_conf = self.cfg['inference']['min_confidence']
         if self._active_confidence < min_conf:
             self._gate_block_count += 1
-            self._last_block_reason = 'low_confidence'
             return False
 
-        # Unknown regime: the inferencer flags this when no leaf holds a
-        # meaningful probability concentration (best leaf prob < unknown_threshold,
-        # default 0.15). This signals the current market state is outside the
-        # training distribution — the "nearest" regime's genome was evolved for
-        # a different statistical environment and should not be used.
-        if self.inferencer is not None and not self.inferencer.is_known_regime:
-            self._gate_block_count += 1
-            self._last_block_reason = 'unknown_regime'
-            return False
-
-        # PHASE6: Online per-regime PF gating (meta-learning).
-        # Block regimes that have accumulated N cycles with PF < threshold.
-        gate_cfg = self.cfg.get('online_gate', {})
-        min_cycles = gate_cfg.get('min_cycles_for_gate', 5)
-        min_pf = gate_cfg.get('min_regime_pf', 1.0)
-        if self._active_regime is not None:
-            rk = str(self._active_regime)
-            n = self._regime_cycles.get(rk, 0)
-            if n >= min_cycles:
-                wins = self._regime_wins.get(rk, 0.0)
-                losses = self._regime_losses.get(rk, 0.0)
-                pf = (wins / losses) if losses > 0 else (float('inf') if wins > 0 else 0.0)
-                if pf < min_pf:
-                    self._gate_block_count += 1
-                    self._last_block_reason = 'regime_pf_low'
-                    return False
-
-        # PHASE6: Drift detection — if overall recent-N PF drops well below
-        # overall lifetime PF, pause trading for cooldown period.
-        drift_cfg = self.cfg.get('drift', {})
-        if drift_cfg.get('enabled', True):
-            recent_n = drift_cfg.get('recent_n', 20)
-            drop_ratio = drift_cfg.get('drop_ratio', 0.5)  # recent PF < 50% of lifetime PF
-            if len(self._recent_pnls) >= recent_n and self._cycle_count >= recent_n * 2:
-                recent = self._recent_pnls[-recent_n:]
-                rec_wins = sum(p for p in recent if p > 0)
-                rec_losses = sum(abs(p) for p in recent if p < 0)
-                rec_pf = (rec_wins / rec_losses) if rec_losses > 0 else float('inf')
-                # Overall lifetime PF (using cumulative)
-                all_wins = sum(self._regime_wins.values())
-                all_losses = sum(self._regime_losses.values())
-                life_pf = (all_wins / all_losses) if all_losses > 0 else float('inf')
-                if life_pf > 0 and rec_pf < life_pf * drop_ratio:
-                    self._drift_block_count = getattr(self, '_drift_block_count', 0) + 1
-                    self._gate_block_count += 1
-                    self._last_block_reason = 'drift'
-                    return False
+        # ── Improvement 1: Regime performance tracking (data collection) ──
+        # The on_cycle_end method records per-regime PF. This data is available
+        # in get_stats() for analysis but is NOT yet used for gating because:
+        # (a) The regime tree and genomes need retraining on clean features first
+        # (b) Gating thresholds need calibration after retrain
+        # Future: block entries in regimes with PF < threshold after sufficient history.
 
         self._gate_allow_count += 1
-        self._last_block_reason = None
         return True
 
     def adjust_size(self, strategy, qty: float, side: str) -> float:
@@ -451,7 +378,7 @@ class IslandPilot(Pipeline):
                 genome=self._active_genome,
             )
 
-        # ── Update online regime performance tracking ──
+        # ── Improvement 1: Update online regime performance tracking ──
         regime_key = str(self._active_regime) if self._active_regime is not None else None
         if regime_key:
             self._regime_cycles[regime_key] = self._regime_cycles.get(regime_key, 0) + 1
@@ -459,17 +386,12 @@ class IslandPilot(Pipeline):
                 self._regime_wins[regime_key] = self._regime_wins.get(regime_key, 0) + pnl
             else:
                 self._regime_losses[regime_key] = self._regime_losses.get(regime_key, 0) + abs(pnl)
-            # Track busts
+            # Track busts (check if strategy reports bust via vars)
             is_bust = False
             if strategy and hasattr(strategy, 'vars'):
                 is_bust = strategy.vars.get('last_session_bust', False)
-            if is_bust or pnl < -50:
+            if is_bust or pnl < -50:  # heuristic: large loss = likely bust
                 self._regime_busts[regime_key] = self._regime_busts.get(regime_key, 0) + 1
-
-        # PHASE6: Update rolling PnL window for drift detection
-        self._recent_pnls.append(float(pnl))
-        if len(self._recent_pnls) > 100:
-            self._recent_pnls = self._recent_pnls[-100:]
 
     # ------------------------------------------------------------------
     # Stats & persistence
@@ -489,47 +411,7 @@ class IslandPilot(Pipeline):
             'block_rate': round(self._gate_block_count / total_gate, 4) if total_gate > 0 else 0,
             'aborts_triggered': self._abort_count,
             'has_genome': self._active_genome is not None,
-            'last_block_reason': self._last_block_reason,
-            'drift_blocks': self._drift_block_count,
         }
-
-        # PHASE6: Per-regime live performance (meta-learning visibility)
-        regime_pf = {}
-        for rk in self._regime_cycles:
-            w = self._regime_wins.get(rk, 0.0)
-            l = self._regime_losses.get(rk, 0.0)
-            if l > 0:
-                pf = w / l
-            elif w > 0:
-                pf = float('inf')
-            else:
-                pf = 0.0
-            regime_pf[rk] = {
-                'cycles': self._regime_cycles[rk],
-                'wins': round(w, 2),
-                'losses': round(l, 2),
-                'pf': round(pf, 3) if pf != float('inf') else 999.0,
-                'busts': self._regime_busts.get(rk, 0),
-                'blocked_by_gate': (self._regime_cycles[rk] >= self.cfg.get('online_gate', {}).get('min_cycles_for_gate', 5)
-                                    and pf < self.cfg.get('online_gate', {}).get('min_regime_pf', 1.0)),
-            }
-        stats['regime_performance'] = regime_pf
-
-        # PHASE6: Drift metrics
-        if len(self._recent_pnls) >= 10:
-            recent = self._recent_pnls[-20:] if len(self._recent_pnls) >= 20 else self._recent_pnls
-            rec_w = sum(p for p in recent if p > 0)
-            rec_l = sum(abs(p) for p in recent if p < 0)
-            rec_pf = (rec_w / rec_l) if rec_l > 0 else float('inf')
-            life_w = sum(self._regime_wins.values())
-            life_l = sum(self._regime_losses.values())
-            life_pf = (life_w / life_l) if life_l > 0 else float('inf')
-            stats['drift'] = {
-                'recent_pf': round(rec_pf, 3) if rec_pf != float('inf') else 999.0,
-                'lifetime_pf': round(life_pf, 3) if life_pf != float('inf') else 999.0,
-                'drop_ratio': round(rec_pf / life_pf, 3) if life_pf > 0 and life_pf != float('inf') else None,
-                'recent_n_window': len(recent),
-            }
 
         if self.regime_tree is not None:
             stats['n_leaves'] = self.regime_tree.n_leaves
@@ -890,15 +772,13 @@ class IslandPilot(Pipeline):
         if not self._hp_spec:
             return
 
-        # Groups the pipeline is allowed to tune.
-        # PHASE6 EXPANSION (2026-04-21): Added Entry Signal + Filters + Risk Management
-        # so the pipeline can flip signal_mode, direction_bias, session_filter,
-        # halt rules per-regime. The whole point of a regime-aware pipeline is to
-        # make a dumb strategy smart — it must be allowed to change signal/direction.
-        _TUNABLE_GROUPS = {
-            'General', 'Grid / Hedge', 'Take Profit',
-            'Entry Signal', 'Filters', 'Risk Management', 'Position Management',
-        }
+        # Groups the pipeline is allowed to tune
+        # Tune General (sizing), Grid/Hedge, and Take Profit parameters per regime.
+        # Entry Signal is excluded — the pipeline must not change when signals fire.
+        # The preset is NOT forced to 'custom' — the strategy's preset defines
+        # the signal behavior and the pipeline only overrides execution params
+        # that the preset allows to be changed.
+        _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
 
         # Validated options for categorical params that may have broken choices.
         # Only allow signal modes that are known to work in the strategy.

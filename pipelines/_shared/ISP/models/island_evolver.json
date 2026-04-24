@@ -1,0 +1,1925 @@
+{
+  "leaf_ids": [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27",
+    "28"
+  ],
+  "config": {
+    "pop_size": 5,
+    "elitism": 1,
+    "crossover_rate": 0.7,
+    "mutation_rate": 0.3,
+    "mutation_sigma": 0.1,
+    "tournament_k": 2
+  },
+  "sibling_groups": {},
+  "gene_bounds": {
+    "gate_confidence_min": [
+      0.0,
+      0.5,
+      "float"
+    ],
+    "abort_aggressiveness": [
+      0.0,
+      0.4,
+      "float"
+    ],
+    "base_size_pct": [
+      0.5,
+      3.0,
+      "float"
+    ],
+    "hysteresis_margin": [
+      0.05,
+      0.3,
+      "float"
+    ],
+    "confidence_sensitivity": [
+      0.5,
+      2.0,
+      "float"
+    ],
+    "recovery_aggression": [
+      0.3,
+      1.0,
+      "float"
+    ]
+  },
+  "migration_log": [],
+  "outcome_log": [],
+  "populations": {
+    "0": {
+      "island_id": "0",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "17faa45f",
+          "genes": {
+            "gate_confidence_min": 0.34457415925611345,
+            "abort_aggressiveness": 0.13680401381189117,
+            "base_size_pct": 1.561162411153203,
+            "hysteresis_margin": 0.19119028989105646,
+            "confidence_sensitivity": 0.5213706749989426,
+            "recovery_aggression": 0.34671434476215324
+          },
+          "fitness": 24.262818342284735
+        },
+        {
+          "id": "a51e9e7c",
+          "genes": {
+            "gate_confidence_min": 0.34457415925611345,
+            "abort_aggressiveness": 0.13680401381189117,
+            "base_size_pct": 1.561162411153203,
+            "hysteresis_margin": 0.19119028989105646,
+            "confidence_sensitivity": 0.5213706749989426,
+            "recovery_aggression": 0.34671434476215324
+          },
+          "fitness": null
+        },
+        {
+          "id": "d7971626",
+          "genes": {
+            "gate_confidence_min": 0.34457415925611345,
+            "abort_aggressiveness": 0.13680401381189117,
+            "base_size_pct": 1.561162411153203,
+            "hysteresis_margin": 0.19119028989105646,
+            "confidence_sensitivity": 0.5213706749989426,
+            "recovery_aggression": 0.34671434476215324
+          },
+          "fitness": null
+        },
+        {
+          "id": "7286b014",
+          "genes": {
+            "gate_confidence_min": 0.34457415925611345,
+            "abort_aggressiveness": 0.13680401381189117,
+            "base_size_pct": 1.561162411153203,
+            "hysteresis_margin": 0.19119028989105646,
+            "confidence_sensitivity": 0.5213706749989426,
+            "recovery_aggression": 0.34671434476215324
+          },
+          "fitness": null
+        },
+        {
+          "id": "288f16df",
+          "genes": {
+            "gate_confidence_min": 0.32238276690970447,
+            "abort_aggressiveness": 0.0851810970985795,
+            "base_size_pct": 1.2619154425160117,
+            "hysteresis_margin": 0.20584366276303356,
+            "confidence_sensitivity": 0.5,
+            "recovery_aggression": 0.3
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "1": {
+      "island_id": "1",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "57b2da18",
+          "genes": {
+            "gate_confidence_min": 0.28611287949605113,
+            "abort_aggressiveness": 0.1259358651209408,
+            "base_size_pct": 0.9494603573711914,
+            "hysteresis_margin": 0.2336102168784746,
+            "confidence_sensitivity": 0.8734282227713357,
+            "recovery_aggression": 0.4038625200296279
+          },
+          "fitness": 24.288108439774902
+        },
+        {
+          "id": "fd394475",
+          "genes": {
+            "gate_confidence_min": 0.28611287949605113,
+            "abort_aggressiveness": 0.13756676137347643,
+            "base_size_pct": 1.6324256048081474,
+            "hysteresis_margin": 0.2336102168784746,
+            "confidence_sensitivity": 0.8734282227713357,
+            "recovery_aggression": 0.4038625200296279
+          },
+          "fitness": null
+        },
+        {
+          "id": "26239ecd",
+          "genes": {
+            "gate_confidence_min": 0.28611287949605113,
+            "abort_aggressiveness": 0.13756676137347643,
+            "base_size_pct": 1.6324256048081474,
+            "hysteresis_margin": 0.2336102168784746,
+            "confidence_sensitivity": 0.8734282227713357,
+            "recovery_aggression": 0.8960970856437309
+          },
+          "fitness": null
+        },
+        {
+          "id": "d396f4c8",
+          "genes": {
+            "gate_confidence_min": 0.28611287949605113,
+            "abort_aggressiveness": 0.13756676137347643,
+            "base_size_pct": 1.6324256048081474,
+            "hysteresis_margin": 0.2336102168784746,
+            "confidence_sensitivity": 0.8734282227713357,
+            "recovery_aggression": 0.8960970856437309
+          },
+          "fitness": null
+        },
+        {
+          "id": "13f6096b",
+          "genes": {
+            "gate_confidence_min": 0.47818401676529915,
+            "abort_aggressiveness": 0.13756676137347643,
+            "base_size_pct": 1.6324256048081474,
+            "hysteresis_margin": 0.17660309904917887,
+            "confidence_sensitivity": 0.7548744034921597,
+            "recovery_aggression": 0.8960970856437309
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "2": {
+      "island_id": "2",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "c6af497c",
+          "genes": {
+            "gate_confidence_min": 0.18346494351015047,
+            "abort_aggressiveness": 0.3884234914943685,
+            "base_size_pct": 2.0062840248883123,
+            "hysteresis_margin": 0.2884934440096727,
+            "confidence_sensitivity": 0.7566134904814608,
+            "recovery_aggression": 0.9066606894282117
+          },
+          "fitness": 24.66733242741673
+        },
+        {
+          "id": "4d875cb3",
+          "genes": {
+            "gate_confidence_min": 0.19166809131706983,
+            "abort_aggressiveness": 0.4,
+            "base_size_pct": 1.9947958213720287,
+            "hysteresis_margin": 0.1150851074857877,
+            "confidence_sensitivity": 1.040276543581949,
+            "recovery_aggression": 0.6589098951574137
+          },
+          "fitness": null
+        },
+        {
+          "id": "b38834b7",
+          "genes": {
+            "gate_confidence_min": 0.18346494351015047,
+            "abort_aggressiveness": 0.3884234914943685,
+            "base_size_pct": 2.0062840248883123,
+            "hysteresis_margin": 0.10584214996301654,
+            "confidence_sensitivity": 0.7566134904814608,
+            "recovery_aggression": 0.6076640853516007
+          },
+          "fitness": null
+        },
+        {
+          "id": "e79acda8",
+          "genes": {
+            "gate_confidence_min": 0.18346494351015047,
+            "abort_aggressiveness": 0.3884234914943685,
+            "base_size_pct": 2.0062840248883123,
+            "hysteresis_margin": 0.10584214996301654,
+            "confidence_sensitivity": 0.7566134904814608,
+            "recovery_aggression": 0.6076640853516007
+          },
+          "fitness": null
+        },
+        {
+          "id": "2cb9e80f",
+          "genes": {
+            "gate_confidence_min": 0.3777940536650498,
+            "abort_aggressiveness": 0.2462199339513724,
+            "base_size_pct": 2.423227622028877,
+            "hysteresis_margin": 0.17779653296677622,
+            "confidence_sensitivity": 1.5488058641153617,
+            "recovery_aggression": 0.7163099868326028
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "3": {
+      "island_id": "3",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "c8483417",
+          "genes": {
+            "gate_confidence_min": 0.2752336943457047,
+            "abort_aggressiveness": 0.11108216484524239,
+            "base_size_pct": 2.401375599661775,
+            "hysteresis_margin": 0.24752044683308244,
+            "confidence_sensitivity": 1.4036638890363664,
+            "recovery_aggression": 0.5765506118605298
+          },
+          "fitness": 24.27245063688093
+        },
+        {
+          "id": "0c9fc962",
+          "genes": {
+            "gate_confidence_min": 0.1941642937283885,
+            "abort_aggressiveness": 0.15288586281261135,
+            "base_size_pct": 2.903775139179498,
+            "hysteresis_margin": 0.20167786103617819,
+            "confidence_sensitivity": 1.2633921024997068,
+            "recovery_aggression": 0.5539980281741743
+          },
+          "fitness": null
+        },
+        {
+          "id": "abd0f97b",
+          "genes": {
+            "gate_confidence_min": 0.2752336943457047,
+            "abort_aggressiveness": 0.11108216484524239,
+            "base_size_pct": 2.401375599661775,
+            "hysteresis_margin": 0.24752044683308244,
+            "confidence_sensitivity": 1.4036638890363664,
+            "recovery_aggression": 0.5765506118605298
+          },
+          "fitness": null
+        },
+        {
+          "id": "f7b4c26b",
+          "genes": {
+            "gate_confidence_min": 0.2752336943457047,
+            "abort_aggressiveness": 0.11108216484524239,
+            "base_size_pct": 2.9706612554589014,
+            "hysteresis_margin": 0.27416655643532806,
+            "confidence_sensitivity": 1.303218880460452,
+            "recovery_aggression": 0.5765506118605298
+          },
+          "fitness": null
+        },
+        {
+          "id": "13b4f6fe",
+          "genes": {
+            "gate_confidence_min": 0.2752336943457047,
+            "abort_aggressiveness": 0.11108216484524239,
+            "base_size_pct": 2.401375599661775,
+            "hysteresis_margin": 0.24752044683308244,
+            "confidence_sensitivity": 1.4036638890363664,
+            "recovery_aggression": 0.5765506118605298
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "4": {
+      "island_id": "4",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "ff1ff290",
+          "genes": {
+            "gate_confidence_min": 0.07525208464209454,
+            "abort_aggressiveness": 0.1640337733733182,
+            "base_size_pct": 1.2047448407315215,
+            "hysteresis_margin": 0.05199943952863249,
+            "confidence_sensitivity": 1.0760386653976646,
+            "recovery_aggression": 0.37408410271828085
+          },
+          "fitness": 23.8395160810515
+        },
+        {
+          "id": "8137f28c",
+          "genes": {
+            "gate_confidence_min": 0.2322911138867717,
+            "abort_aggressiveness": 0.1640337733733182,
+            "base_size_pct": 0.9343286153587795,
+            "hysteresis_margin": 0.05199943952863249,
+            "confidence_sensitivity": 1.2249728234552895,
+            "recovery_aggression": 0.4827244680247137
+          },
+          "fitness": null
+        },
+        {
+          "id": "69ffaa0a",
+          "genes": {
+            "gate_confidence_min": 0.07525208464209454,
+            "abort_aggressiveness": 0.1640337733733182,
+            "base_size_pct": 1.2047448407315215,
+            "hysteresis_margin": 0.05199943952863249,
+            "confidence_sensitivity": 1.0760386653976646,
+            "recovery_aggression": 0.37408410271828085
+          },
+          "fitness": null
+        },
+        {
+          "id": "d2531bd1",
+          "genes": {
+            "gate_confidence_min": 0.07525208464209454,
+            "abort_aggressiveness": 0.1640337733733182,
+            "base_size_pct": 1.2047448407315215,
+            "hysteresis_margin": 0.05199943952863249,
+            "confidence_sensitivity": 1.0760386653976646,
+            "recovery_aggression": 0.37408410271828085
+          },
+          "fitness": null
+        },
+        {
+          "id": "0e6d7c84",
+          "genes": {
+            "gate_confidence_min": 0.14707203766778035,
+            "abort_aggressiveness": 0.1372333950696919,
+            "base_size_pct": 1.228704066779292,
+            "hysteresis_margin": 0.05321592410810672,
+            "confidence_sensitivity": 0.865056230643416,
+            "recovery_aggression": 0.3
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "5": {
+      "island_id": "5",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "f43a539b",
+          "genes": {
+            "gate_confidence_min": 0.44689611841507537,
+            "abort_aggressiveness": 0.2714620042477266,
+            "base_size_pct": 0.7037458292723532,
+            "hysteresis_margin": 0.1274785403750065,
+            "confidence_sensitivity": 1.5285327192683762,
+            "recovery_aggression": 0.7246601612090419
+          },
+          "fitness": 24.318701072138367
+        },
+        {
+          "id": "95a6ccca",
+          "genes": {
+            "gate_confidence_min": 0.42090481728774404,
+            "abort_aggressiveness": 0.21849553169234212,
+            "base_size_pct": 0.5682736223745777,
+            "hysteresis_margin": 0.12605817493511337,
+            "confidence_sensitivity": 1.4353390008317148,
+            "recovery_aggression": 0.7123662657731943
+          },
+          "fitness": null
+        },
+        {
+          "id": "f23c6f42",
+          "genes": {
+            "gate_confidence_min": 0.44689611841507537,
+            "abort_aggressiveness": 0.2714620042477266,
+            "base_size_pct": 0.7037458292723532,
+            "hysteresis_margin": 0.1274785403750065,
+            "confidence_sensitivity": 1.5285327192683762,
+            "recovery_aggression": 0.7246601612090419
+          },
+          "fitness": null
+        },
+        {
+          "id": "4c136722",
+          "genes": {
+            "gate_confidence_min": 0.41536221937610335,
+            "abort_aggressiveness": 0.2149719391712927,
+            "base_size_pct": 0.6814180938712273,
+            "hysteresis_margin": 0.08805667766700834,
+            "confidence_sensitivity": 1.5687653627651015,
+            "recovery_aggression": 0.7305748915767152
+          },
+          "fitness": null
+        },
+        {
+          "id": "a8a3a480",
+          "genes": {
+            "gate_confidence_min": 0.44689611841507537,
+            "abort_aggressiveness": 0.2714620042477266,
+            "base_size_pct": 0.7037458292723532,
+            "hysteresis_margin": 0.1274785403750065,
+            "confidence_sensitivity": 1.5285327192683762,
+            "recovery_aggression": 0.7246601612090419
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "6": {
+      "island_id": "6",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "f09f4bc0",
+          "genes": {
+            "gate_confidence_min": 0.08712861592179438,
+            "abort_aggressiveness": 0.37797399030031475,
+            "base_size_pct": 0.839122708708405,
+            "hysteresis_margin": 0.17528402128590875,
+            "confidence_sensitivity": 0.7884322171565536,
+            "recovery_aggression": 0.40201952617486303
+          },
+          "fitness": 24.25165232041601
+        },
+        {
+          "id": "f991dffa",
+          "genes": {
+            "gate_confidence_min": 0.08712861592179438,
+            "abort_aggressiveness": 0.37797399030031475,
+            "base_size_pct": 0.839122708708405,
+            "hysteresis_margin": 0.17528402128590875,
+            "confidence_sensitivity": 0.7884322171565536,
+            "recovery_aggression": 0.40201952617486303
+          },
+          "fitness": null
+        },
+        {
+          "id": "c55d5fe9",
+          "genes": {
+            "gate_confidence_min": 0.1303547548623255,
+            "abort_aggressiveness": 0.4,
+            "base_size_pct": 1.1185682138921027,
+            "hysteresis_margin": 0.11178644098272604,
+            "confidence_sensitivity": 0.840157972482747,
+            "recovery_aggression": 0.48025950979303444
+          },
+          "fitness": null
+        },
+        {
+          "id": "165f4e1c",
+          "genes": {
+            "gate_confidence_min": 0.2720757116478623,
+            "abort_aggressiveness": 0.3687500378776052,
+            "base_size_pct": 1.6062239678672565,
+            "hysteresis_margin": 0.09841130672797442,
+            "confidence_sensitivity": 1.3710513062909204,
+            "recovery_aggression": 0.315173438883846
+          },
+          "fitness": null
+        },
+        {
+          "id": "ec9cd1f4",
+          "genes": {
+            "gate_confidence_min": 0.08712861592179438,
+            "abort_aggressiveness": 0.37797399030031475,
+            "base_size_pct": 1.6062239678672565,
+            "hysteresis_margin": 0.17528402128590875,
+            "confidence_sensitivity": 0.7884322171565536,
+            "recovery_aggression": 0.40201952617486303
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "7": {
+      "island_id": "7",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "0bc9c3af",
+          "genes": {
+            "gate_confidence_min": 0.04184909969388112,
+            "abort_aggressiveness": 0.1665379859671345,
+            "base_size_pct": 2.923231796509261,
+            "hysteresis_margin": 0.28318499605019515,
+            "confidence_sensitivity": 0.9767514677178704,
+            "recovery_aggression": 0.8930627602934683
+          },
+          "fitness": 24.196625476269812
+        },
+        {
+          "id": "4aee38a2",
+          "genes": {
+            "gate_confidence_min": 0.07949894076739364,
+            "abort_aggressiveness": 0.4,
+            "base_size_pct": 2.831258254914424,
+            "hysteresis_margin": 0.2795720359471149,
+            "confidence_sensitivity": 1.795999673610189,
+            "recovery_aggression": 1.0
+          },
+          "fitness": null
+        },
+        {
+          "id": "d7ba83be",
+          "genes": {
+            "gate_confidence_min": 0.0,
+            "abort_aggressiveness": 0.37686486483187304,
+            "base_size_pct": 1.8199065174989533,
+            "hysteresis_margin": 0.28622139377843864,
+            "confidence_sensitivity": 1.7369395568440888,
+            "recovery_aggression": 0.80030389732312
+          },
+          "fitness": null
+        },
+        {
+          "id": "2913c308",
+          "genes": {
+            "gate_confidence_min": 0.04455189330083405,
+            "abort_aggressiveness": 0.3522155370540306,
+            "base_size_pct": 1.7423104414477655,
+            "hysteresis_margin": 0.3,
+            "confidence_sensitivity": 1.4822120029102541,
+            "recovery_aggression": 0.8024555987691943
+          },
+          "fitness": null
+        },
+        {
+          "id": "bd803580",
+          "genes": {
+            "gate_confidence_min": 0.04184909969388112,
+            "abort_aggressiveness": 0.1665379859671345,
+            "base_size_pct": 1.734451793294479,
+            "hysteresis_margin": 0.28318499605019515,
+            "confidence_sensitivity": 1.8102721928236671,
+            "recovery_aggression": 0.8897209832212039
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "8": {
+      "island_id": "8",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "72672064",
+          "genes": {
+            "gate_confidence_min": 0.07504314004703966,
+            "abort_aggressiveness": 0.10264870853398311,
+            "base_size_pct": 1.148514938768443,
+            "hysteresis_margin": 0.11975610647601774,
+            "confidence_sensitivity": 1.5392576689200228,
+            "recovery_aggression": 0.33240625247971284
+          },
+          "fitness": 23.924669014037967
+        },
+        {
+          "id": "6f57a4d0",
+          "genes": {
+            "gate_confidence_min": 0.037328056727329334,
+            "abort_aggressiveness": 0.022465987057931944,
+            "base_size_pct": 1.0561358934609542,
+            "hysteresis_margin": 0.13774603186465506,
+            "confidence_sensitivity": 1.8207173669777346,
+            "recovery_aggression": 0.36964753467021705
+          },
+          "fitness": null
+        },
+        {
+          "id": "a008eb4d",
+          "genes": {
+            "gate_confidence_min": 0.09622987587712013,
+            "abort_aggressiveness": 0.10264870853398311,
+            "base_size_pct": 1.6013870800422139,
+            "hysteresis_margin": 0.09422979414499245,
+            "confidence_sensitivity": 1.633433931672483,
+            "recovery_aggression": 0.33240625247971284
+          },
+          "fitness": null
+        },
+        {
+          "id": "27578b0f",
+          "genes": {
+            "gate_confidence_min": 0.09622987587712013,
+            "abort_aggressiveness": 0.10264870853398311,
+            "base_size_pct": 1.6013870800422139,
+            "hysteresis_margin": 0.11975610647601774,
+            "confidence_sensitivity": 1.633433931672483,
+            "recovery_aggression": 0.33240625247971284
+          },
+          "fitness": null
+        },
+        {
+          "id": "88d2a015",
+          "genes": {
+            "gate_confidence_min": 0.07504314004703966,
+            "abort_aggressiveness": 0.10264870853398311,
+            "base_size_pct": 1.148514938768443,
+            "hysteresis_margin": 0.11975610647601774,
+            "confidence_sensitivity": 1.5392576689200228,
+            "recovery_aggression": 0.33240625247971284
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "9": {
+      "island_id": "9",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "55fab1be",
+          "genes": {
+            "gate_confidence_min": 0.4697484206810081,
+            "abort_aggressiveness": 0.39237598471204,
+            "base_size_pct": 0.5,
+            "hysteresis_margin": 0.11727691487787525,
+            "confidence_sensitivity": 1.344544790386032,
+            "recovery_aggression": 0.7721421664439634
+          },
+          "fitness": 24.49501546264718
+        },
+        {
+          "id": "6e591219",
+          "genes": {
+            "gate_confidence_min": 0.47302063362700475,
+            "abort_aggressiveness": 0.32097275686155474,
+            "base_size_pct": 0.5298571924142663,
+            "hysteresis_margin": 0.23268298801167814,
+            "confidence_sensitivity": 1.3759341003508965,
+            "recovery_aggression": 0.8563795618443131
+          },
+          "fitness": null
+        },
+        {
+          "id": "30b32f02",
+          "genes": {
+            "gate_confidence_min": 0.5,
+            "abort_aggressiveness": 0.18553159649460496,
+            "base_size_pct": 0.5256913523692844,
+            "hysteresis_margin": 0.11023343002877062,
+            "confidence_sensitivity": 1.5082105092524938,
+            "recovery_aggression": 0.957165912444452
+          },
+          "fitness": null
+        },
+        {
+          "id": "fee8caf5",
+          "genes": {
+            "gate_confidence_min": 0.4488260077444456,
+            "abort_aggressiveness": 0.32097275686155474,
+            "base_size_pct": 0.5298571924142663,
+            "hysteresis_margin": 0.23268298801167814,
+            "confidence_sensitivity": 1.344544790386032,
+            "recovery_aggression": 0.7721421664439634
+          },
+          "fitness": null
+        },
+        {
+          "id": "f162244d",
+          "genes": {
+            "gate_confidence_min": 0.47302063362700475,
+            "abort_aggressiveness": 0.29374377819404324,
+            "base_size_pct": 0.5,
+            "hysteresis_margin": 0.11727691487787525,
+            "confidence_sensitivity": 1.3759341003508965,
+            "recovery_aggression": 0.7721421664439634
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "10": {
+      "island_id": "10",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "c6a02445",
+          "genes": {
+            "gate_confidence_min": 0.393523851556947,
+            "abort_aggressiveness": 0.36232246779880994,
+            "base_size_pct": 2.9702988046433307,
+            "hysteresis_margin": 0.05118525817327886,
+            "confidence_sensitivity": 0.9088300237408717,
+            "recovery_aggression": 0.969729928060319
+          },
+          "fitness": null
+        },
+        {
+          "id": "3be8273f",
+          "genes": {
+            "gate_confidence_min": 0.4202070983059975,
+            "abort_aggressiveness": 0.17295077193954206,
+            "base_size_pct": 1.9954867535528529,
+            "hysteresis_margin": 0.2877563463252974,
+            "confidence_sensitivity": 1.3542642349142893,
+            "recovery_aggression": 0.5980937644669656
+          },
+          "fitness": null
+        },
+        {
+          "id": "c532bcaf",
+          "genes": {
+            "gate_confidence_min": 0.05252739581375859,
+            "abort_aggressiveness": 0.320779226350205,
+            "base_size_pct": 2.0453665566333603,
+            "hysteresis_margin": 0.21213899323743773,
+            "confidence_sensitivity": 0.6657279379714183,
+            "recovery_aggression": 0.5249066018284535
+          },
+          "fitness": null
+        },
+        {
+          "id": "ed9d33fb",
+          "genes": {
+            "gate_confidence_min": 0.06989938033436915,
+            "abort_aggressiveness": 0.2983675757674055,
+            "base_size_pct": 0.5324404813781145,
+            "hysteresis_margin": 0.16477449829499952,
+            "confidence_sensitivity": 0.8637257349588738,
+            "recovery_aggression": 0.9573830079510189
+          },
+          "fitness": null
+        },
+        {
+          "id": "f6008c7b",
+          "genes": {
+            "gate_confidence_min": 0.362824030625093,
+            "abort_aggressiveness": 0.33469959257267534,
+            "base_size_pct": 0.7684439892610377,
+            "hysteresis_margin": 0.20956557983858343,
+            "confidence_sensitivity": 1.2985835934509586,
+            "recovery_aggression": 0.9121297527485105
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "11": {
+      "island_id": "11",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "6c789edd",
+          "genes": {
+            "gate_confidence_min": 0.12257499869932992,
+            "abort_aggressiveness": 0.08921269653639322,
+            "base_size_pct": 1.8539810507305376,
+            "hysteresis_margin": 0.24661032788194992,
+            "confidence_sensitivity": 0.8434585444581089,
+            "recovery_aggression": 0.8992125817877311
+          },
+          "fitness": null
+        },
+        {
+          "id": "7ddff204",
+          "genes": {
+            "gate_confidence_min": 0.09170738992722821,
+            "abort_aggressiveness": 0.2158149119059492,
+            "base_size_pct": 2.72940195078376,
+            "hysteresis_margin": 0.15723337770356427,
+            "confidence_sensitivity": 1.380453085320519,
+            "recovery_aggression": 0.5959402215175921
+          },
+          "fitness": null
+        },
+        {
+          "id": "37b46ce6",
+          "genes": {
+            "gate_confidence_min": 0.4047036682584708,
+            "abort_aggressiveness": 0.3167995792276617,
+            "base_size_pct": 1.0000850736391187,
+            "hysteresis_margin": 0.2216098025888365,
+            "confidence_sensitivity": 0.7686099736525647,
+            "recovery_aggression": 0.7707416037824161
+          },
+          "fitness": null
+        },
+        {
+          "id": "74ea4015",
+          "genes": {
+            "gate_confidence_min": 0.13375956048496473,
+            "abort_aggressiveness": 0.13912163525912802,
+            "base_size_pct": 0.6240810492720548,
+            "hysteresis_margin": 0.26496791356298266,
+            "confidence_sensitivity": 1.4548440775329883,
+            "recovery_aggression": 0.7686639582839401
+          },
+          "fitness": null
+        },
+        {
+          "id": "871b6c10",
+          "genes": {
+            "gate_confidence_min": 0.17231409258982017,
+            "abort_aggressiveness": 0.3333828747662867,
+            "base_size_pct": 1.7786791077348374,
+            "hysteresis_margin": 0.19744479808619625,
+            "confidence_sensitivity": 1.4841670089627483,
+            "recovery_aggression": 0.7774894613334243
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "12": {
+      "island_id": "12",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "7efa4e81",
+          "genes": {
+            "gate_confidence_min": 0.48038525351208305,
+            "abort_aggressiveness": 0.21650616876522905,
+            "base_size_pct": 0.6472782279161124,
+            "hysteresis_margin": 0.2610938195133283,
+            "confidence_sensitivity": 1.007606896758182,
+            "recovery_aggression": 0.5714016340410836
+          },
+          "fitness": null
+        },
+        {
+          "id": "aaaf6b52",
+          "genes": {
+            "gate_confidence_min": 0.3872325804918966,
+            "abort_aggressiveness": 0.14902955930073647,
+            "base_size_pct": 2.4656363264839154,
+            "hysteresis_margin": 0.0687581915763084,
+            "confidence_sensitivity": 1.9227939965037577,
+            "recovery_aggression": 0.42112774187541996
+          },
+          "fitness": null
+        },
+        {
+          "id": "c00fbae1",
+          "genes": {
+            "gate_confidence_min": 0.133253308705579,
+            "abort_aggressiveness": 0.2981587403959689,
+            "base_size_pct": 2.8954194095056964,
+            "hysteresis_margin": 0.16637081539918713,
+            "confidence_sensitivity": 1.5809061828677464,
+            "recovery_aggression": 0.7387978968139839
+          },
+          "fitness": null
+        },
+        {
+          "id": "31d0f390",
+          "genes": {
+            "gate_confidence_min": 0.4028909851224065,
+            "abort_aggressiveness": 0.1837256244188779,
+            "base_size_pct": 1.3149710121497076,
+            "hysteresis_margin": 0.15013516490596462,
+            "confidence_sensitivity": 0.9029169853331258,
+            "recovery_aggression": 0.9705358755252931
+          },
+          "fitness": null
+        },
+        {
+          "id": "2c86c4fc",
+          "genes": {
+            "gate_confidence_min": 0.1637976772792648,
+            "abort_aggressiveness": 0.3495170390985108,
+            "base_size_pct": 0.6432728372338243,
+            "hysteresis_margin": 0.283062168475225,
+            "confidence_sensitivity": 0.9233349066449582,
+            "recovery_aggression": 0.6946905498881868
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "13": {
+      "island_id": "13",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "351ae2b3",
+          "genes": {
+            "gate_confidence_min": 0.3136365259277657,
+            "abort_aggressiveness": 0.3480722371036554,
+            "base_size_pct": 2.2224135018159465,
+            "hysteresis_margin": 0.22694005198545786,
+            "confidence_sensitivity": 1.7399421589274078,
+            "recovery_aggression": 0.7708387003054162
+          },
+          "fitness": null
+        },
+        {
+          "id": "9443a73e",
+          "genes": {
+            "gate_confidence_min": 0.3591254115136344,
+            "abort_aggressiveness": 0.1113199855966372,
+            "base_size_pct": 1.6983571183705133,
+            "hysteresis_margin": 0.28038589864388713,
+            "confidence_sensitivity": 1.2397430956659286,
+            "recovery_aggression": 0.9176100838006497
+          },
+          "fitness": null
+        },
+        {
+          "id": "72185dee",
+          "genes": {
+            "gate_confidence_min": 0.28558181427424284,
+            "abort_aggressiveness": 0.15996327513761216,
+            "base_size_pct": 1.9392170514733513,
+            "hysteresis_margin": 0.08129213810941045,
+            "confidence_sensitivity": 1.2341069403661515,
+            "recovery_aggression": 0.9045647424972131
+          },
+          "fitness": null
+        },
+        {
+          "id": "3f66ba25",
+          "genes": {
+            "gate_confidence_min": 0.13838366401974045,
+            "abort_aggressiveness": 0.2788869956250569,
+            "base_size_pct": 0.6104440508442226,
+            "hysteresis_margin": 0.12294631724787862,
+            "confidence_sensitivity": 0.99687923109739,
+            "recovery_aggression": 0.8021783266937943
+          },
+          "fitness": null
+        },
+        {
+          "id": "f8357df1",
+          "genes": {
+            "gate_confidence_min": 0.46687708855699933,
+            "abort_aggressiveness": 0.2364643745287625,
+            "base_size_pct": 1.776423825083519,
+            "hysteresis_margin": 0.29493047796501837,
+            "confidence_sensitivity": 1.17442751428068,
+            "recovery_aggression": 0.6495607879944704
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "14": {
+      "island_id": "14",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "6b07548b",
+          "genes": {
+            "gate_confidence_min": 0.15313479314083323,
+            "abort_aggressiveness": 0.38327961745756506,
+            "base_size_pct": 1.9360058847262716,
+            "hysteresis_margin": 0.08141357597884992,
+            "confidence_sensitivity": 1.790158346410499,
+            "recovery_aggression": 0.3008523284341254
+          },
+          "fitness": null
+        },
+        {
+          "id": "6e46e5e2",
+          "genes": {
+            "gate_confidence_min": 0.035116482282371464,
+            "abort_aggressiveness": 0.18351802337547296,
+            "base_size_pct": 0.580168181672583,
+            "hysteresis_margin": 0.09150113776233197,
+            "confidence_sensitivity": 0.7435650031741745,
+            "recovery_aggression": 0.9372889478800752
+          },
+          "fitness": null
+        },
+        {
+          "id": "029cf0ed",
+          "genes": {
+            "gate_confidence_min": 0.1723249006579297,
+            "abort_aggressiveness": 0.0533638063032103,
+            "base_size_pct": 0.9250169254313143,
+            "hysteresis_margin": 0.086656950715552,
+            "confidence_sensitivity": 1.1019864604646479,
+            "recovery_aggression": 0.5612995513550015
+          },
+          "fitness": null
+        },
+        {
+          "id": "ed54b4e3",
+          "genes": {
+            "gate_confidence_min": 0.30944809782175675,
+            "abort_aggressiveness": 0.34237927928691336,
+            "base_size_pct": 1.2314671914248847,
+            "hysteresis_margin": 0.15493714337822267,
+            "confidence_sensitivity": 1.1980638651810647,
+            "recovery_aggression": 0.9524507864378019
+          },
+          "fitness": null
+        },
+        {
+          "id": "d0b5424a",
+          "genes": {
+            "gate_confidence_min": 0.3222549778432227,
+            "abort_aggressiveness": 0.3625926307793603,
+            "base_size_pct": 0.8025818637879341,
+            "hysteresis_margin": 0.12282932479405835,
+            "confidence_sensitivity": 1.5212065370400116,
+            "recovery_aggression": 0.9828324324964874
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "15": {
+      "island_id": "15",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "f03eae35",
+          "genes": {
+            "gate_confidence_min": 0.022333518226859805,
+            "abort_aggressiveness": 0.28517574456208117,
+            "base_size_pct": 1.5477846154957695,
+            "hysteresis_margin": 0.07824439378797617,
+            "confidence_sensitivity": 1.6055433773442003,
+            "recovery_aggression": 0.8789157485796407
+          },
+          "fitness": null
+        },
+        {
+          "id": "be152c61",
+          "genes": {
+            "gate_confidence_min": 0.018496187954978704,
+            "abort_aggressiveness": 0.09754061368889558,
+            "base_size_pct": 2.1009624462378294,
+            "hysteresis_margin": 0.2819412688058247,
+            "confidence_sensitivity": 1.0409340328890475,
+            "recovery_aggression": 0.7154097963969308
+          },
+          "fitness": null
+        },
+        {
+          "id": "ff891b8c",
+          "genes": {
+            "gate_confidence_min": 0.25127870293341853,
+            "abort_aggressiveness": 0.3742669769341455,
+            "base_size_pct": 1.578966076757319,
+            "hysteresis_margin": 0.20164406947085817,
+            "confidence_sensitivity": 1.6697872787083285,
+            "recovery_aggression": 0.7173985518807503
+          },
+          "fitness": null
+        },
+        {
+          "id": "0f7e9882",
+          "genes": {
+            "gate_confidence_min": 0.33155908402763656,
+            "abort_aggressiveness": 0.06668310677626828,
+            "base_size_pct": 1.3019809169594059,
+            "hysteresis_margin": 0.27864860177847084,
+            "confidence_sensitivity": 1.752885259766061,
+            "recovery_aggression": 0.3500763591374366
+          },
+          "fitness": null
+        },
+        {
+          "id": "e665441d",
+          "genes": {
+            "gate_confidence_min": 0.13228442241828497,
+            "abort_aggressiveness": 0.15675647554551586,
+            "base_size_pct": 1.3316977232214597,
+            "hysteresis_margin": 0.2063394365112161,
+            "confidence_sensitivity": 0.9663642032999846,
+            "recovery_aggression": 0.9516786317516533
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "16": {
+      "island_id": "16",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "c9e62e4a",
+          "genes": {
+            "gate_confidence_min": 0.3644595882711267,
+            "abort_aggressiveness": 0.24725050055713985,
+            "base_size_pct": 2.6497659769448454,
+            "hysteresis_margin": 0.2186449813429333,
+            "confidence_sensitivity": 0.7150135284224177,
+            "recovery_aggression": 0.8061488978677639
+          },
+          "fitness": null
+        },
+        {
+          "id": "eff5d08d",
+          "genes": {
+            "gate_confidence_min": 0.23316626383878641,
+            "abort_aggressiveness": 0.1835961622009938,
+            "base_size_pct": 2.379754643241885,
+            "hysteresis_margin": 0.15146387073993067,
+            "confidence_sensitivity": 1.047767488282469,
+            "recovery_aggression": 0.7299278071201936
+          },
+          "fitness": null
+        },
+        {
+          "id": "e9e7ad83",
+          "genes": {
+            "gate_confidence_min": 0.4563068845841759,
+            "abort_aggressiveness": 0.26529795445452253,
+            "base_size_pct": 1.8589814900889667,
+            "hysteresis_margin": 0.27807894293597873,
+            "confidence_sensitivity": 0.9459782766949576,
+            "recovery_aggression": 0.7914301091097167
+          },
+          "fitness": null
+        },
+        {
+          "id": "838ed22e",
+          "genes": {
+            "gate_confidence_min": 0.3566170598781071,
+            "abort_aggressiveness": 0.14533592841236817,
+            "base_size_pct": 1.8302145913651875,
+            "hysteresis_margin": 0.08869312640500294,
+            "confidence_sensitivity": 1.6845853017874541,
+            "recovery_aggression": 0.8956709374210313
+          },
+          "fitness": null
+        },
+        {
+          "id": "c20f23dc",
+          "genes": {
+            "gate_confidence_min": 0.2256802264171633,
+            "abort_aggressiveness": 0.3763010196549572,
+            "base_size_pct": 1.135871953029232,
+            "hysteresis_margin": 0.16592726004342784,
+            "confidence_sensitivity": 0.8260650718642173,
+            "recovery_aggression": 0.4520211763834603
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "17": {
+      "island_id": "17",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "2d9b2f36",
+          "genes": {
+            "gate_confidence_min": 0.002804928501193349,
+            "abort_aggressiveness": 0.16424273812669488,
+            "base_size_pct": 0.5801867389481901,
+            "hysteresis_margin": 0.15838194391051008,
+            "confidence_sensitivity": 1.0027621564595735,
+            "recovery_aggression": 0.9722220430145135
+          },
+          "fitness": null
+        },
+        {
+          "id": "5aad6792",
+          "genes": {
+            "gate_confidence_min": 0.1113808017315488,
+            "abort_aggressiveness": 0.028944787610090117,
+            "base_size_pct": 1.7311471963778342,
+            "hysteresis_margin": 0.14189775113891195,
+            "confidence_sensitivity": 1.5311839536141307,
+            "recovery_aggression": 0.8903275737735
+          },
+          "fitness": null
+        },
+        {
+          "id": "18291ef5",
+          "genes": {
+            "gate_confidence_min": 0.11666070058118017,
+            "abort_aggressiveness": 0.13320565020330308,
+            "base_size_pct": 1.3226109088609062,
+            "hysteresis_margin": 0.06905781920629088,
+            "confidence_sensitivity": 0.7637966075441903,
+            "recovery_aggression": 0.5494657870195098
+          },
+          "fitness": null
+        },
+        {
+          "id": "a115143d",
+          "genes": {
+            "gate_confidence_min": 0.0729538343268456,
+            "abort_aggressiveness": 0.02504913370516384,
+            "base_size_pct": 2.9098442189103904,
+            "hysteresis_margin": 0.29741554125208947,
+            "confidence_sensitivity": 0.5387877527338587,
+            "recovery_aggression": 0.363624966133209
+          },
+          "fitness": null
+        },
+        {
+          "id": "1e1f48c3",
+          "genes": {
+            "gate_confidence_min": 0.07657798260962706,
+            "abort_aggressiveness": 0.21966086442927543,
+            "base_size_pct": 0.7323260356449641,
+            "hysteresis_margin": 0.19566071371642535,
+            "confidence_sensitivity": 0.9010211738513314,
+            "recovery_aggression": 0.5607414441488203
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "18": {
+      "island_id": "18",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "67a93713",
+          "genes": {
+            "gate_confidence_min": 0.2733545773656045,
+            "abort_aggressiveness": 0.23599505592752462,
+            "base_size_pct": 2.0701892432741076,
+            "hysteresis_margin": 0.1486240196183049,
+            "confidence_sensitivity": 1.0589403910046595,
+            "recovery_aggression": 0.33531111362128974
+          },
+          "fitness": null
+        },
+        {
+          "id": "f6018e94",
+          "genes": {
+            "gate_confidence_min": 0.11118876970948055,
+            "abort_aggressiveness": 0.15231003747217284,
+            "base_size_pct": 1.3695299185489858,
+            "hysteresis_margin": 0.2832597142176485,
+            "confidence_sensitivity": 1.2366393298750264,
+            "recovery_aggression": 0.43436570139478925
+          },
+          "fitness": null
+        },
+        {
+          "id": "f66f75d0",
+          "genes": {
+            "gate_confidence_min": 0.1427913114949816,
+            "abort_aggressiveness": 0.25577503946678964,
+            "base_size_pct": 0.8936251381125109,
+            "hysteresis_margin": 0.22719167441865862,
+            "confidence_sensitivity": 1.656171130081804,
+            "recovery_aggression": 0.9911855499039532
+          },
+          "fitness": null
+        },
+        {
+          "id": "c2c0abf4",
+          "genes": {
+            "gate_confidence_min": 0.28542018617279796,
+            "abort_aggressiveness": 0.29992392874152213,
+            "base_size_pct": 1.2568198793722796,
+            "hysteresis_margin": 0.07475339468351676,
+            "confidence_sensitivity": 1.25477740678174,
+            "recovery_aggression": 0.3192140987494649
+          },
+          "fitness": null
+        },
+        {
+          "id": "3bd6e55e",
+          "genes": {
+            "gate_confidence_min": 0.17705825567299627,
+            "abort_aggressiveness": 0.37311983704505225,
+            "base_size_pct": 1.608016702946573,
+            "hysteresis_margin": 0.26192498592903646,
+            "confidence_sensitivity": 0.6932037727955243,
+            "recovery_aggression": 0.7940872299678333
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "19": {
+      "island_id": "19",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "8fb3ccc4",
+          "genes": {
+            "gate_confidence_min": 0.3142026630263007,
+            "abort_aggressiveness": 0.1731461614644645,
+            "base_size_pct": 2.6240973036879534,
+            "hysteresis_margin": 0.21164549889942397,
+            "confidence_sensitivity": 1.2241753634858081,
+            "recovery_aggression": 0.4518299334790836
+          },
+          "fitness": null
+        },
+        {
+          "id": "1581d736",
+          "genes": {
+            "gate_confidence_min": 0.30861593210268523,
+            "abort_aggressiveness": 0.021117114359903023,
+            "base_size_pct": 1.2175918436019124,
+            "hysteresis_margin": 0.12743032538796162,
+            "confidence_sensitivity": 0.5596230054115026,
+            "recovery_aggression": 0.9159714740017805
+          },
+          "fitness": null
+        },
+        {
+          "id": "1c186754",
+          "genes": {
+            "gate_confidence_min": 0.08163319796121965,
+            "abort_aggressiveness": 0.12850414167347787,
+            "base_size_pct": 1.6587658132796306,
+            "hysteresis_margin": 0.18747051838992868,
+            "confidence_sensitivity": 1.9769865330340592,
+            "recovery_aggression": 0.47408464127561933
+          },
+          "fitness": null
+        },
+        {
+          "id": "27aff369",
+          "genes": {
+            "gate_confidence_min": 0.4799583936295657,
+            "abort_aggressiveness": 0.04487432628769131,
+            "base_size_pct": 1.7333414079452116,
+            "hysteresis_margin": 0.07887184111111185,
+            "confidence_sensitivity": 1.1456539380581379,
+            "recovery_aggression": 0.39196382462893237
+          },
+          "fitness": null
+        },
+        {
+          "id": "4c47595a",
+          "genes": {
+            "gate_confidence_min": 0.14754904170432565,
+            "abort_aggressiveness": 0.20855647869029742,
+            "base_size_pct": 1.7162297975278402,
+            "hysteresis_margin": 0.26220939850255076,
+            "confidence_sensitivity": 0.7590683490942671,
+            "recovery_aggression": 0.49115006247364806
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "20": {
+      "island_id": "20",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "4f7e63c2",
+          "genes": {
+            "gate_confidence_min": 0.10800970782792868,
+            "abort_aggressiveness": 0.38104388180268767,
+            "base_size_pct": 2.6806376380970756,
+            "hysteresis_margin": 0.22023661899139163,
+            "confidence_sensitivity": 0.6286453991123673,
+            "recovery_aggression": 0.44428228723533575
+          },
+          "fitness": null
+        },
+        {
+          "id": "6270f217",
+          "genes": {
+            "gate_confidence_min": 0.10433634319843471,
+            "abort_aggressiveness": 0.14382629986726778,
+            "base_size_pct": 1.5396051727771558,
+            "hysteresis_margin": 0.18856184153044586,
+            "confidence_sensitivity": 0.6593073993821121,
+            "recovery_aggression": 0.8811369341934324
+          },
+          "fitness": null
+        },
+        {
+          "id": "71bc5ba8",
+          "genes": {
+            "gate_confidence_min": 0.16814231406729946,
+            "abort_aggressiveness": 0.195101133268278,
+            "base_size_pct": 2.8236464160935686,
+            "hysteresis_margin": 0.18110973956548426,
+            "confidence_sensitivity": 1.6854256306203392,
+            "recovery_aggression": 0.8973126250379327
+          },
+          "fitness": null
+        },
+        {
+          "id": "b0f3a3ef",
+          "genes": {
+            "gate_confidence_min": 0.16823125684218837,
+            "abort_aggressiveness": 0.19617972410221826,
+            "base_size_pct": 2.793609454491893,
+            "hysteresis_margin": 0.063114466194493,
+            "confidence_sensitivity": 1.0432814080494577,
+            "recovery_aggression": 0.34283980038649975
+          },
+          "fitness": null
+        },
+        {
+          "id": "10a32970",
+          "genes": {
+            "gate_confidence_min": 0.43731110127386347,
+            "abort_aggressiveness": 0.07474330289400957,
+            "base_size_pct": 1.3927652323409005,
+            "hysteresis_margin": 0.1732499817998609,
+            "confidence_sensitivity": 0.7831605526878164,
+            "recovery_aggression": 0.3101501013396804
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "22": {
+      "island_id": "22",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "4ad4f066",
+          "genes": {
+            "gate_confidence_min": 0.4567397568133022,
+            "abort_aggressiveness": 0.05753107373188709,
+            "base_size_pct": 1.4179525012158618,
+            "hysteresis_margin": 0.18271676266633358,
+            "confidence_sensitivity": 0.9640667013978008,
+            "recovery_aggression": 0.851171635170074
+          },
+          "fitness": null
+        },
+        {
+          "id": "aa84f810",
+          "genes": {
+            "gate_confidence_min": 0.07541822608431947,
+            "abort_aggressiveness": 0.09524254457291709,
+            "base_size_pct": 0.6113244925086612,
+            "hysteresis_margin": 0.12125754334537471,
+            "confidence_sensitivity": 1.281570874540206,
+            "recovery_aggression": 0.7171681022455783
+          },
+          "fitness": null
+        },
+        {
+          "id": "a6d2f6e0",
+          "genes": {
+            "gate_confidence_min": 0.4761409559551722,
+            "abort_aggressiveness": 0.02963699360249992,
+            "base_size_pct": 0.5983601087214634,
+            "hysteresis_margin": 0.13679391249702189,
+            "confidence_sensitivity": 0.7321395630142049,
+            "recovery_aggression": 0.5274857430072589
+          },
+          "fitness": null
+        },
+        {
+          "id": "826ad353",
+          "genes": {
+            "gate_confidence_min": 0.42667187636877046,
+            "abort_aggressiveness": 0.18193447699956475,
+            "base_size_pct": 1.8302488244036639,
+            "hysteresis_margin": 0.2482768987386682,
+            "confidence_sensitivity": 1.4884602527969095,
+            "recovery_aggression": 0.507577635816958
+          },
+          "fitness": null
+        },
+        {
+          "id": "0ae07bde",
+          "genes": {
+            "gate_confidence_min": 0.1696136826949209,
+            "abort_aggressiveness": 0.11807858998253429,
+            "base_size_pct": 0.8937953168665507,
+            "hysteresis_margin": 0.17352940286412755,
+            "confidence_sensitivity": 1.7382704625454823,
+            "recovery_aggression": 0.7384260480194268
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "23": {
+      "island_id": "23",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "e3fda1a0",
+          "genes": {
+            "gate_confidence_min": 0.11022640784903087,
+            "abort_aggressiveness": 0.3847679629027134,
+            "base_size_pct": 0.7548233461839975,
+            "hysteresis_margin": 0.2350541147277978,
+            "confidence_sensitivity": 1.3083081177335658,
+            "recovery_aggression": 0.9055892226616927
+          },
+          "fitness": null
+        },
+        {
+          "id": "ae57e4d0",
+          "genes": {
+            "gate_confidence_min": 0.1289275878893117,
+            "abort_aggressiveness": 0.35862574705010775,
+            "base_size_pct": 0.9448492375033131,
+            "hysteresis_margin": 0.2951728285299006,
+            "confidence_sensitivity": 0.7276406029166873,
+            "recovery_aggression": 0.8165519815823331
+          },
+          "fitness": null
+        },
+        {
+          "id": "68438470",
+          "genes": {
+            "gate_confidence_min": 0.49902994086376307,
+            "abort_aggressiveness": 0.02709593836316695,
+            "base_size_pct": 1.884291589222086,
+            "hysteresis_margin": 0.15099065273374268,
+            "confidence_sensitivity": 0.8655821934620631,
+            "recovery_aggression": 0.5434079379537725
+          },
+          "fitness": null
+        },
+        {
+          "id": "648cba09",
+          "genes": {
+            "gate_confidence_min": 0.0022370035795235554,
+            "abort_aggressiveness": 0.2578277164989066,
+            "base_size_pct": 1.4962865284940015,
+            "hysteresis_margin": 0.09075820350014953,
+            "confidence_sensitivity": 1.26517566317502,
+            "recovery_aggression": 0.38978408572173584
+          },
+          "fitness": null
+        },
+        {
+          "id": "55fe9204",
+          "genes": {
+            "gate_confidence_min": 0.051643939233856684,
+            "abort_aggressiveness": 0.2995766860825365,
+            "base_size_pct": 2.144352695072743,
+            "hysteresis_margin": 0.22175965689192145,
+            "confidence_sensitivity": 1.3958014491186117,
+            "recovery_aggression": 0.35898937989569785
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "24": {
+      "island_id": "24",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "536f08f6",
+          "genes": {
+            "gate_confidence_min": 0.39384825671762125,
+            "abort_aggressiveness": 0.11841207515556151,
+            "base_size_pct": 2.29456128985833,
+            "hysteresis_margin": 0.1306173801734261,
+            "confidence_sensitivity": 0.5685887366580002,
+            "recovery_aggression": 0.8594805118558864
+          },
+          "fitness": null
+        },
+        {
+          "id": "eedf7405",
+          "genes": {
+            "gate_confidence_min": 0.38840702224234536,
+            "abort_aggressiveness": 0.3671360211491403,
+            "base_size_pct": 0.5523713714651858,
+            "hysteresis_margin": 0.2679101816693928,
+            "confidence_sensitivity": 1.4883983735763313,
+            "recovery_aggression": 0.4644655443517331
+          },
+          "fitness": null
+        },
+        {
+          "id": "6411d64b",
+          "genes": {
+            "gate_confidence_min": 0.08373150297034898,
+            "abort_aggressiveness": 0.2994221346327402,
+            "base_size_pct": 1.3670579718660296,
+            "hysteresis_margin": 0.2983501031178074,
+            "confidence_sensitivity": 1.010791443761791,
+            "recovery_aggression": 0.9719238515085273
+          },
+          "fitness": null
+        },
+        {
+          "id": "b1be43de",
+          "genes": {
+            "gate_confidence_min": 0.016074442339242656,
+            "abort_aggressiveness": 0.06857096449390335,
+            "base_size_pct": 2.9590184891612172,
+            "hysteresis_margin": 0.08598718359173148,
+            "confidence_sensitivity": 0.6273333610590188,
+            "recovery_aggression": 0.9432053667098753
+          },
+          "fitness": null
+        },
+        {
+          "id": "305c3462",
+          "genes": {
+            "gate_confidence_min": 0.4587560547889162,
+            "abort_aggressiveness": 0.0682517983057298,
+            "base_size_pct": 1.049804367832511,
+            "hysteresis_margin": 0.16917888078907373,
+            "confidence_sensitivity": 1.8686777452716412,
+            "recovery_aggression": 0.9822018636929062
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "25": {
+      "island_id": "25",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "5a13120b",
+          "genes": {
+            "gate_confidence_min": 0.2700290668329416,
+            "abort_aggressiveness": 0.1979951714596897,
+            "base_size_pct": 1.7524380273606033,
+            "hysteresis_margin": 0.06609312483028708,
+            "confidence_sensitivity": 1.3071434509976592,
+            "recovery_aggression": 0.4594779615268941
+          },
+          "fitness": null
+        },
+        {
+          "id": "8d064261",
+          "genes": {
+            "gate_confidence_min": 0.09602691985653927,
+            "abort_aggressiveness": 0.39632067120337766,
+            "base_size_pct": 0.8873051981254814,
+            "hysteresis_margin": 0.2853027493630569,
+            "confidence_sensitivity": 1.598075459258275,
+            "recovery_aggression": 0.46739771838068533
+          },
+          "fitness": null
+        },
+        {
+          "id": "cc49336a",
+          "genes": {
+            "gate_confidence_min": 0.22413670036724276,
+            "abort_aggressiveness": 0.2906821142311954,
+            "base_size_pct": 2.0772549054483114,
+            "hysteresis_margin": 0.22296876314485253,
+            "confidence_sensitivity": 1.8682715688868683,
+            "recovery_aggression": 0.7908646577658727
+          },
+          "fitness": null
+        },
+        {
+          "id": "28d20dc7",
+          "genes": {
+            "gate_confidence_min": 0.30016964760350734,
+            "abort_aggressiveness": 0.1432814411049399,
+            "base_size_pct": 1.5609320185470927,
+            "hysteresis_margin": 0.05527563998541456,
+            "confidence_sensitivity": 1.5447527571374455,
+            "recovery_aggression": 0.34892596694723826
+          },
+          "fitness": null
+        },
+        {
+          "id": "0ee4da5a",
+          "genes": {
+            "gate_confidence_min": 0.47003616380922003,
+            "abort_aggressiveness": 0.04443427432078728,
+            "base_size_pct": 2.4129385905896097,
+            "hysteresis_margin": 0.19564165210313733,
+            "confidence_sensitivity": 0.5318664422198981,
+            "recovery_aggression": 0.9980118160775412
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "26": {
+      "island_id": "26",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "97b15db8",
+          "genes": {
+            "gate_confidence_min": 0.14731699274371524,
+            "abort_aggressiveness": 0.2949452590490228,
+            "base_size_pct": 1.2284183296721223,
+            "hysteresis_margin": 0.23661744078533925,
+            "confidence_sensitivity": 0.867145580247338,
+            "recovery_aggression": 0.7712974598535628
+          },
+          "fitness": null
+        },
+        {
+          "id": "32e90cf7",
+          "genes": {
+            "gate_confidence_min": 0.09466595575464748,
+            "abort_aggressiveness": 0.2899023322626606,
+            "base_size_pct": 0.7251490281904946,
+            "hysteresis_margin": 0.11608534718663975,
+            "confidence_sensitivity": 1.1409976576147187,
+            "recovery_aggression": 0.3571680945667262
+          },
+          "fitness": null
+        },
+        {
+          "id": "695a6612",
+          "genes": {
+            "gate_confidence_min": 0.43908877669426605,
+            "abort_aggressiveness": 0.22032912941794397,
+            "base_size_pct": 0.5522301413558213,
+            "hysteresis_margin": 0.22510713474212002,
+            "confidence_sensitivity": 0.7422233436655252,
+            "recovery_aggression": 0.921577730145703
+          },
+          "fitness": null
+        },
+        {
+          "id": "9eb4c940",
+          "genes": {
+            "gate_confidence_min": 0.12034346849108657,
+            "abort_aggressiveness": 0.2288278625098612,
+            "base_size_pct": 2.3763865303961604,
+            "hysteresis_margin": 0.07381381598325686,
+            "confidence_sensitivity": 1.0947933552478741,
+            "recovery_aggression": 0.5613300185008092
+          },
+          "fitness": null
+        },
+        {
+          "id": "574937cc",
+          "genes": {
+            "gate_confidence_min": 0.4431155084325844,
+            "abort_aggressiveness": 0.3637004037638989,
+            "base_size_pct": 2.7171244951580698,
+            "hysteresis_margin": 0.2626414028096934,
+            "confidence_sensitivity": 1.5741155830581146,
+            "recovery_aggression": 0.41650306104768786
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "27": {
+      "island_id": "27",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "b85e2f7e",
+          "genes": {
+            "gate_confidence_min": 0.09345277302019078,
+            "abort_aggressiveness": 0.28463321824858917,
+            "base_size_pct": 2.701607195693472,
+            "hysteresis_margin": 0.17419784552918188,
+            "confidence_sensitivity": 0.9864454538066494,
+            "recovery_aggression": 0.6244466345010218
+          },
+          "fitness": null
+        },
+        {
+          "id": "82f2fc17",
+          "genes": {
+            "gate_confidence_min": 0.20079248628469148,
+            "abort_aggressiveness": 0.08804728564313669,
+            "base_size_pct": 1.004490582612516,
+            "hysteresis_margin": 0.09235790866877609,
+            "confidence_sensitivity": 0.9336553637032337,
+            "recovery_aggression": 0.6202164242717675
+          },
+          "fitness": null
+        },
+        {
+          "id": "a9f84ac8",
+          "genes": {
+            "gate_confidence_min": 0.3277105900979758,
+            "abort_aggressiveness": 0.11494046457761287,
+            "base_size_pct": 2.384858682564244,
+            "hysteresis_margin": 0.16176215842607994,
+            "confidence_sensitivity": 0.5476605541662793,
+            "recovery_aggression": 0.4083198969054641
+          },
+          "fitness": null
+        },
+        {
+          "id": "616d4b6e",
+          "genes": {
+            "gate_confidence_min": 0.38190556392052416,
+            "abort_aggressiveness": 0.23273207738291607,
+            "base_size_pct": 1.0053036843418288,
+            "hysteresis_margin": 0.17092797759650596,
+            "confidence_sensitivity": 0.6950665410066892,
+            "recovery_aggression": 0.4399282910856648
+          },
+          "fitness": null
+        },
+        {
+          "id": "50ac9f3c",
+          "genes": {
+            "gate_confidence_min": 0.19952732693510622,
+            "abort_aggressiveness": 0.10335296616000039,
+            "base_size_pct": 1.5942052780788658,
+            "hysteresis_margin": 0.21684345778451525,
+            "confidence_sensitivity": 1.1991789298736288,
+            "recovery_aggression": 0.6459531626197741
+          },
+          "fitness": null
+        }
+      ]
+    },
+    "28": {
+      "island_id": "28",
+      "size": 5,
+      "individuals": [
+        {
+          "id": "cebba54c",
+          "genes": {
+            "gate_confidence_min": 0.32622810391831775,
+            "abort_aggressiveness": 0.24171289400082424,
+            "base_size_pct": 0.9004396671893062,
+            "hysteresis_margin": 0.17255911484736064,
+            "confidence_sensitivity": 1.2505619949940945,
+            "recovery_aggression": 0.6421228783569246
+          },
+          "fitness": null
+        },
+        {
+          "id": "c0b10ffd",
+          "genes": {
+            "gate_confidence_min": 0.06083416411268716,
+            "abort_aggressiveness": 0.3651683500254961,
+            "base_size_pct": 0.8032542783168237,
+            "hysteresis_margin": 0.2025783899938235,
+            "confidence_sensitivity": 1.414594126834079,
+            "recovery_aggression": 0.8493750033504912
+          },
+          "fitness": null
+        },
+        {
+          "id": "f83ca36e",
+          "genes": {
+            "gate_confidence_min": 0.12449818009481695,
+            "abort_aggressiveness": 0.12658746367329382,
+            "base_size_pct": 1.3324220828988746,
+            "hysteresis_margin": 0.18265961167362643,
+            "confidence_sensitivity": 1.667884517211836,
+            "recovery_aggression": 0.7414759383418477
+          },
+          "fitness": null
+        },
+        {
+          "id": "186b9018",
+          "genes": {
+            "gate_confidence_min": 0.05722466304956331,
+            "abort_aggressiveness": 0.12718258381847589,
+            "base_size_pct": 0.6320748248542641,
+            "hysteresis_margin": 0.11469734562303859,
+            "confidence_sensitivity": 0.7730249598239392,
+            "recovery_aggression": 0.9471436994722693
+          },
+          "fitness": null
+        },
+        {
+          "id": "250d8ee3",
+          "genes": {
+            "gate_confidence_min": 0.38354500093531896,
+            "abort_aggressiveness": 0.30879103549083675,
+            "base_size_pct": 1.019929510802804,
+            "hysteresis_margin": 0.24617090994479113,
+            "confidence_sensitivity": 1.982050471315151,
+            "recovery_aggression": 0.3716581929963035
+          },
+          "fitness": null
+        }
+      ]
+    }
+  }
+}
