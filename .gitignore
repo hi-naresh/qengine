@@ -7554,3 +7554,9 @@ pyrightconfig.json
 /bugs/
 /bugs/
 /candles_oanda_eurusd_1m_2022_2024.npy
+
+# Dist review tooling (ephemeral working state)
+papers/drafts/dist/.review_log.md
+papers/drafts/dist/.citation_cache.json
+papers/drafts/dist/.foundational_allowlist.txt
+papers/drafts/dist/.review_summary.md
