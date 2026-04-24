@@ -79,7 +79,7 @@ See `09_synthesis/02_pipeline_implications.md` for full details.
 
 **ARIA:**
 - Abort objective must shift from "is_bust rate" to (1) total dollar loss + (2) catastrophic (max_level_bust) count — tracked separately, since aborts inflate the aggregated is_bust metric
-- K=1 is optimal on BOTH axes (cuts total loss 46% and catastrophic busts 60→1); K=6 is a compromise for session continuity (3 catastrophic busts remain, $728 less PnL vs K=1)
+- K=1 is optimal on BOTH axes (cuts total loss 46% and catastrophic busts 60→1); K=6 is a compromise for session continuity (3 catastrophic busts remain, $2,202 more loss vs K=1 though still $729 better than baseline)
 - Add `peak_equity_pct / trade_count` ratio as a within-session danger feature (>3 = elevated)
 
 **Live trading:**

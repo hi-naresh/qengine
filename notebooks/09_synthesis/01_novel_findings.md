@@ -95,13 +95,13 @@ N ratio range: **7.4 to 4827** (650x variation). This means the win-to-bust trad
 **What:** The script has two methodology problems:
 
 1. **Inconsistent sizing:** Compares `avg_win` from the bust-anatomy backtest (sf=2.0 ml=8, 0.5% base sizing → avg_win ≈ $0.60) to cumulative spread+swap cost computed at `BASE_LOTS=0.01` lots (= $1,100 notional ≈ 11% of $10k equity, i.e. 22× the strategy's actual 0.5% base — same stress-test sizing as Finding 17). At BASE_LOTS=0.01, cumulative cost reaches ~$0.78 by level 1. Rescaled to the strategy's actual 0.5% base, cumulative spread through level 1 is only ≈ $0.03.
-2. **Fixed 2-pip spread assumption:** Script hard-codes `SPREAD_PIPS=2.0`. Real OANDA EUR-USD average is ~1.5 pips (per the methodology note above). At real spread, costs are ~25% lower than the script assumes.
+2. **Fixed 2-pip spread assumption:** Script hard-codes `SPREAD_PIPS=2.0`. Real OANDA EUR-USD mean is 1.57 pips (per the methodology note above). At real spread, costs are ~22% lower than the script assumes — equivalently, the script's 2-pip assumption overstates spread by ~27% relative to real mean.
 
 **Correctly rescaled crossover (0.5% base, sf=2.0, **real mean spread ~1.5 pips**):** Per-level spread cost grows as $0.0075 × 2^n at level n. Cumulative spread through level N = $0.0075 × (2^(N+1) − 1). Setting this ≥ $0.60 → N+1 ≥ 81 → **crossover at N ≈ 6** (cumulative $0.94). At 2-pip fixed spread, crossover is at N ≈ 5 ($0.63 cumulative).
 
 **Takeaway:** The underlying observation remains valid — cost-to-edge ratio is unfavorable and cumulative spread consumes a large fraction of any potential win by the max reachable level. But the "level 1" framing was an artifact of mixed sizing, and the exact crossover level depends on which spread model you use. Findings 1, 7b, and 14 confirm structural negative EV through the backtest itself with real spreads; this finding is mostly redundant with them and primarily serves as a cautionary example that analytical calculations using fixed spread assumptions won't match backtest results driven by real per-candle spread.
 
-**Why novel:** The general insight — that cumulative spread grows geometrically under geometric sizing and therefore scales with ml — is correct. The specific "level 1" framing should not be used. The cleaner formulation is in Findings 1/7b (break-even win rate exceeds empirical) and Finding 14 (at 5-pip hedge, avg_win is already negative because spread is 40% of TP).
+**Why novel:** The general insight — that cumulative spread grows geometrically under geometric sizing and therefore scales with ml — is correct. The specific "level 1" framing should not be used. The cleaner formulation is in Findings 1/7b (break-even win rate exceeds empirical) and Finding 14 (at 5-pip hedge, avg_win is already negative because real OANDA spread of ~1.5 pips consumes ~30% of a 5-pip TP, and cumulative cross-leg costs erode any net win).
 
 ---
 
