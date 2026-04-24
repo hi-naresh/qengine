@@ -74,7 +74,7 @@ The hysteresis margin of delta = 0.15 was selected to balance transition suppres
 
 ### 3.4 Island-Model Genetic Algorithm
 
-Each regime leaf maintains an isolated genetic population of 30 individuals, following standard population sizing guidelines for low-dimensional problems (Goldberg, 1989; Eiben & Smith, 2015). Each individual (genome) encodes a set of execution parameters that control trading behavior when the corresponding regime is active.
+Each regime leaf maintains an isolated genetic population, with the per-island population size selected to provide adequate search coverage over the full strategy parameter space while remaining feasible for real-engine evaluation (see Section 4 for the computational budget trade-off). The evaluations reported in this paper use populations of 10–12 individuals per island. Each individual (genome) encodes a set of execution parameters that control trading behaviour when the corresponding regime is active.
 
 **Genome representation.** A genome consists of 6 pipeline-level genes and a variable number of strategy-level genes discovered at runtime from the strategy's hyperparameter declaration. The pipeline-level genes and their bounds are shown in Table 1.
 
@@ -82,14 +82,34 @@ Each regime leaf maintains an isolated genetic population of 30 individuals, fol
 
 | Gene | Range | Type | Description |
 |---|---|---|---|
-| gate_confidence_min | [0.0, 0.8] | float | Minimum regime confidence to allow entry |
+| gate_confidence_min | [0.0, 0.5] | float | Minimum regime confidence to allow entry |
 | abort_aggressiveness | [0.0, 0.4] | float | Danger threshold for cycle termination |
-| base_size_pct | [0.5, 5.0] | float | Position size as percentage of equity |
 | hysteresis_margin | [0.05, 0.30] | float | Margin for regime switch decision |
 | confidence_sensitivity | [0.5, 2.0] | float | Exponent for confidence-based size scaling |
 | recovery_aggression | [0.3, 1.0] | float | Drawdown-based size reduction factor |
 
-Strategy-level genes are discovered dynamically by reading the strategy's hyperparameters() declaration. Only parameters in tunable groups (General, Grid/Hedge, Take Profit, Entry Signal) are included. Categorical parameters are encoded as integer indices. Bounds are enforced with safety overrides for parameters that cause margin violations (e.g., max_levels capped at [2, 8]).
+Strategy-level genes are discovered dynamically by reading the strategy's `hyperparameters()` declaration. Seven tunable parameter groups are evolved: General (sizing curve, sizing factor, max levels, base size), Grid/Hedge (hedge mode, hedge distance, hedge expansion), Take Profit (TP mode, TP distance), Entry Signal (signal mode, direction bias, indicator periods), Filters, Risk Management (daily/weekly loss limits, consecutive-bust halt), and Position Management (breakeven mechanism). Table 2 summarises the per-group gene counts for the Martingale strategy evaluated in this paper, yielding 57 evolved genes in total.
+
+*Table 2: Evolved strategy-level genes by group (Martingale strategy).*
+
+| Group | Genes | Key evolved parameters |
+|---|---|---|
+| General | 5 | sizing_curve, sizing_factor, base_size_mode, base_size_value, max_levels |
+| Grid / Hedge | 5 | hedge_mode, hedge_value, hedge_atr_period, hedge_expand, hedge_expand_factor |
+| Take Profit | 3 | tp_mode, tp_value, tp_atr_period |
+| Entry Signal | 29 | signal_mode, direction_bias, entry_on_crossover, and 26 indicator-specific parameters |
+| Filters | — | excluded from evolution; see below |
+| Risk Management | 6 | max_daily_loss_pct, max_weekly_loss_pct, max_consec_busts, max_exposure_pct, cooldown_mode, cooldown_value |
+| Position Management | 3 | breakeven_mode, breakeven_levels, equity_curve_filter |
+
+**Categorical gene encoding and resolution.** Categorical parameters (e.g., `signal_mode` with 9 valid options) are encoded as integer indices into a filtered option list: the strategy declares its full option set, a whitelist of broker-safe options is applied, and the GA evolves over `{0, 1, …, k−1}` where k is the whitelisted cardinality. At fitness evaluation time, each integer gene is resolved back to its string value before being passed to the strategy, mirroring the runtime `_apply_genome` hook used in deployment. This round-trip symmetry — encoding at evolution time, resolution at evaluation time — is required for correctness: the strategy's internal checks (e.g., `direction_bias in {'both', 'long_only'}`) are string-typed, so an unresolved integer would fail every such check silently and cause the strategy to emit no orders (Section 4 documents the empirical impact of this correctness condition).
+
+**Bound safety overrides.** Several strategy parameters have bounds tightened below their declared ranges to prevent mathematically infeasible configurations:
+
+- `sizing_factor` is clamped to [1.5, 2.5]. The lower bound of 1.5 (≈√2) enforces mathematical viability: for a Martingale hedge at depth N, the hedge leg's recovery profit must exceed the sum of prior adverse-direction leg losses plus spread bleed. Sizing factors below √2 cannot geometrically recover prior losses and produce "TP-hit" sessions with net-negative P&L, where the take-profit order fires but the session is still in deficit due to asymmetric cumulative exposure.
+- `max_levels` is clamped to [2, 8]. The joint feasibility constraint `base_size × sizing_factor^max_levels ≤ 20%` of equity is enforced at genome construction and after each mutation/crossover operation, ensuring the deepest ticket cannot exceed 20% of account equity under any combination of evolved parameters.
+- Gating filters (session filter, volatility filter, trend filter, spread filter, confidence gate, day filter) are **excluded from evolution** and allowed to take their strategy-default value of `'none'`. Their option lists contain many blocking settings and exactly one permissive setting; uniform random initialisation therefore assigns a blocking filter with probability (k−1)/k per filter, and with five independently-drawn filters the probability that no filter blocks entry is (1/k)^5 ≈ 0.1% for typical k = 4. Including these genes in the evolvable set collapses the activity-generating sub-space to a vanishingly small fraction of the genome, starving the GA of non-zero fitness signal. We verified this empirically: when filter genes were included, over 90% of random-init genomes produced zero trading sessions across the full training window, yielding fitness values dominated by their default-bust-rate penalty rather than any real performance differential. Excluding filters from evolution while leaving them addressable through the strategy's hyperparameter interface preserves the downstream user's ability to enable filters manually without entangling them with the GA search.
+- `rsi_ob`, `rsi_os`, `stoch_ob`, `stoch_os`, `cci_ob`, `cci_os`, `bb_period`, `bb_std` are likewise excluded. These threshold parameters are conditional on their parent `signal_mode` being selected; evolving them unconditionally produces wasted search dimensions since they take effect only when their parent signal is active.
 
 The complete evolutionary algorithm is specified formally in Appendix D (Algorithm 1). The key operators are as follows.
 
@@ -135,12 +155,12 @@ Both factors are bounded to prevent degenerate sizing (confidence floor 0.2, dra
 
 ### 3.6 Parameter Application and Design Constraints
 
-Evolved parameters are applied to the strategy only between trading cycles, never mid-cycle. This constraint is critical for strategies with internal state (such as martingale or grid strategies), where changing hedge ratios or level counts during an active cycle would corrupt the strategy's sizing chain.
+Evolved parameters are applied to the strategy only between trading cycles, never mid-cycle. This constraint is critical for strategies with internal state (such as martingale or grid strategies), where changing hedge ratios or level counts during an active cycle would corrupt the strategy's sizing chain. The pipeline observes the strategy's `position.is_open` flag and defers genome injection until the position closes; if no evaluable genome is available for the current regime, the entry gate blocks new cycles rather than permitting execution under default parameters.
 
-The application mechanism reads the strategy's hyperparameter declaration to discover parameter names, types, valid ranges, and group memberships. It then sets each tunable parameter from the active genome, enforcing declared bounds and type constraints. Categorical parameters are resolved from integer indices to their string values, with safety filtering to exclude options known to cause execution failures.
+The application mechanism reads the strategy's hyperparameter declaration to discover parameter names, types, valid ranges, and group memberships. It then sets each tunable parameter from the active genome, enforcing declared bounds and type constraints. Categorical parameters are resolved from integer indices to their string values using the same whitelist applied at genome construction (Section 3.4); this round-trip identity between training-time encoding and deployment-time resolution ensures that the strategy observes the same string value at evaluation and at deployment. After categorical resolution, mode-aware coercion scales numeric companion parameters into their valid per-mode range — for example, `tp_value` is evolved as a pip quantity but interpreted as a fraction of equity when `tp_mode = 'bucket_pct'`, so the pipeline rescales the evolved numeric into the mode-appropriate unit before the strategy reads it.
 
-When no genome is available for the current regime (e.g., during warmup or for newly discovered regimes), the entry gate blocks all trading signals, preventing the strategy from operating with potentially inappropriate default parameters. This conservative approach sacrifices trading opportunities in exchange for ensuring that every executed cycle operates under an evolved and regime-appropriate configuration.
+**Training-mode import isolation.** The training pipeline imports from the qengine core (e.g., `qengine.research.backtest`) inside worker subprocesses, which ordinarily triggers initialisation of the full application stack including PostgreSQL model-table creation and Redis pub/sub. For training, none of these services are required; we gate their initialisation on a `QENGINE_TRAINING_MODE` environment variable, allowing the engine modules to be imported cleanly on hardware without a database or Redis instance (for example, Google Compute Engine VMs). This isolation is the difference between the training script running at all and failing at module load with a `psycopg2.OperationalError`.
 
-The regime tree is trained offline and deployed frozen during evaluation. If market dynamics shift to produce regimes not represented in the training data, the system classifies unseen states into the nearest existing regime based on GMM posterior probabilities. This is a standard limitation of fitted classifiers, partially mitigated by the hysteresis mechanism which prevents rapid oscillation during ambiguous classifications. The 30-individual population size per island, while sufficient for the 6-12 dimensional genome used in this evaluation, may require scaling for strategies with larger parameter spaces.
+The regime tree is trained offline and deployed frozen during evaluation. If market dynamics shift to produce regimes not represented in the training data, the system classifies unseen states into the nearest existing regime based on GMM posterior probabilities. This is a standard limitation of fitted classifiers, partially mitigated by the hysteresis mechanism which prevents rapid oscillation during ambiguous classifications. The 10–12 individuals per island used in our evaluation are sufficient for the 57-dimensional genome produced by the Martingale strategy; strategies with substantially larger parameter spaces may require proportionally larger populations and are an explicit direction for future work.
 
  - 
