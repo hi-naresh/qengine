@@ -35,9 +35,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
     },
     'inference': {
-        'min_confidence': 0.3,
-        'default_hysteresis': 0.30,   # was 0.15 — need stronger stickiness with 73 leaves
-        'transition_grace_candles': 2, # was 5 — only affects genome switching, not entry gating
+        # Conservative defaults: raised from 0.3 → 0.5 after user observed
+        # -10% net over a full year of OOS trading. Pipeline now trades only
+        # when regime classification confidence clearly dominates (>50% on a
+        # single leaf out of ~73 leaves).
+        'min_confidence': 0.5,
+        'default_hysteresis': 0.30,
+        'transition_grace_candles': 5,
     },
     'sizing': {
         'drawdown_threshold_pct': 5.0,
@@ -45,20 +49,43 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'min_drawdown_scale': 0.1,
         'max_risk_per_cycle_pct': 15.0,
     },
-    # PHASE6: Online per-regime gating — blocks regimes that have accumulated
-    # N cycles with PF below threshold. Defaults are LENIENT so it doesn't
-    # over-block early in a run. Tighten if you want stricter risk management.
+    # Online per-regime gating — blocks regimes that accumulate N cycles with
+    # PF below threshold. Kicks in after min_cycles_for_gate so we give each
+    # regime a fair trial. max_busts_per_regime is a softer cap now (2 busts)
+    # since joint risk constraint already bounds bust size; prevents endless
+    # bleed on chronically bad regimes while allowing occasional losses.
     'online_gate': {
         'enabled': True,
-        'min_cycles_for_gate': 15,   # need 15+ cycles before gating kicks in (was 5)
-        'min_regime_pf': 0.7,        # block regime only if PF < 0.7 (was 1.0)
+        'min_cycles_for_gate': 8,
+        'min_regime_pf': 1.0,
+        'max_busts_per_regime': 2,
     },
-    # PHASE6: Drift detection — conservative defaults. Disable by setting
-    # enabled=False in user config if you prefer uninterrupted trading.
+    # Drift detection — pause trading when recent performance drops vs lifetime.
     'drift': {
         'enabled': True,
-        'recent_n': 30,              # larger window → less noisy (was 20)
-        'drop_ratio': 0.3,           # only pause if recent PF < 30% of lifetime (was 0.5)
+        'recent_n': 20,
+        'drop_ratio': 0.6,          # pause if recent PF < 60% of lifetime
+    },
+    # Safety layer. The key risk invariant is the JOINT constraint:
+    #   base_size × sizing_factor^max_levels ≤ max_ticket_cap_pct (% equity)
+    # This lets the GA evolve deep grids with small base_size (recovery room)
+    # OR shallow grids with larger base_size (aggressive), without blowing the
+    # account. max_levels_cap is left as None by default — the joint constraint
+    # replaces the old hard cap. Set it to an int if you want a manual ceiling.
+    #
+    # Modes (tp_mode, hedge_mode, base_size_mode) are NOT locked — the GA can
+    # choose bucket_pct for early profit-taking, atr_based for vol-adaptive
+    # grids, etc. Mode-aware value coercion (_coerce_mode_value) ensures the
+    # numeric value is scaled correctly for each mode.
+    'safety': {
+        'enabled': True,
+        'max_levels_cap': None,               # let GA choose; joint constraint bounds risk
+        'max_ticket_cap_pct': 20.0,           # deepest ticket ≤ 20% equity
+        'abort_aggressiveness_floor': None,   # trust genome; set float to override
+        'tp_hedge_ratio_floor': 1.5,          # enforced only when both modes = fixed_pips
+        'session_loss_pct_halt': 0.08,        # emergency close at 8% float loss
+        'min_genome_fitness': 55.0,           # block bottom ~25% of regimes
+        'min_bust_loss_pct': 0.0005,          # bust only counts if loss > 0.05% equity
     },
     'warmup': 10,
 }

@@ -40,12 +40,21 @@ _INITIAL_POP_PATH = os.path.join(_MODELS_DIR, 'initial_population.json')
 _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
 
 # Validated categorical options — only values known to work in the strategy.
+#
+# `base_size_mode` is pinned to {'pct_equity'} on purpose. The strategy's
+# `capital_aware` mode in Martingale._capital_aware_base_size() sizes so that a
+# full-bust loss is ≤ max_bust_dd_pct (default 20%) of balance. Combined with
+# short hedge distances (8-10 pips) and moderate sizing curves, this produces
+# base qty well below broker minimums at $10k balance — genomes that evolve
+# into capital_aware mode render the pipeline unexecutable in live. Fixing
+# mode to pct_equity also matches IslandPilot's preset-level convention, so
+# the two pipelines remain comparable on equity-based sizing.
 _SAFE_OPTIONS = {
     'signal_mode': {'random', 'ema_cross', 'rsi', 'macd', 'supertrend',
                     'stoch', 'ema_rsi', 'ema_macd', 'triple'},
     'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
     'tp_mode': {'fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward'},
-    'base_size_mode': {'pct_equity', 'capital_aware'},
+    'base_size_mode': {'pct_equity'},
     'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci'},
 }
 

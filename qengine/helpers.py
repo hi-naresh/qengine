@@ -899,8 +899,10 @@ def string_after_character(s: str, character: str) -> str:
 
 
 def slice_candles(candles: np.ndarray, sequential: bool) -> np.ndarray:
+    if sequential:
+        return candles
     warmup_candles_num = get_config('env.data.warmup_candles_num', 240)
-    if not sequential and candles.shape[0] > warmup_candles_num:
+    if candles.shape[0] > warmup_candles_num:
         candles = candles[-warmup_candles_num:]
     return candles
 

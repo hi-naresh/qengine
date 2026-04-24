@@ -333,15 +333,14 @@ def _get_candles_from_db(
     # Convert to numpy array for easier timestamp extraction
     candles_array = np.array(candles_tuple)
     
-    # Verify the retrieved data covers the requested range
+    # Verify the retrieved data covers the requested range.
+    # Allow up to 4 days of gap to account for weekends and early market closes (e.g. Good Friday).
+    # Forex closes Friday ~21:00 UTC so a Mon end-date request can have a ~50h gap; extended
+    # holiday weekends (Thu close → Tue open) can reach ~96h.
     if len(candles_array) > 0:
         latest_available = candles_array[-1][0]   # Last timestamp
-            
-        # For finish date validation, we need to check if we have candles up to exactly one minute
-        # before the start of the requested finish date
-        # Check if the latest available candle timestamp is before the required last candle
-        if latest_available < finish_date_timestamp:
-            # Missing candles at the end of the requested range
+        FOUR_DAYS_MS = 4 * 24 * 60 * 60 * 1000
+        if latest_available < finish_date_timestamp - FOUR_DAYS_MS:
             raise CandleNotFoundInDatabase(
                 f"Missing recent candles for \"{symbol}\" on \"{exchange}\". "
                 f"Requested data until \"{jh.timestamp_to_time(finish_date_timestamp)[:19]}\", "

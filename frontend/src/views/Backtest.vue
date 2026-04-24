@@ -417,10 +417,10 @@
                 ${{ progress.equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </div>
             </div>
-            <div v-if="progress.floatingPnl !== null" class="bg-surface-800/60 rounded-lg px-3 py-2">
-              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Floating P&amp;L</div>
-              <div class="text-sm font-semibold tabular-nums" :class="progress.floatingPnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                {{ progress.floatingPnl >= 0 ? '+' : '' }}${{ progress.floatingPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+            <div v-if="progress.realizedPnl !== null" class="bg-surface-800/60 rounded-lg px-3 py-2">
+              <div class="text-[10px] text-surface-600 uppercase tracking-wider">Realized P&amp;L</div>
+              <div class="text-sm font-semibold tabular-nums" :class="progress.realizedPnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                {{ progress.realizedPnl >= 0 ? '+' : '' }}${{ progress.realizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </div>
             </div>
             <div v-if="progress.marginUsed !== null && progress.equity" class="bg-surface-800/60 rounded-lg px-3 py-2">
@@ -433,6 +433,152 @@
               <div class="text-[10px] text-surface-600 uppercase tracking-wider">Trades</div>
               <div class="text-sm font-semibold text-surface-200 tabular-nums">{{ progress.trades }}</div>
             </div>
+          </div>
+
+          <!-- Live Positions / Orders / Closed Tabs -->
+          <div v-if="running && (progress.openPositions.length > 0 || progress.activeOrders.length > 0 || progress.recentClosed.length > 0)"
+               class="bg-surface-800/40 rounded-lg overflow-hidden">
+
+            <!-- Tab Bar -->
+            <div class="flex items-center gap-0 border-b border-surface-700/50">
+              <button v-for="tab in [
+                  { id: 'open',   label: 'Open',   count: progress.openPositions.length },
+                  { id: 'orders', label: 'Orders', count: progress.activeOrders.length },
+                  { id: 'closed', label: 'Closed', count: progress.recentClosed.length },
+                ]" :key="tab.id"
+                @click="liveTab = tab.id"
+                class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] uppercase tracking-wider font-semibold transition-colors border-b-2 -mb-px"
+                :class="liveTab === tab.id
+                  ? 'border-sky-400 text-sky-400'
+                  : 'border-transparent text-surface-500 hover:text-surface-300'">
+                {{ tab.label }}
+                <span v-if="tab.count > 0"
+                      class="px-1 rounded text-[9px] tabular-nums"
+                      :class="liveTab === tab.id ? 'bg-sky-400/20 text-sky-300' : 'bg-surface-700 text-surface-500'">
+                  {{ tab.count }}
+                </span>
+              </button>
+              <span class="ml-auto mr-2 w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+            </div>
+
+            <!-- Open Positions -->
+            <div v-if="liveTab === 'open'" class="overflow-x-auto">
+              <div v-if="progress.openPositions.length === 0" class="px-3 py-4 text-[10px] text-surface-600 text-center">No open positions</div>
+              <table v-else class="w-full text-[10px] font-mono">
+                <thead>
+                  <tr class="text-surface-600 border-b border-surface-700/30">
+                    <th class="text-left px-3 py-1 font-normal">Side</th>
+                    <th class="text-left px-2 py-1 font-normal">Symbol</th>
+                    <th class="text-right px-2 py-1 font-normal">Qty</th>
+                    <th class="text-right px-2 py-1 font-normal">Entry</th>
+                    <th class="text-right px-2 py-1 font-normal">Current</th>
+                    <th class="text-right px-2 py-1 font-normal">Unrealized</th>
+                    <th class="text-right px-2 py-1 font-normal">Duration</th>
+                    <th v-if="progress.openPositions.some(p => p.swap_cost !== 0)" class="text-right px-3 py-1 font-normal">Swap</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(pos, i) in progress.openPositions" :key="i"
+                      class="border-b border-surface-700/20 hover:bg-surface-700/20">
+                    <td class="px-3 py-1">
+                      <span class="px-1.5 py-0.5 rounded text-[9px] uppercase font-semibold"
+                            :class="pos.type === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'">
+                        {{ pos.type }}
+                      </span>
+                    </td>
+                    <td class="px-2 py-1 text-surface-300">{{ pos.symbol }}</td>
+                    <td class="px-2 py-1 text-right text-surface-300">{{ pos.qty.toLocaleString(undefined, { maximumFractionDigits: 5 }) }}</td>
+                    <td class="px-2 py-1 text-right text-surface-400">{{ pos.entry_price.toFixed(5) }}</td>
+                    <td class="px-2 py-1 text-right text-surface-300">{{ pos.current_price.toFixed(5) }}</td>
+                    <td class="px-2 py-1 text-right font-semibold"
+                        :class="pos.unrealized_pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                      {{ pos.unrealized_pnl >= 0 ? '+' : '' }}${{ pos.unrealized_pnl.toFixed(2) }}
+                    </td>
+                    <td class="px-2 py-1 text-right text-surface-400">
+                      {{ formatPosDuration(pos.opened_at, progress.currentDate) }}
+                    </td>
+                    <td v-if="progress.openPositions.some(p => p.swap_cost !== 0)" class="px-3 py-1 text-right"
+                        :class="pos.swap_cost > 0 ? 'text-amber-400' : 'text-surface-600'">
+                      {{ pos.swap_cost !== 0 ? '-$' + pos.swap_cost.toFixed(4) : '—' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Active Orders -->
+            <div v-if="liveTab === 'orders'" class="overflow-x-auto">
+              <div v-if="progress.activeOrders.length === 0" class="px-3 py-4 text-[10px] text-surface-600 text-center">No pending orders</div>
+              <table v-else class="w-full text-[10px] font-mono">
+                <thead>
+                  <tr class="text-surface-600 border-b border-surface-700/30">
+                    <th class="text-left px-3 py-1 font-normal">Side</th>
+                    <th class="text-left px-2 py-1 font-normal">Symbol</th>
+                    <th class="text-left px-2 py-1 font-normal">Type</th>
+                    <th class="text-right px-2 py-1 font-normal">Price</th>
+                    <th class="text-right px-2 py-1 font-normal">Qty</th>
+                    <th class="text-right px-3 py-1 font-normal">Waiting</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(o, i) in progress.activeOrders" :key="i"
+                      class="border-b border-surface-700/20 hover:bg-surface-700/20">
+                    <td class="px-3 py-1">
+                      <span class="px-1.5 py-0.5 rounded text-[9px] uppercase font-semibold"
+                            :class="o.side === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'">
+                        {{ o.side }}
+                      </span>
+                    </td>
+                    <td class="px-2 py-1 text-surface-300">{{ o.symbol }}</td>
+                    <td class="px-2 py-1 text-surface-400 uppercase">
+                      {{ o.submitted_via ? o.submitted_via.replace(/_/g, ' ') : o.type }}
+                    </td>
+                    <td class="px-2 py-1 text-right text-surface-200">{{ o.price.toFixed(5) }}</td>
+                    <td class="px-2 py-1 text-right text-surface-300">{{ o.qty.toLocaleString(undefined, { maximumFractionDigits: 5 }) }}</td>
+                    <td class="px-3 py-1 text-right text-surface-500">
+                      {{ formatPosDuration(o.created_at, progress.currentDate) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Recent Closed Trades -->
+            <div v-if="liveTab === 'closed'" class="overflow-x-auto">
+              <div v-if="progress.recentClosed.length === 0" class="px-3 py-4 text-[10px] text-surface-600 text-center">No closed trades yet</div>
+              <table v-else class="w-full text-[10px] font-mono">
+                <thead>
+                  <tr class="text-surface-600 border-b border-surface-700/30">
+                    <th class="text-left px-3 py-1 font-normal">Side</th>
+                    <th class="text-left px-2 py-1 font-normal">Symbol</th>
+                    <th class="text-right px-2 py-1 font-normal">Entry</th>
+                    <th class="text-right px-2 py-1 font-normal">Exit</th>
+                    <th class="text-right px-2 py-1 font-normal">Duration</th>
+                    <th class="text-right px-3 py-1 font-normal">P&amp;L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(t, i) in [...progress.recentClosed].reverse()" :key="i"
+                      class="border-b border-surface-700/20 hover:bg-surface-700/20">
+                    <td class="px-3 py-1">
+                      <span class="px-1.5 py-0.5 rounded text-[9px] uppercase font-semibold"
+                            :class="t.type === 'long' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'">
+                        {{ t.type }}
+                      </span>
+                    </td>
+                    <td class="px-2 py-1 text-surface-300">{{ t.symbol }}</td>
+                    <td class="px-2 py-1 text-right text-surface-400">{{ t.entry_price.toFixed(5) }}</td>
+                    <td class="px-2 py-1 text-right text-surface-400">{{ t.exit_price.toFixed(5) }}</td>
+                    <td class="px-2 py-1 text-right text-surface-500">{{ t.duration }}</td>
+                    <td class="px-3 py-1 text-right font-semibold"
+                        :class="t.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                      {{ t.pnl >= 0 ? '+' : '' }}${{ t.pnl.toFixed(2) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
           </div>
 
           <!-- Live Pipeline Stats (during execution) -->
@@ -3239,7 +3385,8 @@ const sessionId = ref(null)
 const existingCandles = ref([])
 
 // WebSocket-driven state
-const progress = ref({ current: 0, eta: 0, currentDate: null, equity: null, floatingPnl: null, marginUsed: null, session: null, trades: 0 })
+const progress = ref({ current: 0, eta: 0, currentDate: null, equity: null, realizedPnl: null, unrealizedPnl: null, marginUsed: null, session: null, trades: 0, openPositions: [], activeOrders: [], recentClosed: [] })
+const liveTab = ref('open') // 'open' | 'orders' | 'closed'
 const liveLogsExpanded = ref(false)
 const liveLogsEl = ref(null)
 const marginFreePercent = computed(() => {
@@ -4441,10 +4588,14 @@ useWebSocket((msg) => {
       eta: data?.estimated_remaining_seconds || 0,
       currentDate: data?.current_date || null,
       equity: data?.equity ?? null,
-      floatingPnl: data?.floating_pnl ?? null,
+      realizedPnl: data?.realized_pnl ?? null,
+      unrealizedPnl: data?.unrealized_pnl ?? null,
       marginUsed: data?.margin_used ?? null,
       session: data?.session ?? null,
       trades: data?.trades ?? 0,
+      openPositions: data?.open_positions ?? [],
+      activeOrders: data?.active_orders ?? [],
+      recentClosed: data?.recent_closed ?? [],
       pipelineDanger: data?.pipeline_danger ?? null,
       pipelineDangerMean: data?.pipeline_danger_mean ?? null,
       pipelineBlocks: data?.pipeline_blocks ?? null,
@@ -4857,6 +5008,16 @@ function formatLiveTs(ts) {
   const d = new Date(ts)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
     d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function formatPosDuration(openedAtMs, currentDateMs) {
+  if (!openedAtMs || !currentDateMs) return '—'
+  const mins = Math.floor((currentDateMs - openedAtMs) / 60000)
+  if (mins < 0) return '—'
+  if (mins < 60) return `${mins}m`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `${h}:${String(m).padStart(2, '0')}h`
 }
 
 function drawLiveMiniChart(canvasEl, data, color, label) {
@@ -5424,6 +5585,7 @@ async function runBacktest() {
   pipelineStats.value = null
   livePipelineDecisions.value = []
   liveEquityHistory.value = []
+  liveTab.value = 'open'
   _seenDecisions.clear()
   baselineMetrics.value = null
   baselineEquityCurve.value = null

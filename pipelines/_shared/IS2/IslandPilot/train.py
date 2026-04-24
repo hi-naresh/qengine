@@ -35,118 +35,8 @@ import argparse
 import json
 import os
 import sys
-import time as _time
 from datetime import datetime
 from pathlib import Path
-
-# Module-level candles cache — set before forking workers so children inherit
-# it via fork without any serialization/pickling overhead.
-_WORKER_CANDLES: "np.ndarray | None" = None
-
-
-def _tlog(msg: str):
-    """Timestamped log — used across train() and _evolve_islands()."""
-    ts = datetime.utcnow().strftime('%H:%M:%S')
-    print(f'[{ts} UTC] {msg}', flush=True)
-
-
-# Cached strategy spec so workers don't rebuild it on every fitness call.
-_STRATEGY_HP_SPEC_CACHE: Dict[str, dict] = {}
-
-# Must mirror _SAFE_OPTIONS in pipelines/_shared/IslandPilot/island_evolver.py.
-# Only these option sets are used during training; the resolution table below
-# must match the filtered order that build_gene_bounds used.
-_CATEGORICAL_SAFE = {
-    'signal_mode': {'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch',
-                    'ema_rsi', 'ema_macd', 'triple'},
-    'sizing_curve': {'geometric', 'sqrt', 'linear', 'fibonacci'},
-    'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
-    'tp_mode': {'fixed_pips', 'atr_based', 'bucket_pct', 'risk_reward'},
-    'base_size_mode': {'pct_equity', 'capital_aware'},
-}
-
-
-def _resolve_categorical_genes(hp: dict, strategy_name: str) -> dict:
-    """Map integer categorical gene values back to their string option.
-
-    Training stores categorical genes as indexes 0..N-1 into a filtered option
-    list (per _CATEGORICAL_SAFE / strategy spec). The strategy runtime expects
-    the original string values (e.g. 'random', 'both'). Mirror the resolution
-    logic from IslandPilotPipeline._apply_genome so training and inference use
-    the same mapping.
-    """
-    spec_by_name = _STRATEGY_HP_SPEC_CACHE.get(strategy_name)
-    if spec_by_name is None:
-        spec_by_name = _load_strategy_hp_spec(strategy_name)
-        _STRATEGY_HP_SPEC_CACHE[strategy_name] = spec_by_name or {}
-    if not spec_by_name:
-        return hp
-
-    out = dict(hp)
-    for name, val in hp.items():
-        spec = spec_by_name.get(name)
-        if not spec or spec.get('type') != 'categorical':
-            continue
-        opts = spec.get('options', [])
-        safe = _CATEGORICAL_SAFE.get(name)
-        if safe:
-            opts = [o for o in opts if o in safe]
-        if not opts:
-            continue
-        if isinstance(val, (int, float)) and not isinstance(val, bool):
-            idx = int(round(val))
-            idx = max(0, min(idx, len(opts) - 1))
-            out[name] = opts[idx]
-        elif isinstance(val, str) and val in opts:
-            out[name] = val
-    return out
-
-
-def _load_strategy_hp_spec(strategy_name: str) -> Optional[dict]:
-    """Load the strategy's hyperparameters() spec as a name→spec dict.
-
-    Uses the same lightweight stub approach as build_gene_bounds_from_strategy:
-    avoids the qengine.strategies → DB import chain by temporarily installing a
-    stub qengine.strategies module.
-    """
-    try:
-        import types as _types
-        import importlib as _il
-        _repo = Path(__file__).resolve().parents[3]
-        _strat_file = _repo / 'strategies' / '_admin' / strategy_name / '__init__.py'
-        if not _strat_file.exists():
-            _strat_file = _repo / 'strategies' / strategy_name / '__init__.py'
-        if not _strat_file.exists():
-            return None
-        parent = str(_strat_file.parent.parent)
-        inserted = parent not in sys.path
-        if inserted:
-            sys.path.insert(0, parent)
-
-        stub = _types.ModuleType('qengine.strategies')
-        class _LS: pass
-        stub.Strategy = _LS
-        stub.cached = lambda f: f
-        orig = sys.modules.get('qengine.strategies')
-        sys.modules['qengine.strategies'] = stub
-        try:
-            mod = _il.import_module(strategy_name)
-            strategy_cls = getattr(mod, strategy_name, None)
-            if strategy_cls is None:
-                return None
-            dummy = strategy_cls.__new__(strategy_cls)
-            hp_list = dummy.hyperparameters()
-            return {h['name']: h for h in hp_list
-                    if isinstance(h, dict) and 'name' in h}
-        finally:
-            if orig is None:
-                sys.modules.pop('qengine.strategies', None)
-            else:
-                sys.modules['qengine.strategies'] = orig
-            if inserted and parent in sys.path:
-                sys.path.remove(parent)
-    except Exception:
-        return None
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -183,20 +73,6 @@ def _date_to_ts_ms(date_str: str) -> int:
     dt = datetime.strptime(date_str, '%Y-%m-%d')
     epoch = datetime(1970, 1, 1)
     return int((dt - epoch).total_seconds() * 1000)
-
-
-def _trim_to_contiguous_start(candles_1m: np.ndarray) -> np.ndarray:
-    """Trim leading bars until candles[1][0] - candles[0][0] == 60000ms.
-
-    The qengine backtest validator only checks the first consecutive pair.
-    OANDA data sometimes starts with thin-market gaps (e.g., New Year open
-    at 22:03 followed by 22:06 — a 3-minute jump). Trimming a few bars from
-    the head satisfies the validator without adding any synthetic data.
-    Interior gaps (weekends) are unaffected and handled fine by the engine.
-    """
-    while len(candles_1m) > 2 and candles_1m[1, 0] - candles_1m[0, 0] != 60_000:
-        candles_1m = candles_1m[1:]
-    return candles_1m
 
 
 def _resample_1m_to_tf(candles_1m: np.ndarray, timeframe_minutes: int) -> np.ndarray:
@@ -623,8 +499,7 @@ def _evolve_islands(tree,
                     train_start: str, train_end: str,
                     pop_size: int = 5, generations: int = 3,
                     min_window_bars: int = 100, min_window_days: int = 30,
-                    verbose: bool = True, n_workers: int = 1,
-                    t_total_start: float = None):
+                    verbose: bool = True):
     """Evolve per-regime genomes with fitness isolated to each island's window.
 
     Each island's fitness function runs a backtest over the largest contiguous
@@ -635,64 +510,24 @@ def _evolve_islands(tree,
     """
     from .island_evolver import IslandEvolver, build_gene_bounds_from_strategy
 
-    # Default to now if caller didn't provide a global start timestamp
-    if t_total_start is None:
-        t_total_start = _time.time()
-
     leaf_ids = [str(lid) for lid in tree.leaf_ids]
     print(f'[train] Evolving {len(leaf_ids)} islands × {pop_size} individuals × {generations} gen...')
 
     # Try to load the strategy class to build proper gene bounds
     gene_bounds = None
     try:
-        import importlib.util, os as _os, types as _types
+        import importlib
+        # Try common locations: strategies.<name>.<name> or strategies.<name>
         strategy_cls = None
-
-        # Direct filesystem lookup — no DB required.
-        _repo_root = _HERE.parents[2]
-        _strategy_file = None
-        for _c in [
-            _repo_root / 'strategies' / '_admin' / strategy_name / '__init__.py',
-            _repo_root / 'strategies' / strategy_name / '__init__.py',
-        ]:
-            if _c.exists():
-                _strategy_file = str(_c)
-                break
-
-        if _strategy_file:
-            # Add the strategy package directory to sys.path so importlib.import_module
-            # can handle relative imports (e.g. `from .presets import PRESETS`).
-            parent_dir = _os.path.dirname(_os.path.dirname(_strategy_file))
-            _inserted = parent_dir not in sys.path
-            if _inserted:
-                sys.path.insert(0, parent_dir)
-
-            # Stub qengine.strategies to break the DB connection chain:
-            # Strategy base class imports qengine.models which calls open_connection().
-            _stub_mod = _types.ModuleType('qengine.strategies')
-            class _LiteStrategy: pass
-            _stub_mod.Strategy = _LiteStrategy
-            _stub_mod.cached = lambda f: f
-            _orig_strategies = sys.modules.get('qengine.strategies')
-            sys.modules['qengine.strategies'] = _stub_mod
+        for modpath in (f'strategies.{strategy_name}.{strategy_name}',
+                        f'strategies.{strategy_name}'):
             try:
-                import importlib as _il
-                # Keep strategy module in sys.modules after import so that
-                # relative imports inside hyperparameters() (e.g. `from .presets
-                # import PRESETS`) can resolve correctly when called later.
-                mod = _il.import_module(strategy_name)
+                mod = importlib.import_module(modpath)
                 strategy_cls = getattr(mod, strategy_name, None)
+                if strategy_cls is not None:
+                    break
             except ImportError:
-                pass
-            finally:
-                # Restore qengine.strategies but leave strategy module in sys.modules
-                if _orig_strategies is None:
-                    sys.modules.pop('qengine.strategies', None)
-                else:
-                    sys.modules['qengine.strategies'] = _orig_strategies
-                if _inserted and parent_dir in sys.path:
-                    sys.path.remove(parent_dir)
-
+                continue
         if strategy_cls is not None:
             dummy_strategy = strategy_cls.__new__(strategy_cls)
             gene_bounds = build_gene_bounds_from_strategy(dummy_strategy)
@@ -714,9 +549,8 @@ def _evolve_islands(tree,
         'mutation_rate': 0.2,
         'mutation_sigma': 0.05,
         'tournament_k': 3,
-        'migration_interval': max(1, generations // 5),  # fire ~5 times over the run
+        'migration_interval': 5,
         'seed': 42,
-        'n_workers': n_workers,
     }
 
     evolver = IslandEvolver(
@@ -766,95 +600,56 @@ def _evolve_islands(tree,
         print(f'[train] NOTE: {n_fallback}/{len(leaf_ids)} islands have no dedicated window — '
               f'will evolve on full training period ({train_start} → {train_end}).')
 
-    # Build the flat list of (lid, genes, start_ts, end_ts) tasks for parallel eval.
-    # candles_1m is NOT included in the task tuple — workers access it via the
-    # module-level _WORKER_CANDLES global set before forking (avoids 10 MB
-    # serialization per task = 6+ GB for a full generation).
-    def _make_eval_task(lid, genes):
-        start, end, _ = leaf_date_ranges.get(lid, (train_start, train_end, False))
-        s = _date_to_ts_ms(start)
-        e = _date_to_ts_ms(end) + 86_400_000
-        return (genes, exchange, symbol, timeframe, strategy_name, s, e)
-
-    n_workers = config.get('n_workers', 1)
-
-    global _WORKER_CANDLES
-    # Set before forking so workers inherit candles without pickling (avoids
-    # 10 MB serialization per task = 6+ GB for a full generation on 60 workers).
-    _WORKER_CANDLES = candles_1m
-
-    if n_workers > 1:
-        # Pre-import backtest module in parent so forked workers inherit it
-        # (avoids DB/service import chain inside worker subprocess)
-        import qengine.research.backtest as _bt_mod  # noqa: F401
-        print('[train] Backtest module pre-imported for worker fork inheritance.')
-
     for gen in range(generations):
-        t_gen_start = _time.time()
-        _tlog(f'[train] Generation {gen + 1}/{generations}...')
+        print(f'[train] Generation {gen + 1}/{generations}...')
 
-        if n_workers > 1:
-            # Parallel evaluation: collect all (lid, individual_index, genes) tasks
-            import multiprocessing as _mp
-            tasks = []
-            task_keys = []  # (lid, ind_idx) to map results back
-            for lid, pop in evolver.populations.items():
-                for idx, ind in enumerate(pop.individuals):
-                    tasks.append(_make_eval_task(lid, ind.genes))
-                    task_keys.append((lid, idx))
+        for lid, pop in evolver.populations.items():
+            start, end, has_window = leaf_date_ranges.get(lid, (train_start, train_end, False))
+            # When no dedicated window exists, evolve on the full training period.
+            # Fitness isolation is best-effort: use the per-leaf window when available,
+            # fall back to the full period when the leaf switches too rapidly to form
+            # a 30-day contiguous block (common with high-frequency volatility regimes).
 
-            # Force 'fork' start method so workers inherit _WORKER_CANDLES and
-            # pre-imported modules via copy-on-write. macOS defaults to 'spawn'
-            # (Python 3.8+) which would re-import the module and lose state.
-            _ctx = _mp.get_context('fork')
-            with _ctx.Pool(processes=n_workers) as pool:
-                results = pool.starmap(_run_backtest_fitness, tasks)
+            start_ts = _date_to_ts_ms(start)
+            end_ts = _date_to_ts_ms(end) + 86_400_000  # include the end day
 
-            for (lid, idx), fitness in zip(task_keys, results):
-                evolver.populations[lid].individuals[idx].fitness = fitness
-        else:
-            for lid, pop in evolver.populations.items():
-                start, end, _ = leaf_date_ranges.get(lid, (train_start, train_end, False))
-                s = _date_to_ts_ms(start)
-                e = _date_to_ts_ms(end) + 86_400_000
-
-                def _fn(genes, _s=s, _e=e):
-                    return _run_backtest_fitness(genes, exchange, symbol,
-                                                 timeframe, strategy_name, _s, _e)
-                pop.evaluate(_fn)
-
-        # Only produce next generation's children if there's going to be a next
-        # generation that evaluates them. Without this guard, the final saved
-        # population is untested children with fitness=None → 0.0 everywhere.
-        is_last_gen = (gen + 1) == generations
-        if not is_last_gen:
-            for pop in evolver.populations.values():
-                pop.evolve(
-                    elitism=config['elitism'],
-                    crossover_rate=config['crossover_rate'],
-                    mutation_rate=config['mutation_rate'],
-                    mutation_sigma=config['mutation_sigma'],
-                    tournament_k=config['tournament_k'],
+            def _leaf_fitness_fn(genes, _s=start_ts, _e=end_ts):
+                return _run_backtest_fitness(
+                    genes=genes,
+                    candles_1m=candles_1m,
+                    exchange=exchange,
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    strategy_name=strategy_name,
+                    start_ts_ms=_s,
+                    end_ts_ms=_e,
                 )
 
-            if (gen + 1) % migration_interval == 0:
-                evolver.migrate_siblings()
-                print(f'[train]   Sibling migration completed.')
+            pop.evaluate(_leaf_fitness_fn)
+            pop.evolve(
+                elitism=config['elitism'],
+                crossover_rate=config['crossover_rate'],
+                mutation_rate=config['mutation_rate'],
+                mutation_sigma=config['mutation_sigma'],
+                tournament_k=config['tournament_k'],
+            )
+
+        if (gen + 1) % migration_interval == 0:
+            evolver.migrate_siblings()
+            print(f'[train]   Sibling migration completed.')
 
         summary = evolver.get_fitness_summary()
         fitnesses = [v['best'] for v in summary.values() if v.get('best') is not None]
-        elapsed = _time.time() - t_gen_start
-        total_elapsed = _time.time() - t_total_start
         if fitnesses:
-            _tlog(f'[train]   Mean best fitness: {np.mean(fitnesses):.3f} '
-                  f'(min={min(fitnesses):.3f}, max={max(fitnesses):.3f}) '
-                  f'[gen {elapsed:.0f}s / total {total_elapsed/60:.1f}min]')
+            print(f'[train]   Mean best fitness: {np.mean(fitnesses):.3f} '
+                  f'(min={min(fitnesses):.3f}, max={max(fitnesses):.3f})')
 
     return evolver, leaf_date_ranges
 
 
 def _run_backtest_fitness(
     genes: dict,
+    candles_1m: np.ndarray,
     exchange: str,
     symbol: str,
     timeframe: str,
@@ -872,27 +667,15 @@ def _run_backtest_fitness(
 
     The 1m candle array is subsetted by timestamp range to match the per-leaf
     window being evaluated — this is how fitness isolation is implemented.
-
-    Candles are read from the module-level `_WORKER_CANDLES` global which is set
-    in the parent process before forking workers, avoiding 10 MB serialization per task.
     """
-    import traceback as _tb
     try:
         from qengine.research.backtest import backtest as run_bt
         import qengine.helpers as jh
 
-        candles_1m = _WORKER_CANDLES
-        if candles_1m is None:
-            print('[fitness] ERROR: _WORKER_CANDLES is None — candles not set before forking')
-            return 0.0
-
-        # Subset candles to the evaluation window, then fill gaps so the
-        # backtest validator (checks candles[1][0]-candles[0][0]==60000ms) passes.
-        # OANDA 1m data has weekend/thin-market gaps that would otherwise fail.
+        # Subset candles to the evaluation window
         ts_col = candles_1m[:, 0]
         mask = (ts_col >= start_ts_ms) & (ts_col <= end_ts_ms)
         subset = candles_1m[mask]
-        subset = _trim_to_contiguous_start(subset)
         if len(subset) < 2000:  # less than ~1.4 days of 1m candles
             return 0.0
 
@@ -919,14 +702,6 @@ def _run_backtest_fitness(
         }
         hp = {k: v for k, v in genes.items() if k not in _PIPELINE_ONLY}
 
-        # CRITICAL: resolve categorical gene indexes (int) to their string option
-        # values. Training stores categoricals as indexes 0..N-1; the strategy
-        # expects strings like 'random', 'both', 'fixed_pips' etc. Without this
-        # resolution, checks like `bias in ('both', 'long_only')` fail with bias=0
-        # (int), so should_long/should_short always return False → zero trades.
-        # Mirrors _apply_genome in pipelines/_shared/IslandPilot/__init__.py.
-        hp = _resolve_categorical_genes(hp, strategy_name)
-
         result = run_bt(
             config=config,
             routes=routes,
@@ -938,41 +713,8 @@ def _run_backtest_fitness(
         )
 
         metrics = result.get('metrics', {}) if isinstance(result, dict) else {}
-        import math
-        _raw_pf = metrics.get('profit_factor', 1.0)
-        # Cap inf/None/NaN PF: genomes with only wins get pf=∞; NaN can appear
-        # when the engine liquidation path corrupts trade state. Cap at 5.0 —
-        # strategies sustaining PF 5 over the training window are top 0.1% and
-        # further differentiation among them is noise.
-        if _raw_pf is None:
-            pf = 5.0
-        elif isinstance(_raw_pf, (int, float)):
-            _rp = float(_raw_pf)
-            if math.isnan(_rp) or math.isinf(_rp):
-                pf = 5.0
-            else:
-                pf = min(5.0, _rp)
-        else:
-            pf = 5.0
-        _raw_dd = metrics.get('max_drawdown_percentage', 0.0)
-        if _raw_dd is None:
-            dd = 0.0
-        else:
-            try:
-                _rd = float(_raw_dd)
-                dd = 0.0 if (math.isnan(_rd) or math.isinf(_rd)) else abs(_rd)
-            except (TypeError, ValueError):
-                dd = 0.0
-
-        # Net profit sanity: if it's NaN, the session state was corrupted by
-        # the engine liquidation bug → treat as broken, return 0.
-        _net = metrics.get('net_profit', 0.0)
-        if _net is not None:
-            try:
-                if math.isnan(float(_net)):
-                    return 0.0
-            except (TypeError, ValueError):
-                pass
+        pf = float(metrics.get('profit_factor', 1.0) or 1.0)
+        dd = abs(float(metrics.get('max_drawdown_percentage', 0.0) or 0.0))
 
         sessions = result.get('sessions', []) if isinstance(result, dict) else []
         # Count only proper hedge sessions (int session id)
@@ -984,29 +726,18 @@ def _run_backtest_fitness(
             'margin_call', 'margin_bust', 'max_level_sl',
         }
         n_bust = sum(1 for s in proper_sessions if s.get('outcome', '') in _BUST_REASONS)
-        bust_rate = (n_bust / n_sessions) if n_sessions > 0 else 1.0
+        bust_rate = (n_bust / n_sessions) if n_sessions > 0 else 0.5
 
-        # Penalise "doesn't trade" genomes. Without this the GA converges on
-        # picky signal_modes that never fire — zero sessions + default bust_rate
-        # beats a marginally-losing random-entry strategy in every other term.
-        # Below 10 sessions return tiny fitness scaling with activity.
-        if n_sessions < 10:
-            return float(n_sessions * 0.5)
-
-        # Full fitness: PF/DD/bust/session-count composite. PF-term can be
-        # negative (strategies losing money), bust-term uses a cubic penalty
-        # so 30% busts costs ~3x what 15% busts costs. Clamped ≥ 0 at end.
         fitness = (
-            0.5 * (pf - 1.0) * 100 +                       # max ~50 at PF=2
-            0.2 * max(0.0, 100.0 - dd * 5.0) +             # max 20 at DD=0
-            0.2 * ((1.0 - bust_rate) ** 3) * 100 +         # cubic bust penalty
-            0.1 * min(n_sessions / 100.0, 1.0) * 100       # rewards activity
+            0.4 * (pf - 1.0) * 100 +
+            0.3 * max(0.0, 100.0 - dd * 5.0) +
+            0.2 * (1.0 - bust_rate) * 100 +
+            0.1 * min(n_sessions / 100.0, 1.0) * 100
         )
-        return max(0.0, float(fitness))
+        return float(fitness)
 
     except Exception as e:
-        print(f'[fitness] ERROR: {e}')
-        print(_tb.format_exc())
+        # Silent 0-fitness on exception — GA will naturally deselect broken genomes
         return 0.0
 
 
@@ -1028,8 +759,6 @@ def train(
     min_leaf_samples: int = 200,
     dry_run: bool = False,
     verbose: bool = True,
-    n_workers: int = 1,
-    candles_file: Optional[str] = None,
 ) -> dict:
     """Full IslandPilot training pipeline.
 
@@ -1049,84 +778,57 @@ def train(
 
     tf_minutes = int(jh.timeframe_to_one_minutes(timeframe))
 
-    import multiprocessing as _mp
-    if n_workers <= 0:
-        n_workers = _mp.cpu_count()
-    t_total_start = _time.time()
-    _t0_dt = datetime.utcnow()
+    print(f'[train] IslandPilot training pipeline')
+    print(f'[train]   Exchange: {exchange}  Symbol: {symbol}  Strategy: {strategy_name}  TF: {timeframe} ({tf_minutes}m)')
+    print(f'[train]   Period: {train_start} → {train_end} (training data, strictly before 2025)')
 
-    # --- System / environment info for paper ---
-    import platform, sys as _sys
-    try:
-        import psutil as _psutil
-        _ram_gb = _psutil.virtual_memory().total / 1024**3
-        _ram_str = f'{_ram_gb:.0f} GB'
-    except ImportError:
-        try:
-            _ram_bytes = int(open('/proc/meminfo').readline().split()[1]) * 1024
-            _ram_str = f'{_ram_bytes / 1024**3:.0f} GB'
-        except Exception:
-            _ram_str = 'unknown'
-
-    _tlog('[train] ══════════════════════════════════════════════════════════')
-    _tlog('[train] IslandPilot Training Run')
-    _tlog(f'[train]   Started:   {_t0_dt.strftime("%Y-%m-%d %H:%M:%S")} UTC')
-    _tlog(f'[train]   Host:      {platform.node()}')
-    _tlog(f'[train]   OS:        {platform.system()} {platform.release()}')
-    _tlog(f'[train]   Python:    {_sys.version.split()[0]}')
-    _tlog(f'[train]   CPUs:      {_mp.cpu_count()} logical  (workers: {n_workers})')
-    _tlog(f'[train]   RAM:       {_ram_str}')
-    _tlog(f'[train]   Exchange:  {exchange}  Symbol: {symbol}  TF: {timeframe}')
-    _tlog(f'[train]   Strategy:  {strategy_name}')
-    _tlog(f'[train]   Period:    {train_start} → {train_end}')
-    _tlog(f'[train]   GA:        {generations} generations × pop {pop_size}')
-    _tlog('[train] ══════════════════════════════════════════════════════════')
-
-    # --- Load 1m candles ---
-    # Supports loading from a pre-exported .npy file (for cloud runs without DB access)
-    # or directly from PostgreSQL.
+    # --- Load 1m candles (engine always needs 1m; routes will resample) ---
+    # OANDA forex data has weekend gaps (Friday ~21:00 UTC → Sunday ~21:00 UTC).
+    # If the requested end_ts falls after the last available candle, the DB
+    # raises CandleNotFoundInDatabase. We catch this, parse the available
+    # upper bound, and retry with a clamped end.
+    from qengine.research.candles import get_candles
+    from qengine.exceptions import CandleNotFoundInDatabase
     import re
 
-    if candles_file:
-        print(f'[train] Loading candles from file: {candles_file}')
-        candles_1m = np.load(candles_file)
-        print(f'[train] Loaded {len(candles_1m):,} 1m candles from file.')
-    else:
-        from qengine.research.candles import get_candles
-        from qengine.exceptions import CandleNotFoundInDatabase
+    start_ts = _date_to_ts_ms(train_start)
+    end_ts = _date_to_ts_ms(train_end) + 86_400_000 - 60_000  # inclusive end-of-day (T-1 minute)
 
-        start_ts = _date_to_ts_ms(train_start)
-        end_ts = _date_to_ts_ms(train_end) + 86_400_000 - 60_000
+    def _load(start_ms: int, end_ms: int):
+        return get_candles(
+            exchange=exchange,
+            symbol=symbol,
+            timeframe='1m',
+            start_date_timestamp=start_ms,
+            finish_date_timestamp=end_ms,
+        )
 
-        def _load(start_ms: int, end_ms: int):
-            return get_candles(exchange=exchange, symbol=symbol, timeframe='1m',
-                               start_date_timestamp=start_ms, finish_date_timestamp=end_ms)
+    try:
+        warmup, candles_1m = _load(start_ts, end_ts)
+    except CandleNotFoundInDatabase as e:
+        # Parse "latest available candle is up to YYYY-MM-DDTHH:MM:SS" from message
+        msg = str(e)
+        m = re.search(r'latest available candle is up to "([^"]+)"', msg)
+        if m:
+            from datetime import timezone
+            dt_str = m.group(1)
+            try:
+                clamp_dt = datetime.fromisoformat(dt_str)
+            except ValueError:
+                clamp_dt = datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%S')
+            clamp_ts = int(clamp_dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
+            print(f'[train] Requested end past DB coverage — clamping to {dt_str} (weekend/gap).')
+            warmup, candles_1m = _load(start_ts, clamp_ts)
+        else:
+            print(f'[train] ERROR loading candles: {e}')
+            raise
 
-        try:
-            warmup, candles_1m = _load(start_ts, end_ts)
-        except CandleNotFoundInDatabase as e:
-            msg = str(e)
-            m = re.search(r'latest available candle is up to "([^"]+)"', msg)
-            if m:
-                from datetime import timezone
-                dt_str = m.group(1)
-                try:
-                    clamp_dt = datetime.fromisoformat(dt_str)
-                except ValueError:
-                    clamp_dt = datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%S')
-                clamp_ts = int(clamp_dt.replace(tzinfo=timezone.utc).timestamp() * 1000)
-                print(f'[train] Requested end past DB coverage — clamping to {dt_str} (weekend/gap).')
-                warmup, candles_1m = _load(start_ts, clamp_ts)
-            else:
-                print(f'[train] ERROR loading candles: {e}')
-                raise
-
-        if candles_1m is None or (hasattr(candles_1m, 'ndim') and candles_1m.ndim < 2) or len(candles_1m) == 0:
-            print('[train] ERROR: No candles loaded. Check exchange/symbol/date range.')
-            sys.exit(1)
-        if warmup is not None and hasattr(warmup, 'ndim') and warmup.ndim == 2 and len(warmup) > 0:
-            candles_1m = np.concatenate([warmup, candles_1m], axis=0)
-        print(f'[train] Loaded {len(candles_1m):,} 1m candles.')
+    if candles_1m is None or (hasattr(candles_1m, 'ndim') and candles_1m.ndim < 2) or len(candles_1m) == 0:
+        print('[train] ERROR: No candles loaded. Check exchange/symbol/date range.')
+        sys.exit(1)
+    if warmup is not None and hasattr(warmup, 'ndim') and warmup.ndim == 2 and len(warmup) > 0:
+        candles_1m = np.concatenate([warmup, candles_1m], axis=0)
+    print(f'[train] Loaded {len(candles_1m):,} 1m candles.')
 
     # --- Resample to target timeframe for features / regime discovery ---
     candles_tf = _resample_1m_to_tf(candles_1m, tf_minutes)
@@ -1161,11 +863,8 @@ def train(
             names=feature_names,
             labels=lbl_for_mi,
         )
-        if len(selected_indices) < 5:
-            # Too few features → regime labels change too fast for contiguous windows.
-            # Fall back to all features so the regime tree produces stable, long-lived regimes.
-            print(f'[train] MI selected only {len(selected_indices)} features — '
-                  f'falling back to all {clean_matrix.shape[1]} features for stable regimes.')
+        if not selected_indices:
+            print('[train] MI selection returned empty — falling back to all features.')
             selected_indices = list(range(clean_matrix.shape[1]))
         else:
             selected_names = [feature_names[i] for i in selected_indices]
@@ -1232,8 +931,6 @@ def train(
         generations=generations,
         min_window_bars=min_window_bars,
         verbose=verbose,
-        n_workers=n_workers,
-        t_total_start=t_total_start,
     )
 
     evolver_path = str(_MODELS_DIR / 'island_evolver.json')
@@ -1248,16 +945,7 @@ def train(
             for lid, (s, e, hw) in leaf_date_ranges.items()
         }, f, indent=2)
     print(f'[train] Leaf date ranges saved → {leaf_ranges_path}')
-    elapsed_total = _time.time() - t_total_start
-    _end_dt = datetime.utcnow()
-    _tlog('[train] ══════════════════════════════════════════════════════════')
-    _tlog('[train] Training Complete')
-    _tlog(f'[train]   Finished:    {_end_dt.strftime("%Y-%m-%d %H:%M:%S")} UTC')
-    _tlog(f'[train]   Started:     {_t0_dt.strftime("%Y-%m-%d %H:%M:%S")} UTC')
-    _tlog(f'[train]   Total time:  {elapsed_total/3600:.2f}h ({elapsed_total:.0f}s)')
-    _tlog(f'[train]   Generations: {generations}  Islands: {len(evolver.populations)}  Pop: {pop_size}')
-    _tlog(f'[train]   Models dir:  {_MODELS_DIR}')
-    _tlog('[train] ══════════════════════════════════════════════════════════')
+    print('[train] Training complete.')
 
     return {
         'regime_tree_path': tree_path,
@@ -1291,10 +979,6 @@ def _parse_args():
     p.add_argument('--min-leaf-samples', type=int, default=200)
     p.add_argument('--dry-run', action='store_true',
                    help='Only fit regime tree, skip GA evolution.')
-    p.add_argument('--workers', type=int, default=0,
-                   help='Parallel workers for island evaluation. 0 = use all available CPUs.')
-    p.add_argument('--candles-file', default=None,
-                   help='Path to pre-exported .npy candles file (bypasses DB, for cloud runs).')
     return p.parse_args()
 
 
@@ -1313,6 +997,4 @@ if __name__ == '__main__':
         max_sub=args.max_sub,
         min_leaf_samples=args.min_leaf_samples,
         dry_run=args.dry_run,
-        n_workers=args.workers or __import__('multiprocessing').cpu_count(),
-        candles_file=args.candles_file,
     )

@@ -26,20 +26,13 @@ class MacroCluster:
         self._model: GaussianMixture | None = None
 
     def fit(self, X: np.ndarray, max_k: int = 10, min_k: int = 2) -> "MacroCluster":
-        # Subsample for speed — GMM cluster structure is global, doesn't need all rows
-        if len(X) > 30_000:
-            rng = np.random.default_rng(42)
-            idx = rng.choice(len(X), 30_000, replace=False)
-            X_fit = X[idx]
-        else:
-            X_fit = X
         best_bic = np.inf
         best_model = None
         for k in range(min_k, max_k + 1):
             gmm = GaussianMixture(n_components=k, covariance_type="full",
-                                  n_init=1, random_state=42)
-            gmm.fit(X_fit)
-            bic = gmm.bic(X_fit)
+                                  n_init=3, random_state=42)
+            gmm.fit(X)
+            bic = gmm.bic(X)
             if bic < best_bic:
                 best_bic = bic
                 best_model = gmm
@@ -79,21 +72,15 @@ class SubCluster:
             self._fitted = True
             return self
 
-        if len(X) > 10_000:
-            rng = np.random.default_rng(42)
-            idx = rng.choice(len(X), 10_000, replace=False)
-            X_fit = X[idx]
-        else:
-            X_fit = X
         best_bic = np.inf
         best_model = None
         for k in range(min_k, max_k + 1):
-            if k > len(X_fit):
+            if k > len(X):
                 break
             gmm = GaussianMixture(n_components=k, covariance_type="full",
-                                  n_init=1, random_state=42)
-            gmm.fit(X_fit)
-            bic = gmm.bic(X_fit)
+                                  n_init=3, random_state=42)
+            gmm.fit(X)
+            bic = gmm.bic(X)
             if bic < best_bic:
                 best_bic = bic
                 best_model = gmm

@@ -44,10 +44,11 @@ GENE_BOUNDS: Dict[str, Tuple[float, float, type]] = {
     # normal session flow while enabling abort only during genuine crises.
     "abort_aggressiveness":   (0.0, 0.4, float),
 
-    # NOTE: `base_size_pct` (legacy pipeline-only gene) removed 2026-04-24.
-    # It was never applied to the strategy — cluttered DNA display without
-    # effect. The strategy's base is driven by `base_size_value` (pct_equity)
-    # or auto-computed from `max_bust_dd_pct` (capital_aware).
+    # Upper 3.0: joint constraint with sizing_factor and max_levels (see
+    # _validate_genome_feasibility). At base=3.0, factor=2.0, levels=6:
+    # deepest ticket = 3.0 × 2.0^6 = 192% of equity — capped by the joint
+    # feasibility check to ≤ 20% deepest ticket. Lower 0.1 avoids zero sizing.
+    "base_size_pct":          (0.1, 5.0, float),
 
     # Hysteresis margin for regime switch. [2] reports evolved range [0.071, 0.270].
     # Lower 0.05: below this, the inferencer switches on noise (< 5pp advantage
@@ -99,16 +100,11 @@ def _validate_genome_feasibility(genes: dict) -> dict:
     """
     g = dict(genes)
 
-    # Constraint 1: tp_value >= hedge_value × 1.5 (meaningful recovery margin).
-    # Rationale: TP must clear the hedge distance by a ratio, not a fixed 5-pip
-    # nudge. A 35-pip hedge with 40-pip TP leaves just 5 pips of recovery budget
-    # once slippage/spread eat in — sessions statistically can't close via TP.
-    # 1.5× gives ~50% recovery margin above the hedge step and prevents the GA
-    # from collapsing onto the hedge_value + 5 boundary seen in phase6 genomes.
+    # Constraint 1: tp_value > hedge_value
     if 'tp_value' in g and 'hedge_value' in g:
-        min_tp = g['hedge_value'] * 1.5
-        if g['tp_value'] < min_tp:
-            g['tp_value'] = min_tp
+        if g['tp_value'] <= g['hedge_value']:
+            # Enforce minimum 5-pip gap (1 tick buffer above hedge distance)
+            g['tp_value'] = g['hedge_value'] + 5.0
 
     # Constraint 2: base_size_pct × sizing_factor^max_levels ≤ 20.0
     if 'base_size_pct' in g and 'sizing_factor' in g and 'max_levels' in g:
@@ -116,14 +112,6 @@ def _validate_genome_feasibility(genes: dict) -> dict:
         if max_ticket > 20.0:
             # Scale down base_size_pct to satisfy the constraint
             g['base_size_pct'] = 20.0 / (g['sizing_factor'] ** g['max_levels'])
-
-    # Constraint 3: base_size_value × sizing_factor^max_levels ≤ 20.0 (for
-    # strategy-native base param). Same risk-of-ruin logic as constraint 2 but
-    # applied to the strategy HP the pipeline actually writes.
-    if 'base_size_value' in g and 'sizing_factor' in g and 'max_levels' in g:
-        max_ticket = g['base_size_value'] * (g['sizing_factor'] ** g['max_levels'])
-        if max_ticket > 20.0:
-            g['base_size_value'] = 20.0 / (g['sizing_factor'] ** g['max_levels'])
 
     return g
 
@@ -145,14 +133,8 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
     except Exception:
         return bounds
 
-    # Must match _TUNABLE_GROUPS in pipelines/_shared/IslandPilot/__init__.py::_apply_genome.
-    # If training evolves fewer groups than inference applies, the unevolved groups fall
-    # back to strategy defaults at inference — i.e. the regime tree has no way to
-    # specialise them per-leaf. Keep these two sets identical.
-    _TUNABLE_GROUPS = {
-        'General', 'Grid / Hedge', 'Take Profit',
-        'Entry Signal', 'Filters', 'Risk Management', 'Position Management',
-    }
+    # Entry Signal excluded — pipeline controls execution, not signal timing.
+    _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit'}
 
     # Tighter bounds for params that cause margin blowups when extreme.
     # Bounds are set so that the worst-case total exposure across all
@@ -163,46 +145,15 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
     # Capping factor at 2.0 and levels at 6 ensures all curves stay safe.
     # The SimConfig.from_genome() method applies a second equity-aware
     # cap at runtime, reducing levels further if the account cannot afford them.
-    # Bounds tuned so that:
-    # - base_size × sizing_factor^max_levels ≤ 20 (joint ruin constraint)
-    # - max_levels up to 8 allows deep recovery grids with small base sizes
-    # - hedge_value / tp_value bounds are sized for fixed_pips mode; the
-    #   pipeline rescales per actual mode at apply time (_coerce_mode_value).
     _BOUND_OVERRIDES = {
-        'max_levels': (2, 8, int),            # deeper grids allowed
-        # Lower bound 1.5 (~sqrt(2)) enforces mathematical viability.
-        # Below 1.414 each hedge cannot recover prior losses + spread; GA
-        # previously converged on factor ~1.27 which produces "TP Hit"
-        # sessions with net-negative PnL (breakeven exit minus spread bleed).
-        'sizing_factor': (1.5, 2.5, float),
-        'hedge_value': (8, 40, float),         # pips (scaled per-mode at runtime)
-        'tp_value': (12, 80, float),           # pips (scaled per-mode at runtime)
-        'base_size_value': (0.1, 3.0, float),  # small base + deep levels viable
-        # hedge_expand_factor at 1.74^6 = 28x wider hedges at L5, which forces
-        # capital_aware sizing to evolve tiny base (→ 70 qty) yet still flags
-        # bust when max_levels is reached. Narrow to (1.0, 1.3).
-        'hedge_expand_factor': (1.0, 1.3, float),
-        # Allow the GA to evolve capital_aware's risk budget per regime.
-        'max_bust_dd_pct': (5.0, 20.0, float),
+        'max_levels': (2, 6, int),            # was (2,8) — geo 2.0 @ 8 = 511x exposure
+        'sizing_factor': (1.2, 2.0, float),   # was (1.2,2.5) — 2.5^8 = 1526x per ticket
+        'hedge_value': (8, 40, float),         # pips — narrower to avoid tiny/huge grids
+        'tp_value': (8, 40, float),            # pips
+        'base_size_value': (0.5, 3.0, float),  # was (0.5,5.0) — 5% base + geo 2.0 @ 6 = ruin
     }
-    # Skip gating filters entirely during training — they have many options but
-    # only 'none' is permissive. Random init gives P(all off) = (1/4)^5 ≈ 0.1%,
-    # so >99% of genomes have some filter blocking all entries → zero sessions.
-    # Let filters default to 'none' at inference. Also skip the dependent
-    # threshold/period params that are only meaningful when a filter is active.
-    _SKIP_PARAMS = {
-        'preset', 'sizing_custom_sequence', 'model_lookback',
-        # Filters group (make entry fire by default)
-        'session_filter', 'trend_filter', 'vol_filter', 'day_filter',
-        'spread_filter', 'confidence_gate',
-        'trend_filter_period', 'trend_filter_threshold',
-        'vol_filter_period', 'vol_filter_min', 'vol_filter_max',
-        'spread_filter_max', 'confidence_threshold',
-        # Low-information signal dependents (GA-unfriendly: affect output only
-        # when that signal_mode is picked). Keep main signal genes evolving.
-        'rsi_ob', 'rsi_os', 'stoch_ob', 'stoch_os', 'cci_ob', 'cci_os',
-        'bb_period', 'bb_std',
-    }
+    # Skip params that shouldn't be evolved (meta/structural)
+    _SKIP_PARAMS = {'preset', 'sizing_custom_sequence', 'max_bust_dd_pct', 'model_lookback'}
 
     for spec in hp_list:
         if not isinstance(spec, dict) or 'name' not in spec:

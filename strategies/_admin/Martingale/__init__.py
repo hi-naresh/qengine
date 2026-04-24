@@ -22,20 +22,10 @@ from qengine.strategies import Strategy
 # Fibonacci sequence (precomputed for sizing)
 _FIB = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765]
 
-# Custom sizing sequences (multipliers relative to base size)
-_CUSTOM_SEQUENCES = {
-    '1_1_2_3_5_8': [1, 1, 2, 3, 5, 8, 13, 21, 34, 55],
-    '1_2_4_8_16': [1, 2, 4, 8, 16, 32, 64, 128, 256, 512],
-    '1_1_2_4_7_11': [1, 1, 2, 4, 7, 11, 18, 29, 47, 76],
-    '1_2_3_5_8_13_21': [1, 2, 3, 5, 8, 13, 21, 34, 55, 89],
-    '1_3_6_12_24': [1, 3, 6, 12, 24, 48, 96, 192, 384, 768],
-}
-
-
 class Martingale(Strategy):
 
     # ╔═══════════════════════════════════════════════════════════════════════╗
-    # ║                        HYPERPARAMETERS                              ║
+    # ║                        HYPERPARAMETERS                                ║
     # ╚═══════════════════════════════════════════════════════════════════════╝
 
     def hyperparameters(self):
@@ -68,21 +58,12 @@ class Martingale(Strategy):
              'options': ['geometric', 'sqrt', 'linear', 'fibonacci', 'fixed', 'anti_martingale'],
              'default': 'geometric'},
             {'name': 'sizing_factor', 'type': float, 'group': _G, 'general': True,
-             'min': 1.1, 'max': 5.0, 'default': 2.0,
+             'min': 1.4, 'max': 5.0, 'default': 2.0,
              'depends_on': {'sizing_curve': ['geometric', 'sqrt', 'anti_martingale']}},
-            {'name': 'sizing_custom_sequence', 'type': 'categorical', 'group': _G, 'general': True,
-             'options': ['none', '1_1_2_3_5_8', '1_2_4_8_16', '1_1_2_4_7_11',
-                         '1_2_3_5_8_13_21', '1_3_6_12_24'],
-             'default': 'none',
-             'description': 'Predefined sizing sequences. Overrides sizing_curve when not none.'},
             {'name': 'base_size_mode', 'type': 'categorical', 'group': _G, 'general': True,
              'options': ['fixed', 'pct_equity', 'risk_pips', 'capital_aware'], 'default': 'pct_equity'},
             {'name': 'base_size_value', 'type': float, 'group': _G, 'general': True,
              'min': 0.01, 'max': 100.0, 'default': 1.0},
-            {'name': 'max_bust_dd_pct', 'type': float, 'group': _G, 'general': True,
-             'min': 5, 'max': 50, 'default': 20,
-             'depends_on': {'base_size_mode': ['capital_aware']},
-             'description': 'Max % of account a single bust can lose.'},
             {'name': 'max_levels', 'type': int, 'group': _G, 'general': True,
              'min': 0, 'max': 20, 'default': 6,
              'description': '0 = no hedging, N = allow up to N hedge levels'},
@@ -92,9 +73,9 @@ class Martingale(Strategy):
              'options': ['none', 'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch',
                          'cci', 'adx', 'bollinger', 'ema_rsi', 'ema_macd', 'triple',
                          'indicator', 'dual_indicator', 'model'],
-             'default': 'random'},
+             'default': 'random'}, # why have none and random both, they will function same like placing random in 1 dir or both
             {'name': 'direction_bias', 'type': 'categorical', 'group': _E,
-             'options': ['both', 'long_only', 'short_only'], 'default': 'both'},
+             'options': ['both', 'long_only', 'short_only'], 'default': 'both'}, #remove _only
             {'name': 'entry_on_crossover', 'type': 'categorical', 'group': _E,
              'options': ['yes', 'no'], 'default': 'no',
              'description': 'Only enter on crossover moment (not while condition holds)'},
@@ -200,7 +181,7 @@ class Martingale(Strategy):
              'depends_on': {'signal_mode': ['dual_indicator']},
              'description': 'agree=both must agree, filter=ind2 must not contradict'},
             {'name': 'model_lookback', 'type': int, 'group': _E,
-             'min': 10, 'max': 500, 'default': 50,
+             'min': 10, 'max': 500, 'default': 15,
              'depends_on': {'signal_mode': ['model']},
              'description': 'Number of candles to feed to the model'},
 
@@ -310,13 +291,14 @@ class Martingale(Strategy):
              'depends_on': {'equity_curve_filter': ['above_ema']}},
 
             # ── Position Management ──
-            # partial_close: not yet implemented with STOP order architecture.
             # Kept as 'none' only — other options would silently do nothing.
             {'name': 'breakeven_mode', 'type': 'categorical', 'group': _P,
              'options': ['none', 'after_n_levels'], 'default': 'none'},
             {'name': 'breakeven_levels', 'type': int, 'group': _P,
              'min': 1, 'max': 10, 'default': 3,
              'depends_on': {'breakeven_mode': ['after_n_levels']}},
+            # partial_close: not yet implemented with STOP order architecture.
+
         ]
 
         # ── Preset-aware HP filtering ──
@@ -745,9 +727,18 @@ class Martingale(Strategy):
     def _get_signal(self):
         """Returns 'long', 'short', or None based on configured signal mode."""
         mode = self.hp.get('signal_mode', 'random')
+        # Indicator-based signals need history (up to 200 bars for some).
+        # Before enough history accumulates, fall back to None (no entry).
+        if mode not in ('none', 'random') and len(self.candles) < 200:
+            return None
         method = getattr(self, f'_signal_{mode}', None)
         if method:
-            raw = method()
+            try:
+                raw = method()
+            except (IndexError, ValueError):
+                # Indicator computation failed (usually insufficient data).
+                # Safer to skip entry this bar than abort the whole backtest.
+                return None
         else:
             raw = self._signal_random()
 
@@ -1089,14 +1080,6 @@ class Martingale(Strategy):
 
     def _calc_size(self, level):
         """Calculate position size for a given hedge level."""
-        # Custom sequence overrides curve
-        seq_key = self.hp.get('sizing_custom_sequence', 'none')
-        if seq_key != 'none':
-            seq = _CUSTOM_SEQUENCES.get(seq_key, None)
-            if seq:
-                base = self._base_size()
-                idx = min(level, len(seq) - 1)
-                return base * seq[idx]
 
         base = self._base_size()
         curve = self.hp.get('sizing_curve', 'geometric')
@@ -1535,12 +1518,20 @@ class Martingale(Strategy):
 
     def _filters_pass(self):
         """Check all configured filters. Returns True if all pass."""
-        return (self._session_filter_ok() and
-                self._day_filter_ok() and
-                self._vol_filter_ok() and
-                self._trend_filter_ok() and
-                self._spread_filter_ok() and
-                self._confidence_gate_ok())
+        # Filters call indicators with period up to 100 (ER uses diff so needs
+        # 101+ candles). 200 is a safe floor that covers all filter indicators.
+        if len(self.candles) < 200:
+            return True
+        try:
+            return (self._session_filter_ok() and
+                    self._day_filter_ok() and
+                    self._vol_filter_ok() and
+                    self._trend_filter_ok() and
+                    self._spread_filter_ok() and
+                    self._confidence_gate_ok())
+        except (IndexError, ValueError):
+            # Indicator failed on edge-case window — don't gate entry.
+            return True
 
     def _session_filter_ok(self):
         f = self.hp.get('session_filter', 'any')
@@ -1633,6 +1624,9 @@ class Martingale(Strategy):
     def _confidence_gate_ok(self):
         """Composite confidence gate: NATR + ADX + ER. Validated on 2024-2025 walk-forward."""
         if self.hp.get('confidence_gate', 'none') == 'none':
+            return True
+        # ER with period=100 needs 101+ candles (uses diff). 200 gives margin.
+        if len(self.candles) < 200:
             return True
         thresh = self.hp.get('confidence_threshold', 0.4)
 
@@ -1835,8 +1829,23 @@ class Martingale(Strategy):
         return (target_pnl + weighted_sum) / net_signed_qty
 
     def _compute_breakeven_price(self):
-        """Find the price where net PnL of all tickets is zero."""
-        return self._compute_target_price(0.0)
+        """Find the price where net PnL compensates for round-trip spread cost.
+
+        Targeting PnL=0 on the raw entry→exit math leaves the session in loss
+        equal to the spread paid at entry (fills were worse than mid on all N
+        legs). We target a small positive PnL equal to estimated total spread
+        cost so the exit actually breaks even after fills.
+        """
+        try:
+            # Spread cost ≈ sum(qty_i) × typical_spread_in_price
+            # For EUR-USD CFD default spread is 2 pips = 0.0002 price units.
+            legs = self.vars.get('legs', [])
+            total_qty = sum(leg.get('qty', 0.0) for leg in legs)
+            typical_spread = 0.0002  # 2 pips EUR-USD default
+            spread_cost = total_qty * typical_spread
+            return self._compute_target_price(spread_cost)
+        except Exception:
+            return self._compute_target_price(0.0)
 
     def _check_position_management(self):
         """Mid-session adjustments: partial close, breakeven move."""
