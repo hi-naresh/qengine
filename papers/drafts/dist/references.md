@@ -10,9 +10,13 @@ Alba, E., & Tomassini, M. (2002). Parallelism and evolutionary algorithms. *IEEE
 
 Allen, F., & Karjalainen, R. (1999). Using genetic algorithms to find technical trading rules. *Journal of Financial Economics*, 51(2), 245--271.
 
+Almeida, B. J., & Neves, R. F. (2022). Self-adaptive evolutionary algorithm with hybrid genetic operators for portfolio optimization. *Expert Systems with Applications*, 210, 118895. DOI: 10.1016/j.eswa.2022.118895.
+
 Ang, A., & Timmermann, A. (2012). Regime changes and financial markets. *Annual Review of Financial Economics*, 4, 313--337.
 
 Andersen, T. G., & Bollerslev, T. (1997). Intraday periodicity and volatility persistence in financial markets. *Journal of Empirical Finance*, 4(2--3), 115--158.
+
+Arian, H. R., Norouzi M., D., & Seco, L. A. (2024). Backtest overfitting in the machine learning era: A comparison of out-of-sample testing methods in a synthetic controlled environment. *Knowledge-Based Systems*, 305, 112477. DOI: 10.1016/j.knosys.2024.112477.
 
 Astrom, K. J., & Murray, R. M. (2008). *Feedback Systems: An Introduction for Scientists and Engineers*. Princeton University Press.
 
@@ -21,6 +25,8 @@ Barndorff-Nielsen, O. E., & Shephard, N. (2002). Econometric analysis of realize
 Box, G. E. P., & Jenkins, G. M. (1976). *Time Series Analysis: Forecasting and Control* (revised edition). Holden-Day.
 
 Bailey, D. H., Borwein, J. M., de Prado, M. L., & Zhu, Q. J. (2014). Pseudo-mathematics and financial charlatanism: The effects of backtest overfitting on out-of-sample performance. *Notices of the American Mathematical Society*, 61(5), 458--471.
+
+Bauman, T., Goluža, S., Gašperov, B., & Kostanjčar, Z. (2024). Deep reinforcement learning for goal-based investing under regime-switching. *Proceedings of the 5th Northern Lights Deep Learning Conference (NLDL)*, PMLR Vol. 233, 13--19.
 
 Bellman, R. E. (1957). *Dynamic Programming*. Princeton University Press.
 
@@ -68,13 +74,21 @@ Gopinathan, K. N., Murugesan, P., & Jeyaraj, J. J. (2024). Stock price predictio
 
 Hamilton, J. D. (1989). A new approach to the economic analysis of nonstationary time series and the business cycle. *Econometrica*, 57(2), 357--384.
 
+Hamilton, J. D., & Susmel, R. (1994). Autoregressive conditional heteroskedasticity and changes in regime. *Journal of Econometrics*, 64(1--2), 307--333.
+
 Harvey, C. R., & Siddique, A. (2000). Conditional skewness in asset pricing tests. *Journal of Finance*, 55(3), 1263--1295.
 
 Hurst, H. E. (1951). Long-term storage capacity of reservoirs. *Transactions of the American Society of Civil Engineers*, 116, 770--799.
 
+Issa, Z., & Horvath, B. (2023). Non-parametric online market regime detection and regime clustering for multidimensional and path-dependent data structures. *arXiv preprint*, arXiv:2306.15835. DOI: 10.48550/arXiv.2306.15835.
+
 Katz, J. O., & McCormick, D. L. (2000). *The Encyclopedia of Trading Strategies*. McGraw-Hill.
 
 Kaufman, P. J. (2013). *Trading Systems and Methods* (5th ed.). Wiley.
+
+Kelly, J. L. (1956). A new interpretation of information rate. *Bell System Technical Journal*, 35(4), 917--926.
+
+Killick, R., Fearnhead, P., & Eckley, I. A. (2012). Optimal detection of changepoints with a linear computational cost. *Journal of the American Statistical Association*, 107(500), 1590--1598. DOI: 10.1080/01621459.2012.737745.
 
 Kraskov, A., Stogbauer, H., & Grassberger, P. (2004). Estimating mutual information. *Physical Review E*, 69(6), 066138.
 
@@ -88,7 +102,15 @@ Liu, X.-Y., Yang, H., Chen, Q., Zhang, R., Yang, L., Xiao, B., & Wang, C. D. (20
 
 Lo, A. W., & MacKinlay, A. C. (1988). Stock market prices do not follow random walks: Evidence from a simple specification test. *Review of Financial Studies*, 1(1), 41--66.
 
+Long, X., & Kampouridis, M. (2025). A genetic algorithm for the optimization of multi-threshold trading strategies in the directional changes paradigm. *Artificial Intelligence Review*. DOI: 10.1007/s10462-025-11419-z.
+
 Lopes, R. A., Silva, R. P., Campelo, F., & Guimaraes, F. G. (2012). A multi-agent approach to the adaptation of migration topology in island model evolutionary algorithms. *Proceedings of the 2012 Brazilian Symposium on Neural Networks*, 160--165. DOI: 10.1109/SBRN.2012.37.
+
+Lopez de Prado, M. (2018). *Advances in Financial Machine Learning*. Wiley.
+
+MacLean, L. C., Thorp, E. O., & Ziemba, W. T. (Eds.). (2010). *The Kelly Capital Growth Investment Criterion: Theory and Practice*. World Scientific.
+
+Mahfoud, S. W. (1995). *Niching methods for genetic algorithms* (PhD thesis). University of Illinois at Urbana-Champaign (IlliGAL Report 95001).
 
 McLachlan, G. J., & Peel, D. (2000). *Finite Mixture Models*. Wiley.
 
@@ -96,11 +118,17 @@ McLean, R. D., & Pontiff, J. (2016). Does academic research destroy stock return
 
 Müller, U. A., Dacorogna, M. M., Davé, R. D., Olsen, R. B., Pictet, O. V., & von Weizsäcker, J. E. (1997). Volatilities of different time resolutions — analyzing the dynamics of market components. *Journal of Empirical Finance*, 4(2--3), 213--239.
 
+Murtagh, F., & Legendre, P. (2014). Ward's hierarchical agglomerative clustering method: Which algorithms implement Ward's criterion? *Journal of Classification*, 31(3), 274--295.
+
+Neely, C., Weller, P., & Dittmar, R. (1997). Is technical analysis in the foreign exchange market profitable? A genetic programming approach. *Journal of Financial and Quantitative Analysis*, 32(4), 405--426.
+
 Neuberger, A. (2012). Realized skewness. *Review of Financial Studies*, 25(11), 3423--3455.
 
 Nystrup, P., Madsen, H., & Lindstrom, E. (2017). Long memory of financial time series and hidden Markov models with time-varying parameters. *Journal of Forecasting*, 36(8), 989--1002.
 
 Nystrup, P., Lindstrom, E., & Madsen, H. (2020). Learning hidden Markov models with persistent states by penalizing jumps. *Expert Systems with Applications*, 150, 113307.
+
+Orton, A., & Gebbie, T. (2024). Representation learning for regime detection in block hierarchical financial markets. *arXiv preprint*, arXiv:2410.22346. DOI: 10.48550/arXiv.2410.22346.
 
 Palupi, I., Wahyudi, B. A., & Putra, A. P. (2021). Implementation of Hidden Markov Model (HMM) to predict financial market regime. *2021 9th International Conference on Information and Communication Technology (ICoICT)*, IEEE. DOI: 10.1109/ICoICT52021.2021.9527459.
 
@@ -110,9 +138,15 @@ Schwarz, G. (1978). Estimating the dimension of a model. *Annals of Statistics*,
 
 Syswerda, G. (1989). Uniform crossover in genetic algorithms. *Proceedings of the 3rd International Conference on Genetic Algorithms*, 2--9.
 
+Thorp, E. O. (1969). Optimal gambling systems for favorable games. *Review of the International Statistical Institute*, 37(3), 273--293.
+
 Tobin, J., Fong, R., Ray, A., Schneider, J., Zaremba, W., & Abbeel, P. (2017). Domain randomization for transferring deep neural networks from simulation to the real world. *Proceedings of the 2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)*, 23--30.
 
+Vince, R. (1995). *The Mathematics of Money Management: Risk Analysis Techniques for Traders*. Wiley.
+
 Wang, Y., & Aste, T. (2023). Dynamic portfolio optimization with inverse covariance clustering. *Expert Systems with Applications*, 213, 118739. DOI: 10.1016/j.eswa.2022.118739.
+
+Ward, J. H., Jr. (1963). Hierarchical grouping to optimize an objective function. *Journal of the American Statistical Association*, 58(301), 236--244.
 
 Whitley, D., Rana, S., & Heckendorn, R. B. (1999). The island model genetic algorithm: On separability, population size and convergence. *Journal of Computing and Information Technology*, 7(1), 33--47.
 
