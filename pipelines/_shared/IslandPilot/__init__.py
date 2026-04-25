@@ -1091,7 +1091,7 @@ class IslandPilot(Pipeline):
         if 'max_bust_dd_pct' in hp:
             hp['max_bust_dd_pct'] = max(5.0, min(25.0, float(hp['max_bust_dd_pct'])))
 
-        # Joint risk constraint: base_size_pct × sizing_factor^max_levels ≤ 20.
+        # Joint risk constraint: base_size_value × sizing_factor^max_levels ≤ 20.
         # This is what actually bounds bust loss — NOT an arbitrary level cap.
         # GA can evolve max_levels=8 with a small base (recovery room) or
         # max_levels=3 with a larger base (aggressive), as long as the deepest

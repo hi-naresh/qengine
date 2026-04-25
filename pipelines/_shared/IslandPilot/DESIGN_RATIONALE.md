@@ -6,6 +6,17 @@ Sections map to the files where the choice is enforced. Each choice lists: the v
 
 ---
 
+## 0. Scope: Iteration 1 vs Iteration 2
+
+The pipeline has been developed in two iterations:
+
+- **Iteration 1** is the cloud-trained model and the achievement reported in the dissertation. It evolves **20 genes** (5 pipeline-level + 1 inert legacy + 14 strategy-level) across **3 tunable groups** (General, Grid/Hedge, Take Profit). The pipeline-level GENE_BOUNDS at the time of training contained `gate_confidence_min`, `abort_aggressiveness`, `base_size_pct` (legacy), `hysteresis_margin`, `confidence_sensitivity`, `recovery_aggression` — six entries — and the legacy `base_size_pct` is retained in the cloud artefact even though the gene is unused at inference (it is filtered out by `_apply_genome`).
+- **Iteration 2** is the corrected pipeline currently in source. It retires the legacy `base_size_pct` gene, expands the evolvable group set to seven (adding Entry Signal, Filters, Risk Management, Position Management), and adds the categorical-gene resolver and CFD margin-bust state-reset corrections. Iteration 1's results — particularly the 113-fold drawdown reduction with no directional alpha — provide the motivating evidence for Iteration 2; investigating its wider search space is the next direction for the conference-paper extension of this research.
+
+Each design choice below is annotated with the iteration in which it became active. Where a choice differs between iterations, both versions are recorded.
+
+---
+
 ## 1. Feature Pool (`feature_selector.py`)
 
 ### 1.1 The 24-feature base pool — inherited from the paper
@@ -97,7 +108,11 @@ The 0.15 threshold is conservative: a GMM with actual structure typically produc
 
 ## 4. Gene bounds (`island_evolver.py::GENE_BOUNDS`)
 
-Each of the 6 pipeline-level genes has a justification for both its lower and upper bound.
+**Iteration 1 (cloud-trained model):** 6 pipeline-level genes — `gate_confidence_min`, `abort_aggressiveness`, `base_size_pct`, `hysteresis_margin`, `confidence_sensitivity`, `recovery_aggression`. The `base_size_pct` gene is included in the genome but does not reach the strategy's order-sizing path; it is filtered out at deployment by `_apply_genome`. Its presence in the genome is therefore inert at inference but consumes one slot of GA search dimension.
+
+**Iteration 2 (current source):** 5 pipeline-level genes after `base_size_pct` was retired (2026-04-24). Position size is now driven directly by the strategy-native `base_size_value` discovered through `build_gene_bounds_from_strategy`, with the same survivability constraint expressed on that variable in §5.2.
+
+Each pipeline-level gene below is annotated with the iteration in which it is active. The bound values are unchanged between iterations; only the gene set differs.
 
 ### 4.1 `gate_confidence_min ∈ [0.0, 0.5]`
 
@@ -110,10 +125,12 @@ The `danger()` function returns `std_of_returns / 0.01`. EUR-USD 30m typical vol
 - Threshold for abort = `1 − aggressiveness`. At upper bound 0.4, threshold 0.6, triggering only when `vol > 0.006` (60-pip std per 20-bar window — extreme stress).
 - Range [0, 0.4] thus enables abort for genuine crises but preserves normal session flow.
 
-### 4.3 `base_size_pct ∈ [0.1, 5.0]`
+### 4.3 `base_size_pct ∈ [0.1, 5.0]` (Iteration 1 only — retired in Iteration 2)
 
 - **Lower 0.1**: zero would disable trading; 0.1 % preserves ability to enter.
 - **Upper 5.0**: individual bound permissive. Joint feasibility constraint (§5) enforces the real ceiling.
+
+Retained in the Iteration 1 cloud-trained genome but not applied to the strategy at deployment (`_apply_genome` strips it before it reaches the order-sizing path). Iteration 2 retires this gene; the active equivalent is the strategy-native `base_size_value`, evolved via `build_gene_bounds_from_strategy` with bound `[0.1, 3.0]` % equity (`_BOUND_OVERRIDES` in `island_evolver.py`) and joint feasibility against `sizing_factor × max_levels` (§5.2).
 
 ### 4.4 `hysteresis_margin ∈ [0.05, 0.30]`
 
@@ -145,11 +162,13 @@ Per-gene bounds alone don't catch catastrophic combinations. Two joint constrain
 
 The minimum 5-pip gap is a 1-tick safety buffer (single-spread minimum on 5m EUR-USD execution).
 
-### 5.2 `base_size_pct × sizing_factor^max_levels ≤ 20 %`
+### 5.2 `base_size_value × sizing_factor^max_levels ≤ 20 %`
 
 **Derivation**: At depth N, the deepest ticket equals `base × factor^N` (% of equity). Keeping this ≤ 20 % means a worst-case full-bust loses at most ~20 % per deepest ticket; with 6 levels and factor 2.0, total bust exposure via geometric series ≤ 40 % account loss — survivable.
 
 The 20 % threshold matches the Kelly fraction at the empirically measured `p × m = 0.80` for EUR-USD SurefireHedge (phase-1 capital scaling analysis). Kelly-optimal sizing at this edge is approximately f* = (0.80 − 1) / (m − 1) ≈ 0.20 of the surviving bankroll at the worst depth.
+
+The constraint is enforced on `base_size_value` (the strategy-native HP) rather than on the retired `base_size_pct` proxy, so the bound binds the variable that actually drives order sizing in `Martingale._base_size`.
 
 ### 5.3 Enforcement points
 
@@ -157,6 +176,7 @@ Applied in three places so infeasible genomes never enter fitness evaluation:
 - `Genome.random()` — after random initialisation
 - `Genome.crossover()` — after child assembly
 - `Genome.mutate()` — after Gaussian perturbation
+- `IslandPilotPipeline._apply_genome` — after genome application at deployment, with the additional safety clamp on `base_size_value ∈ [0.05, 5.0]` and the joint scale-down when `base × factor^(levels−1) > max_ticket_cap_pct` (default 20 %)
 
 ---
 
@@ -237,16 +257,31 @@ The paper's MI selection used post-hoc cycle outcomes from baseline backtests. T
 
 ---
 
-## 10. Fitness function weights (paper Sec 4)
+## 10. Fitness function (paper Sec 4)
 
-Weights `(0.4, 0.3, 0.2, 0.1)` for `(PF-1, 100-5·DD, 1-bust_rate, sessions)`:
+The fitness function evolved between iterations. Both forms are documented here because the dissertation reports results from Iteration 1 and the design narrative in Section 4 describes Iteration 2.
 
-- **0.4 on profitability** — primary objective, largest weight.
-- **0.3 on drawdown** (with 5× penalty) — risk control at similar magnitude to profitability, reflecting Martingale's structural drawdown sensitivity (each deep level escalates exposure geometrically).
-- **0.2 on bust-rate** — separate term from PF because PF is dominated by the wins, bust-rate is dominated by the losses; weighting bust-rate independently prevents the GA from trading a few catastrophic busts for many small wins at favourable aggregate PF.
-- **0.1 on session count** (capped at 100) — prevents degenerate "never trade" solutions that score high on risk metrics.
+### 10.1 Iteration 1 fitness (used to produce the cloud-trained model)
 
-**Derivation**: additive (not multiplicative) to allow partial credit — a multiplicative formulation collapses to near-zero whenever any single component fails, preventing the GA from preserving profitable traits in early generations.
+Weights `(0.4, 0.3, 0.2, 0.1)` on `(PF − 1, max(0, 100 − 5·DD), 1 − bust_rate, min(sessions/100, 1))`. Linear bust-rate penalty, no PF cap, no session-count floor, no hard bust-rate cull, no NaN safety on the metric reads. A genome with `PF = ∞` (only wins) would propagate into tournament selection at face value; a genome with no sessions would receive default-bust-rate credit and could outscore a marginally-unprofitable trader.
+
+These pathologies were not load-bearing for the cloud run because the 3-group genome space is small enough that `PF = ∞` cases are rare and the no-trade absorbing state is hard to reach with only sizing/grid/TP genes. They became material when Iteration 2 widened the search to 57 genes (Filters / Entry Signal can produce zero-trade genomes by construction) and the fitness function had to be hardened.
+
+### 10.2 Iteration 2 fitness (current source)
+
+Weights `(0.5, 0.2, 0.2, 0.1)` on `(min(PF, 5) − 1, max(0, 100 − 5·DD), (1 − bust_rate)³, min(sessions/100, 1))`, with three branch-level modifiers:
+
+- *Session-count floor*: if `n_s < 10`, return `0.5 × n_s` and skip the composite. Without this branch the GA rapidly converges on "never trade" genomes that score well on the risk and bust terms by virtue of having no bust opportunities at all.
+- *Hard bust-rate cull*: if `n_s ≥ 10` and `bust_rate > 0.30`, return 0. Genomes meeting the activity floor but failing the bust threshold are removed from tournament selection in a single evaluation rather than competing in the gradient-driven composite.
+- *NaN/inf safety*: PF is clamped at 5.0 (genomes with no losing trades report `PF = ∞`); `NaN` profit-factor or net-profit values returned by the engine yield fitness 0 rather than propagating non-comparable values into selection.
+
+**Term weights:**
+- **0.5 on profitability** (PF-term, capped at 5) — primary objective. Raised from 0.4 in an earlier iteration after empirical observation that PF improvement was the first axis to converge during evolution; increasing its weight compresses dynamic range into the risk and activity terms in later generations.
+- **0.2 on drawdown** (with 5× penalty) — risk control at the same weight as bust-rate, reflecting that drawdown and bust frequency are structurally distinct failure modes for Martingale strategies (DD is realised, bust_rate is conditional).
+- **0.2 on bust-rate**, evaluated as a *cubic* `(1 − bust_rate)³` rather than the previous linear `(1 − bust_rate)`. The cubic increases the marginal cost of incremental busts: a 30 % bust rate loses 65.7 % of the term's potential contribution under cubic versus 40.0 % under linear. This makes the composite substantially more sensitive to bust proliferation in regimes where some fraction of genomes naturally bust frequently.
+- **0.1 on session count** (capped at 100) — prevents degenerate "few trades" solutions that score high on risk metrics by virtue of trading rarely.
+
+**Derivation of additive form**: additive (not multiplicative) to allow partial credit. A multiplicative formulation collapses to near-zero whenever any single component fails, preventing the GA from preserving profitable traits in early generations. The session-count floor and the hard bust-rate cull are not weighted-additive terms; they are gate conditions that route degenerate genomes around the composite entirely.
 
 ---
 

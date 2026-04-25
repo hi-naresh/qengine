@@ -86,7 +86,7 @@ def _validate_genome_feasibility(genes: dict) -> dict:
         (Author's phase1 research on p×m < 1 condition.)
 
     Constraint 2 — Deepest ticket ≤ 20% of equity (survivability):
-        At depth level N, ticket size = base_size_pct × sizing_factor^N.
+        At depth level N, ticket size = base_size_value × sizing_factor^N.
         Keeping this ≤ 20% of equity means that even a worst-case full-bust
         loss at the deepest level loses at most ~20% per ticket. With 6 levels
         and factor 2.0, the total bust exposure is bounded by the geometric
@@ -110,16 +110,11 @@ def _validate_genome_feasibility(genes: dict) -> dict:
         if g['tp_value'] < min_tp:
             g['tp_value'] = min_tp
 
-    # Constraint 2: base_size_pct × sizing_factor^max_levels ≤ 20.0
-    if 'base_size_pct' in g and 'sizing_factor' in g and 'max_levels' in g:
-        max_ticket = g['base_size_pct'] * (g['sizing_factor'] ** g['max_levels'])
-        if max_ticket > 20.0:
-            # Scale down base_size_pct to satisfy the constraint
-            g['base_size_pct'] = 20.0 / (g['sizing_factor'] ** g['max_levels'])
-
-    # Constraint 3: base_size_value × sizing_factor^max_levels ≤ 20.0 (for
-    # strategy-native base param). Same risk-of-ruin logic as constraint 2 but
-    # applied to the strategy HP the pipeline actually writes.
+    # Constraint 2: base_size_value × sizing_factor^max_levels ≤ 20.0
+    # (Replaces the legacy base_size_pct constraint after that gene was removed
+    # — see GENE_BOUNDS note above. base_size_value is the strategy-native HP
+    # that the pipeline actually writes, so the survivability bound is enforced
+    # directly on it.)
     if 'base_size_value' in g and 'sizing_factor' in g and 'max_levels' in g:
         max_ticket = g['base_size_value'] * (g['sizing_factor'] ** g['max_levels'])
         if max_ticket > 20.0:

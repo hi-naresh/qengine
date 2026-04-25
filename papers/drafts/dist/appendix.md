@@ -78,7 +78,7 @@ Table C1 reports the sensitivity of key design parameters based on exploratory e
 | Parameter | Tested Range | Selected Value | Sensitivity |
 |---|---|---|---|
 | Hysteresis margin (δ) | 0.05 – 0.30 | 0.15 | Moderate: OOS-profitability rate varies ± 3% |
-| Population size | 4, 8, 10, 16, 30 | 10 (cloud) / 8 (pre-flight) | Moderate: small pops (< 8) exhibit elite-cloning; pops ≥ 10 give adequate diversity for the 58-gene genome |
+| Population size | 4, 8, 10, 16, 30 | 10 (Iteration 1 cloud) / 8 (Iteration 2 pre-flight) | Moderate: small pops (< 8) exhibit elite-cloning; pops ≥ 10 give adequate diversity for the 20-gene Iteration 1 genome and remain adequate at the 57-gene Iteration 2 widening |
 | Tournament size k | 2, 3, 5 | 3 | Low: OOS rate varies ± 0.5% |
 | Mutation rate | 0.1, 0.2, 0.3 | 0.2 | Low: OOS rate varies ± 1.5% |
 | Mutation σ (genome-relative) | 0.03, 0.05, 0.10 | 0.05 | Low: σ > 0.10 produces overshoot from bound-edge genomes |
@@ -90,7 +90,7 @@ Table C1 reports the sensitivity of key design parameters based on exploratory e
 | Fitness bust-rate cull | 0.20, 0.30, 0.40, none | 0.30 | Moderate: cull at 0.20 over-restricts early GA; cull at 0.40 admits pathological genomes |
 | Fitness session-count floor | 5, 10, 20 sessions | 10 | Moderate: floor < 10 admits "lucky few" genomes; floor > 10 punishes selective strategies |
 
-The system shows greatest sensitivity to the sizing-factor lower bound (a structural-viability constraint rather than a search tuning) and the fitness-function shape parameters (bust-rate cull, session-count floor). The latter two determine which genomes receive any fitness signal at all and therefore shape the evolutionary search's reachable set. The GA operator parameters (mutation rate, crossover rate, tournament size) show low sensitivity, consistent with the general robustness of GA performance to moderate parameter variation in low-dimensional search spaces (Eiben & Smith, 2015). Population size sits in the middle: very small populations (≤ 4) suffer from sibling-migration elite-cloning that produces genome duplicates across adjacent islands, while populations of 10 or more provide adequate within-island diversity for the 58-gene genome space (5 pipeline + 53 strategy genes after Filters group and mode-conditional exclusions).
+The system shows greatest sensitivity to the sizing-factor lower bound (a structural-viability constraint rather than a search tuning) and the fitness-function shape parameters (bust-rate cull, session-count floor). The latter two determine which genomes receive any fitness signal at all and therefore shape the evolutionary search's reachable set. The GA operator parameters (mutation rate, crossover rate, tournament size) show low sensitivity, consistent with the general robustness of GA performance to moderate parameter variation in low-dimensional search spaces (Eiben & Smith, 2015). Population size sits in the middle: very small populations (≤ 4) suffer from sibling-migration elite-cloning that produces genome duplicates across adjacent islands, while populations of 10 or more provide adequate within-island diversity for both the Iteration 1 genome (5 pipeline + 14 strategy + 1 inert legacy = 20 dimensions) and the Iteration 2 widening (5 pipeline + 52 strategy = 57 dimensions, after Filters-group and mode-conditional exclusions).
 
 ## Appendix D: Algorithm Pseudocode
 
@@ -103,8 +103,9 @@ Output: evolved populations {P_1, ..., P_L}
 
 1:  for each leaf l in {1, ..., L} do
 2:      P_l <- INITIALIZE_POPULATION(pop_size, genome_bounds)
-3:          // genome bounds: 5 pipeline genes + 53 strategy genes from
-4:          // 7 tunable groups, with safety overrides (Section 3.4)
+3:          // Iteration 1: 5 pipeline + 14 strategy genes from 3 groups (General,
+4:          // Grid/Hedge, Take Profit) with safety overrides (Section 3.4 Table 2).
+4a:         // Iteration 2 widens to 5 + 52 across 7 groups (Section 3.4 Table 3).
 5:  end for
 6:  set module-global _WORKER_CANDLES <- C_1m   // for fork-based workers
 7:
@@ -226,7 +227,8 @@ Stage 2: REGIME TREE CONSTRUCTION
 
 Stage 3: ISLAND EVOLUTION
 16: bounds <- BUILD_GENE_BOUNDS_FROM_STRATEGY(S)
-17:     // 5 pipeline + 53 strategy genes across 7 tunable groups;
+17:     // Iteration 1: 5 pipeline + 14 strategy across 3 groups (cloud-trained run);
+17a:    // Iteration 2: 5 pipeline + 52 strategy across 7 groups (design endpoint);
 18:     // filter genes and mode-conditional thresholds excluded (Section 3.4)
 19: windows_per_leaf <- PER_LEAF_CONTIGUOUS_WINDOWS(leaves, min_days=30)
 20: leaf_date_ranges <- DATE_RANGES(windows_per_leaf, fallback=full_period)
