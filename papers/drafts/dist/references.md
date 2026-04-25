@@ -2,15 +2,11 @@
 
 Aguilar-Rivera, R., Valenzuela-Rendon, M., & Rodriguez-Ortiz, J. J. (2015). Genetic algorithms and Darwinian approaches in financial applications: A survey. *Expert Systems with Applications*, 42(21), 7684--7697.
 
-Aguilar-Rivera, A., & Valenzuela-Rendon, M. (2019). A new multi-period investment strategies method based on evolutionary algorithms. *Neural Computing and Applications*, 31, 923--937.
-
 Agrawal, S., & Goyal, N. (2013). Thompson sampling for contextual bandits with linear payoffs. *Proceedings of the 30th International Conference on Machine Learning*, 127--135.
 
 Alba, E., & Tomassini, M. (2002). Parallelism and evolutionary algorithms. *IEEE Transactions on Evolutionary Computation*, 6(5), 443--462.
 
 Allen, F., & Karjalainen, R. (1999). Using genetic algorithms to find technical trading rules. *Journal of Financial Economics*, 51(2), 245--271.
-
-Almeida, B. J., & Neves, R. F. (2022). Self-adaptive evolutionary algorithm with hybrid genetic operators for portfolio optimization. *Expert Systems with Applications*, 210, 118895. DOI: 10.1016/j.eswa.2022.118895.
 
 Ang, A., & Timmermann, A. (2012). Regime changes and financial markets. *Annual Review of Financial Economics*, 4, 313--337.
 
@@ -118,8 +114,6 @@ McLean, R. D., & Pontiff, J. (2016). Does academic research destroy stock return
 
 Müller, U. A., Dacorogna, M. M., Davé, R. D., Olsen, R. B., Pictet, O. V., & von Weizsäcker, J. E. (1997). Volatilities of different time resolutions — analyzing the dynamics of market components. *Journal of Empirical Finance*, 4(2--3), 213--239.
 
-Murtagh, F., & Legendre, P. (2014). Ward's hierarchical agglomerative clustering method: Which algorithms implement Ward's criterion? *Journal of Classification*, 31(3), 274--295.
-
 Neely, C., Weller, P., & Dittmar, R. (1997). Is technical analysis in the foreign exchange market profitable? A genetic programming approach. *Journal of Financial and Quantitative Analysis*, 32(4), 405--426.
 
 Neuberger, A. (2012). Realized skewness. *Review of Financial Studies*, 25(11), 3423--3455.
@@ -142,11 +136,7 @@ Thorp, E. O. (1969). Optimal gambling systems for favorable games. *Review of th
 
 Tobin, J., Fong, R., Ray, A., Schneider, J., Zaremba, W., & Abbeel, P. (2017). Domain randomization for transferring deep neural networks from simulation to the real world. *Proceedings of the 2017 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)*, 23--30.
 
-Vince, R. (1995). *The Mathematics of Money Management: Risk Analysis Techniques for Traders*. Wiley.
-
 Wang, Y., & Aste, T. (2023). Dynamic portfolio optimization with inverse covariance clustering. *Expert Systems with Applications*, 213, 118739. DOI: 10.1016/j.eswa.2022.118739.
-
-Ward, J. H., Jr. (1963). Hierarchical grouping to optimize an objective function. *Journal of the American Statistical Association*, 58(301), 236--244.
 
 Whitley, D., Rana, S., & Heckendorn, R. B. (1999). The island model genetic algorithm: On separability, population size and convergence. *Journal of Computing and Information Technology*, 7(1), 33--47.
 
