@@ -56,6 +56,8 @@ Eiben, A. E., & Smith, J. E. (2015). *Introduction to Evolutionary Computing* (2
 
 Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation. *Econometrica*, 50(4), 987--1007.
 
+Ethier, S. N. (2010). *The Doctrine of Chances: Probabilistic Aspects of Gambling*. Springer.
+
 Goldberg, D. E. (1989). *Genetic Algorithms in Search, Optimization, and Machine Learning*. Addison-Wesley.
 
 Goldberg, D. E., & Deb, K. (1991). A comparative analysis of selection schemes used in genetic algorithms. *Foundations of Genetic Algorithms*, 1, 69--93.
