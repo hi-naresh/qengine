@@ -39,8 +39,8 @@ Format:
 **Source:** `06_abort_theory/01_abort_vs_no_abort.py` (complete), `06_abort_theory/02_point_of_no_return.py`
 **Before:** Abort level K = 4 (from prior Phase 2 research), objective = reduce is_bust rate
 **After:** Two valid abort policies:
-  - **Policy A (loss minimization):** K=1 — reduces total loss by 46% ($−6,406 → $−3,475); aborts 4,238 sessions (53% abort rate); reduces **catastrophic busts** from 60 → 1
-  - **Policy B (balance continuity with catastrophic-bust reduction):** K=6 — total loss $−5,677 ($2,202 worse than K=1's −$3,475, though still $729 better than baseline −$6,406); aborts 90 sessions (2.4% abort rate); reduces catastrophic busts from 60 → 3
+  - **Policy A (loss minimization):** K=1 — reduces total loss by 46% ($−6,406 → $−3,475); aborts 4,238 sessions out of 7,964 (53.2% abort rate); reduces **catastrophic busts** from 60 → 1
+  - **Policy B (balance continuity with catastrophic-bust reduction):** K=6 — total loss $−5,677 ($2,202 worse than K=1's −$3,475, though still $729 better than baseline −$6,406); aborts 90 sessions out of 3,843 (2.34% abort rate; 2.42% is_bust rate which also includes the 3 catastrophic busts); reduces catastrophic busts from 60 → 3
   - K=7/8 are no-ops (sf=2.0's effective_max is 7, so abort@7 never fires)
 **Why:** Complete abort sweep shows the `is_bust` flag in the backtester includes aborts by definition (see F15/F18), so any policy that fires aborts will mechanically raise "bust_rate". The correct objectives are (1) total dollar loss and (2) count of max_level_bust events specifically. Both favor K=1 strongly. Policy B (K=6) is only justified if operational/regime-learning reasons require more session continuity than K=1 permits.
 
