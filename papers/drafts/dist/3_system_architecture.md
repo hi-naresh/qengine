@@ -2,17 +2,17 @@
 
 IslandPilot operates as a five-layer pipeline that intercepts strategy execution at defined lifecycle hooks without modifying strategy source code. Each layer is described in the subsections that follow.
 
-![Figure 1: IslandPilot architecture. Each layer operates per-candle during strategy execution. The feedback loop updates island fitness after each completed trading cycle.](Figure%201%20-%20System%20Architecture.png)
+![Figure 1: IslandPilot architecture. Each layer operates per-candle during strategy execution. The feedback loop updates island fitness after each completed trading cycle.](../figures/Figure1.png)
 
 ### 3.1 Feature Extraction
 
 The FeaturePool computes 30 market indicators from OHLCV candle data across five categories: volatility, trend, choppiness, momentum, and market structure. The pool is structured as 24 empirical-technical indicators (standard conventions from the technical analysis literature) plus 6 theoretically-motivated extensions that close specific gaps in the base feature space. Features are computed on a fixed 300-candle sliding window, maintaining O(1) computational cost per candle regardless of backtest length. The 5-minute base timeframe is chosen as a balance between signal granularity (intraday FX volatility patterns are visible at this resolution) and computational cost (the 36-month training window contains approximately 221,000 5-minute bars, tractable for the per-evaluation real-engine fitness budget; see Section 4).
 
-The indicator periods were selected by adopting standard conventions from the technical analysis literature and then validating that they produce discriminative features for the specific task of Martingale cycle outcome prediction. Period 14 is the standard lookback for RSI, ATR, and ADX as originally defined by Wilder (1978), and remains the de facto default across practitioner and academic usage (Colby, 2003). We retained this convention rather than optimising the lookback because (a) it enables direct comparison with published results that use identical indicator definitions, and (b) the mutual information feature selection described below acts as a second filter that eliminates features regardless of their conventional standing if they lack discriminative power for this task. Period 50 is widely adopted as a medium-term volatility benchmark in FX markets (Katz & McCormick, 2000); its inclusion alongside period 14 captures the ATR ratio (ATR_14 / ATR_50), which measures short-term volatility relative to the medium-term baseline - a derived feature specific to our regime detection objective rather than a generic convention. The 8/21 EMA pair follows the Fibonacci-derived convention common in short-term momentum systems (Kaufman, 2013), chosen because the Martingale strategy's entry signals use EMA crossovers at these periods, meaning the slope features directly reflect the signal generation mechanism. The Hurst exponent window of 100 follows the recommendation of Di Matteo et al. (2005), who demonstrated that windows of 50-200 observations provide stable R/S estimates for financial time series. The Choppiness Index at period 14 and Efficiency Ratio at periods 50/100 follow the implementations described by Kaufman (2013) for adaptive trading system design. The choice to adopt established periods rather than optimising them is deliberate: period optimisation would introduce an additional degree of freedom that risks overfitting to the training data, while standard periods are pre-validated across decades of market data and multiple instruments.
+The indicator periods were selected by adopting standard conventions from the technical analysis literature and then validating that they produce discriminative features for the specific task of Martingale cycle outcome prediction. Period 14 is the standard lookback for RSI, ATR, and ADX as originally defined by Wilder (1978), and remains the de facto default across practitioner and academic usage (Colby, 2003). We retained this convention rather than optimising the lookback because (a) it enables direct comparison with published results that use identical indicator definitions, and (b) the mutual information feature selection described below acts as a second filter that eliminates features regardless of their conventional standing if they lack discriminative power for this task. Period 50 is widely adopted as a medium-term volatility benchmark in FX markets (Katz & McCormick, 2000); its inclusion alongside period 14 captures the ATR ratio (ATR_14 / ATR_50), which measures short-term volatility relative to the medium-term baseline, a derived feature specific to our regime detection objective rather than a generic convention. The 8/21 EMA pair follows the Fibonacci-derived convention common in short-term momentum systems (Kaufman, 2013), chosen because the Martingale strategy's entry signals use EMA crossovers at these periods, meaning the slope features directly reflect the signal generation mechanism. The Hurst exponent window of 100 follows the recommendation of Di Matteo et al. (2005), who demonstrated that windows of 50-200 observations provide stable R/S estimates for financial time series. The Choppiness Index at period 14 and Efficiency Ratio at periods 50/100 follow the implementations described by Kaufman (2013) for adaptive trading system design. The choice to adopt established periods rather than optimising them is deliberate: period optimisation would introduce an additional degree of freedom that risks overfitting to the training data, while standard periods are pre-validated across decades of market data and multiple instruments.
 
 The full feature set is:
 
-**Volatility (5):** Normalized Average True Range at periods 14 and 50 (NATR_14, NATR_50), ATR ratio (ATR_14 / ATR_50), Bollinger bandwidth ((upper - lower) / middle at period 20; Bollinger, 2002), and raw ATR_14.
+**Volatility (5):** Normalised Average True Range at periods 14 and 50 (NATR_14, NATR_50), ATR ratio (ATR_14 / ATR_50), Bollinger bandwidth ((upper - lower) / middle at period 20; Bollinger, 2002), and raw ATR_14.
 
 **Trend (6):** Average Directional Index at periods 14 and 28 (ADX_14, ADX_28; Wilder, 1978), EMA slope at periods 8 and 21 defined as the percentage change (EMA[t] - EMA[t-1]) / EMA[t-1], Aroon oscillator (Aroon_up - Aroon_down; Chande, 1997), and directional movement differential (DM+ - DM-; Wilder, 1978).
 
@@ -20,7 +20,7 @@ The full feature set is:
 
 **Momentum (5):** Relative Strength Index at periods 14 and 28 (RSI_14, RSI_28; Wilder, 1978), Commodity Channel Index at period 20 (CCI_20; Lambert, 1983), Rate of Change at period 10 (ROC_10), and Stochastic %K (Lane, 1984).
 
-**Structure (4):** Session hour (UTC), day of week, normalized high-low range ((high - low) / close), and close position within range ((close - low) / (high - low)).
+**Structure (4):** Session hour (UTC), day of week, normalised high-low range ((high - low) / close), and close position within range ((close - low) / (high - low)).
 
 **Extensions, Dimension 1: HAR-RV multi-scale volatility (2 features).** NATR_14 computed on candles aggregated by factors of 12× and 48× relative to the base 5m timeframe (equivalent to approximately 1h and 4h horizons), broadcast back to the base timeframe. This implements the Heterogeneous Autoregressive model of Realized Volatility (Corsi, 2009), which demonstrates that three time-horizons are sufficient and parsimonious for realized-volatility modelling. Müller et al. (1997) showed that information flows asymmetrically across scales (long → short), making multi-scale volatility a regime signal rather than a redundancy with NATR_14. Feature names: NATR_14_TF12, NATR_14_TF48.
 
@@ -33,6 +33,8 @@ Feature selection is performed via mutual information (Kraskov et al., 2004) bet
 $$s_i \geq \alpha \cdot \max_j s_j$$
 
 where α = 0.1 is the minimum score-ratio threshold. The threshold is a methodological hyperparameter; lower values include more features at the cost of regime-tree complexity, higher values risk over-pruning. A fallback rule activates when the procedure retains fewer than five features (the minimum required for stable macro/sub partition): the feature pool reverts to the full 30 indicators, with the macro/sub partition performed by lag-10 autocorrelation (features with autocorrelation ≥ 0.7 are slow-changing and assigned to the macro partition; features with autocorrelation < 0.7 are faster-changing and assigned to the sub partition). The empirical outcome of this procedure on the canonical 2022 to 2024 training window is reported in §6.3.
+
+![Figure 2: Feature processing and selection. The raw 30-feature pool (24 empirical-technical indicators plus 6 theoretically-motivated extensions) is reduced by a mutual-information filter with score-ratio threshold α = 0.1, then partitioned into a slow-changing macro feature set (input to the macro-level GMM) and a fast-changing sub feature set (input to the sub-level GMM).](../figures/Figure2.png)
 
 ### 3.2 Hierarchical Regime Discovery
 
@@ -54,7 +56,7 @@ $$P(\text{leaf}_l | x) = P(\text{macro}_m | x_{\text{macro}}) \cdot P(\text{sub}
 
 where the macro probability is obtained from the macro-level GMM and the sub probability from the sub-level GMM conditioned on the macro assignment. Probabilities are renormalized across all leaves to sum to 1.
 
-![Figure 2: Hierarchical regime discovery. Macro-level GMM partitions the feature space into broad market states; sub-level GMMs within each macro-cluster capture finer structural distinctions. Sparse leaves are merged into their most populous sibling.](Figure%202%20-%20Hierarchical%20Regime%20Discovery.jpeg)
+![Figure 3: Two-level hierarchical regime discovery. The macro-level GMM partitions the feature space into broad market states; sub-level GMMs within each macro-cluster capture finer structural distinctions. Sparse leaves (those with fewer than 200 training observations) are merged into their most populous sibling.](../figures/Figure3.png)
 
 The choice of a two-level hierarchy over a single flat GMM is motivated by the observation that financial market states exhibit structure at multiple scales: broad regimes (e.g., high vs. low volatility) contain finer sub-states (e.g., trending vs. ranging within a high-volatility regime). A flat GMM with many components risks overfitting fine structure in dense regions while underfitting sparse regions. The hierarchical approach allows BIC to independently determine the appropriate granularity at each level. An empirical ablation comparing flat GMM against the two-level hierarchy is identified as future work.
 
@@ -76,7 +78,7 @@ The hysteresis margin δ = 0.15 corresponds to requiring approximately a one-and
 
 Each regime leaf maintains an isolated genetic population, with the per-island population size selected to provide adequate search coverage over the full strategy parameter space while remaining feasible for real-engine evaluation (see Section 4 for the computational budget trade-off). The canonical training run reported in this research uses populations of 10 individuals per island. Each individual (genome) encodes a set of execution parameters that control trading behaviour when the corresponding regime is active.
 
-**Genome representation.** A genome consists of 6 pipeline-level genes and a variable number of strategy-level genes discovered at runtime from the strategy's hyperparameter declaration. The pipeline-level genes and their bounds are shown in Table 1.
+**Genome representation.** A genome consists of 5 pipeline-level genes and a variable number of strategy-level genes discovered at runtime from the strategy's hyperparameter declaration. The pipeline-level genes and their bounds are shown in Table 1.
 
 *Table 1: Pipeline-level genome parameters and their bounds.*
 
@@ -88,19 +90,19 @@ Each regime leaf maintains an isolated genetic population, with the per-island p
 | confidence_sensitivity | [0.5, 2.0] | float | Exponent for confidence-based size scaling |
 | recovery_aggression | [0.3, 1.0] | float | Drawdown-based size reduction factor |
 
-Strategy-level genes are discovered dynamically by reading the strategy's `hyperparameters()` declaration. Seven tunable parameter groups are evolved: General (sizing curve, sizing factor, max levels, base size), Grid/Hedge (hedge mode, hedge distance, hedge expansion), Take Profit (TP mode, TP distance), Entry Signal (signal mode, direction bias, indicator periods), Filters, Risk Management (daily/weekly loss limits, consecutive-bust halt), and Position Management (breakeven mechanism). Table 2 summarises the per-group gene counts for the Martingale strategy evaluated in this research, yielding 57 evolved genes in total.
+Strategy-level genes are discovered dynamically by reading the strategy's `hyperparameters()` declaration. Seven tunable parameter groups are evolved: General, Grid/Hedge, Take Profit, Entry Signal, Filters, Risk Management, and Position Management. Table 2 summarises the per-group evolved-gene counts for the Martingale strategy after applying the broker-safe whitelist and the conditional-parameter exclusions described in the bound-safety overrides below. The strategy-level total is 53 evolved genes, which combine with the 5 pipeline-level genes from Table 1 for 58 evolved parameters per island genome.
 
-*Table 2: Evolved strategy-level genes by group (Martingale strategy).*
+*Table 2: Evolved strategy-level genes by group (Martingale strategy, after exclusions).*
 
-| Group | Genes | Key evolved parameters |
+| Group | Evolved genes | Key evolved parameters |
 |---|---|---|
 | General | 5 | sizing_curve, sizing_factor, base_size_mode, base_size_value, max_levels |
-| Grid / Hedge | 5 | hedge_mode, hedge_value, hedge_atr_period, hedge_expand, hedge_expand_factor |
+| Grid / Hedge | 7 | hedge_mode, hedge_value, hedge_atr_period, hedge_expand, hedge_expand_factor, enable_grid_reposition, reposition_atr_contraction |
 | Take Profit | 3 | tp_mode, tp_value, tp_atr_period |
-| Entry Signal | 29 | signal_mode, direction_bias, entry_on_crossover, and 26 indicator-specific parameters |
-| Filters | — | excluded from evolution; see below |
-| Risk Management | 6 | max_daily_loss_pct, max_weekly_loss_pct, max_consec_busts, max_exposure_pct, cooldown_mode, cooldown_value |
-| Position Management | 3 | breakeven_mode, breakeven_levels, equity_curve_filter |
+| Entry Signal | 24 | signal_mode, direction_bias, entry_on_crossover, ema_fast/slow, rsi_period, macd_fast/slow/signal, st_period, st_factor, stoch_k, stoch_d, cci_period, adx_period, adx_threshold, ind_name/period/rule, ind_long/short_threshold, ind2_name/period/rule (mode-conditional thresholds and `model_lookback` excluded; see below) |
+| Filters | 0 | all 13 filter and filter-dependent genes excluded from evolution; see below |
+| Risk Management | 12 | max_daily_loss_pct, max_weekly_loss_pct, max_consec_busts, max_exposure_pct, cooldown_mode, cooldown_value, abort_mode, abort_level, abort_time_bars, abort_pnl_pct, equity_curve_filter, equity_ema_period |
+| Position Management | 2 | breakeven_mode, breakeven_levels |
 
 **Categorical gene encoding and resolution.** Categorical parameters (e.g., `signal_mode` with 9 valid options) are encoded as integer indices into a filtered option list: the strategy declares its full option set, a whitelist of broker-safe options is applied, and the GA evolves over `{0, 1, …, k−1}` where k is the whitelisted cardinality. At fitness evaluation time, each integer gene is resolved back to its string value before being passed to the strategy, mirroring the runtime `_apply_genome` hook used in deployment. This round-trip symmetry (encoding at evolution time, resolution at evaluation time) is required for correctness: the strategy's internal checks (e.g., `direction_bias in {'both', 'long_only'}`) are string-typed, so an unresolved integer would fail every such check silently and cause the strategy to emit no orders (Section 4 documents the empirical impact of this correctness condition).
 
@@ -131,7 +133,7 @@ The GA operator rates above (crossover 0.7, mutation 0.2, mutation σ = 0.05, to
 
 The migration topology is derived from the regime hierarchy itself: sibling groups are defined by shared macro-cluster membership. This differs from prior island-model work where topologies are specified independently of the problem domain (Lopes et al., 2012; Chideme et al., 2025).
 
-![Figure 3: Island-model topology with sibling migration. Each leaf node maintains an isolated population. Sibling migration (firing approximately five times over the training run) exchanges genomes within macro-clusters via ring topology.](Figure%203%20-%20Island-Model%20Topology%20%28Hierarchical%20Migration%29.jpeg)
+![Figure 4: Per-cluster ring migration. Each leaf node maintains an isolated population. Within each macro-cluster, sibling islands form a ring topology and exchange their best genome on each migration event (firing approximately five times over the training run); no migration occurs across macro-clusters, preserving regime-specific specialisation.](../figures/Figure4.png)
 
 ### 3.5 Adaptive Position Sizing
 
@@ -145,7 +147,7 @@ where base_size is the evolved per-regime base position size (base_size_pct of c
 
 $$f_{\text{conf}}(c) = \max\left(0.2, \; c^{\gamma}\right)$$
 
-where c is the regime probability from the inferencer (0 to 1), gamma is the evolved confidence_sensitivity parameter, and 0.2 is the minimum confidence scale floor. Values of gamma > 1 produce convex scaling (aggressively penalizing low confidence), while gamma < 1 produces concave scaling (more tolerant of uncertainty).
+where c is the regime probability from the inferencer (0 to 1), gamma is the evolved confidence_sensitivity parameter, and 0.2 is the minimum confidence scale floor. Values of gamma > 1 produce convex scaling (aggressively penalising low confidence), while gamma < 1 produces concave scaling (more tolerant of uncertainty).
 
 **Drawdown factor.** The drawdown scaling function reduces position size during drawdown periods, with a threshold below which no reduction occurs:
 
@@ -163,6 +165,6 @@ The application mechanism reads the strategy's hyperparameter declaration to dis
 
 **Training-mode import isolation.** The training pipeline imports from the qengine core (e.g., `qengine.research.backtest`) inside worker subprocesses, which ordinarily triggers initialisation of the full application stack including PostgreSQL model-table creation and Redis pub/sub. For training, none of these services are required; we gate their initialisation on a `QENGINE_TRAINING_MODE` environment variable, allowing the engine modules to be imported cleanly on hardware without a database or Redis instance (for example, Google Compute Engine VMs). This isolation is the difference between the training script running at all and failing at module load with a `psycopg2.OperationalError`.
 
-The regime tree is trained offline and deployed frozen during evaluation. If market dynamics shift to produce regimes not represented in the training data, the system classifies unseen states into the nearest existing regime based on GMM posterior probabilities. This is a standard limitation of fitted classifiers, partially mitigated by the hysteresis mechanism which prevents rapid oscillation during ambiguous classifications. The 10 individuals per island used in our canonical evaluation are sufficient for the 57-gene strategy genome produced by the Martingale strategy; strategies with substantially larger parameter spaces may require proportionally larger populations and are an explicit direction for future work.
+The regime tree is trained offline and deployed frozen during evaluation. If market dynamics shift to produce regimes not represented in the training data, the system classifies unseen states into the nearest existing regime based on GMM posterior probabilities. This is a standard limitation of fitted classifiers, partially mitigated by the hysteresis mechanism which prevents rapid oscillation during ambiguous classifications. The 10 individuals per island used in our canonical evaluation are sufficient for the 53-gene strategy genome produced by the Martingale strategy; strategies with substantially larger parameter spaces may require proportionally larger populations and are an explicit direction for future work.
 
  - 
