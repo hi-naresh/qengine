@@ -76,7 +76,7 @@ The hysteresis margin δ = 0.15 corresponds to requiring approximately a one-and
 
 ### 3.4 Island-Model Genetic Algorithm
 
-Each regime leaf maintains an isolated genetic population, with the per-island population size selected to provide adequate search coverage over the full strategy parameter space while remaining feasible for real-engine evaluation (see Section 4 for the computational budget trade-off). The canonical training run reported in this research uses populations of 10 individuals per island. Each individual (genome) encodes a set of execution parameters that control trading behaviour when the corresponding regime is active.
+Each regime leaf maintains an isolated genetic population. The canonical training run uses 10 individuals per island, balancing search coverage against the per-evaluation real-engine cost (Section 4). Each individual (genome) encodes execution parameters that control trading behaviour when the corresponding regime is active.
 
 **Genome representation.** A genome consists of 5 pipeline-level genes and a variable number of strategy-level genes discovered at runtime from the strategy's hyperparameter declaration. The pipeline-level genes and their bounds are shown in Table 1.
 
@@ -90,12 +90,7 @@ Each regime leaf maintains an isolated genetic population, with the per-island p
 | confidence_sensitivity | [0.5, 2.0] | float | Exponent for confidence-based size scaling |
 | recovery_aggression | [0.3, 1.0] | float | Drawdown-based size reduction factor |
 
-Strategy-level genes are discovered dynamically by reading the strategy's `hyperparameters()` declaration. The pipeline has been developed in two iterations, and the genome differs between them in scope:
-
-- **Iteration 1** is the cloud-trained model whose out-of-sample results are reported in Section 6. It evolves three strategy-level parameter groups (General, Grid/Hedge, Take Profit) plus the five pipeline-level genes of Table 1, for **20 evolved parameters** per island genome (5 pipeline-level + 1 inert-legacy `base_size_pct` carried in the artefact + 14 strategy-level). This is the configuration that produced the §6 capital-preservation outcome.
-- **Iteration 2** is the implementation endpoint identified by Iteration 1's evidence. It widens the strategy-level scope to seven groups (adding Entry Signal, Filters, Risk Management, Position Management) and refines the gene-bound and fitness machinery as documented in Section 4. Iteration 2's full-scale evaluation is identified in Section 8.1 as a target of the conference-paper extension this work is heading towards; its results are not part of the reported §6 numbers.
-
-Table 2 enumerates the Iteration 1 evolved gene set (the configuration of the cloud-trained model). Table 3 summarises the Iteration 2 expansion for completeness; numerical claims that depend on the Iteration 2 gene set are explicitly attributed wherever they appear.
+Strategy-level genes are discovered dynamically by reading the strategy's `hyperparameters()` declaration. Two iterations of the pipeline differ in genome scope. **Iteration 1** (cloud-trained, 20 evolved parameters: 5 pipeline-level + 1 inert-legacy `base_size_pct` + 14 strategy-level across three groups — General, Grid/Hedge, Take Profit) produces the §6 capital-preservation results. **Iteration 2** (57 evolved parameters across seven strategy-level groups, adding Entry Signal, Filters, Risk Management, Position Management) is the design endpoint identified by Iteration 1's evidence; its full-scale evaluation is the target of the conference-paper extension flagged in Section 8.1 and is not part of the reported §6 numbers. Tables 2 and 3 enumerate the Iteration 1 and Iteration 2 gene sets; numerical claims dependent on the Iteration 2 set are attributed explicitly wherever they appear.
 
 *Table 2: Iteration 1 evolved strategy-level genes by group (cloud-trained Martingale model).*
 
@@ -155,7 +150,7 @@ The migration topology is derived from the regime hierarchy itself: sibling grou
 
 ![Figure 4: Per-cluster ring migration. Each leaf node maintains an isolated population. Within each macro-cluster, sibling islands form a ring topology and exchange their best genome on each migration event (firing approximately five times over the training run); no migration occurs across macro-clusters, preserving regime-specific specialisation.](../figures/Figure4.png)
 
-The 10 individuals per island used in our canonical Iteration 1 evaluation are sufficient for the 14-gene strategy genome that Iteration 1 evolves; strategies with substantially larger parameter spaces — including the Iteration 2 widening to 52 strategy-level genes (Section 5.2) — may benefit from proportionally larger populations and are an explicit direction for future work.
+The 10-individual population suits Iteration 1's 14-gene strategy genome; larger genomes (Iteration 2's 52 strategy-level genes; Section 5.2) likely warrant proportionally larger populations as future work.
 
 ### 3.5 Adaptive Position Sizing
 
@@ -177,7 +172,7 @@ $$f_{\text{dd}}(d) = \begin{cases} 1.0 & \text{if } d < d_{\text{thresh}} \\ \ma
 
 where d is the current drawdown percentage, d_thresh = 5.0% is the drawdown threshold below which no scaling is applied, r is the evolved recovery_aggression parameter, the factor of 10 accelerates the scaling response, and 0.1 is the minimum drawdown scale floor. The threshold ensures that normal equity fluctuations do not trigger conservative sizing, while the 10x multiplier ensures rapid size reduction once the threshold is breached.
 
-Both factors are bounded to prevent degenerate sizing (confidence floor 0.2, drawdown floor 0.1). The constants in the sizing factors were chosen for behavioural plausibility rather than tuned: the 5% drawdown threshold suppresses scaling response to normal equity fluctuations, while the factor-of-10 multiplier reaches the minimum floor at approximately 14% drawdown for `recovery_aggression = 1.0` and at approximately 23% drawdown for `recovery_aggression = 0.5`, providing a response window that extends further at lower aggression values. The combined effect is that the pipeline tends to deploy less than the default position size during evaluation, with the exact factor depending on the evolved per-island parameters and the realised regime trajectory; sensitivity analysis to these constants is identified as future work.
+Both factors are bounded to prevent degenerate sizing (confidence floor 0.2, drawdown floor 0.1). The constants were chosen for behavioural plausibility rather than tuned: the 5% drawdown threshold suppresses response to normal equity fluctuations, while the factor-of-10 multiplier reaches the minimum floor at approximately 14% drawdown for `recovery_aggression = 1.0` and 23% drawdown for `recovery_aggression = 0.5`. Sensitivity analysis to these constants is identified as future work.
 
 ### 3.6 Parameter Application and Design Constraints
 
