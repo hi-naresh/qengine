@@ -1,34 +1,32 @@
 ## References
 
-Aguilar-Rivera, R., Valenzuela-Rendon, M., & Rodriguez-Ortiz, J. J. (2015). Genetic algorithms and Darwinian approaches in financial applications: A survey. *Expert Systems with Applications*, 42(21), 7684--7697.
-
 Agrawal, S., & Goyal, N. (2013). Thompson sampling for contextual bandits with linear payoffs. *Proceedings of the 30th International Conference on Machine Learning*, 127--135.
+
+Aguilar-Rivera, R., Valenzuela-Rendon, M., & Rodriguez-Ortiz, J. J. (2015). Genetic algorithms and Darwinian approaches in financial applications: A survey. *Expert Systems with Applications*, 42(21), 7684--7697.
 
 Alba, E., & Tomassini, M. (2002). Parallelism and evolutionary algorithms. *IEEE Transactions on Evolutionary Computation*, 6(5), 443--462.
 
 Allen, F., & Karjalainen, R. (1999). Using genetic algorithms to find technical trading rules. *Journal of Financial Economics*, 51(2), 245--271.
 
-Ang, A., & Timmermann, A. (2012). Regime changes and financial markets. *Annual Review of Financial Economics*, 4, 313--337.
-
 Andersen, T. G., & Bollerslev, T. (1997). Intraday periodicity and volatility persistence in financial markets. *Journal of Empirical Finance*, 4(2--3), 115--158.
+
+Ang, A., & Timmermann, A. (2012). Regime changes and financial markets. *Annual Review of Financial Economics*, 4, 313--337.
 
 Arian, H. R., Norouzi M., D., & Seco, L. A. (2024). Backtest overfitting in the machine learning era: A comparison of out-of-sample testing methods in a synthetic controlled environment. *Knowledge-Based Systems*, 305, 112477. DOI: 10.1016/j.knosys.2024.112477.
 
 Astrom, K. J., & Murray, R. M. (2008). *Feedback Systems: An Introduction for Scientists and Engineers*. Princeton University Press.
 
-Barndorff-Nielsen, O. E., & Shephard, N. (2002). Econometric analysis of realized volatility and its use in estimating stochastic volatility models. *Journal of the Royal Statistical Society: Series B*, 64(2), 253--280.
-
-Box, G. E. P., & Jenkins, G. M. (1976). *Time Series Analysis: Forecasting and Control* (revised edition). Holden-Day.
-
 Bailey, D. H., Borwein, J. M., de Prado, M. L., & Zhu, Q. J. (2014). Pseudo-mathematics and financial charlatanism: The effects of backtest overfitting on out-of-sample performance. *Notices of the American Mathematical Society*, 61(5), 458--471.
+
+Barndorff-Nielsen, O. E., & Shephard, N. (2002). Econometric analysis of realized volatility and its use in estimating stochastic volatility models. *Journal of the Royal Statistical Society: Series B*, 64(2), 253--280.
 
 Bauman, T., Goluža, S., Gašperov, B., & Kostanjčar, Z. (2024). Deep reinforcement learning for goal-based investing under regime-switching. *Proceedings of the 5th Northern Lights Deep Learning Conference (NLDL)*, PMLR Vol. 233, 13--19.
 
 Bellman, R. E. (1957). *Dynamic Programming*. Princeton University Press.
 
-Bank for International Settlements (2022). *Triennial Central Bank Survey: OTC Foreign Exchange Turnover in April 2022*. Basel: BIS.
-
 Bollinger, J. (2002). *Bollinger on Bollinger Bands*. McGraw-Hill.
+
+Box, G. E. P., & Jenkins, G. M. (1976). *Time Series Analysis: Forecasting and Control* (revised edition). Holden-Day.
 
 Cantu-Paz, E. (2000). *Efficient and Accurate Parallel Genetic Algorithms*. Kluwer Academic Publishers.
 
@@ -57,8 +55,6 @@ Eiben, A. E., & Smith, J. E. (2015). *Introduction to Evolutionary Computing* (2
 Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation. *Econometrica*, 50(4), 987--1007.
 
 Ethier, S. N. (2010). *The Doctrine of Chances: Probabilistic Aspects of Gambling*. Springer.
-
-Goldberg, D. E. (1989). *Genetic Algorithms in Search, Optimization, and Machine Learning*. Addison-Wesley.
 
 Goldberg, D. E., & Deb, K. (1991). A comparative analysis of selection schemes used in genetic algorithms. *Foundations of Genetic Algorithms*, 1, 69--93.
 
@@ -110,7 +106,7 @@ McLachlan, G. J., & Peel, D. (2000). *Finite Mixture Models*. Wiley.
 
 McLean, R. D., & Pontiff, J. (2016). Does academic research destroy stock return predictability? *Journal of Finance*, 71(1), 5--32.
 
-Müller, U. A., Dacorogna, M. M., Davé, R. D., Olsen, R. B., Pictet, O. V., & von Weizsäcker, J. E. (1997). Volatilities of different time resolutions — analyzing the dynamics of market components. *Journal of Empirical Finance*, 4(2--3), 213--239.
+Müller, U. A., Dacorogna, M. M., Davé, R. D., Olsen, R. B., Pictet, O. V., & von Weizsäcker, J. E. (1997). Volatilities of different time resolutions: analyzing the dynamics of market components. *Journal of Empirical Finance*, 4(2--3), 213--239.
 
 Neely, C., Weller, P., & Dittmar, R. (1997). Is technical analysis in the foreign exchange market profitable? A genetic programming approach. *Journal of Financial and Quantitative Analysis*, 32(4), 405--426.
 

@@ -88,7 +88,7 @@ Each regime leaf maintains an isolated genetic population, with the per-island p
 | confidence_sensitivity | [0.5, 2.0] | float | Exponent for confidence-based size scaling |
 | recovery_aggression | [0.3, 1.0] | float | Drawdown-based size reduction factor |
 
-Strategy-level genes are discovered dynamically by reading the strategy's `hyperparameters()` declaration. Seven tunable parameter groups are evolved: General (sizing curve, sizing factor, max levels, base size), Grid/Hedge (hedge mode, hedge distance, hedge expansion), Take Profit (TP mode, TP distance), Entry Signal (signal mode, direction bias, indicator periods), Filters, Risk Management (daily/weekly loss limits, consecutive-bust halt), and Position Management (breakeven mechanism). Table 2 summarises the per-group gene counts for the Martingale strategy evaluated in this paper, yielding 57 evolved genes in total.
+Strategy-level genes are discovered dynamically by reading the strategy's `hyperparameters()` declaration. Seven tunable parameter groups are evolved: General (sizing curve, sizing factor, max levels, base size), Grid/Hedge (hedge mode, hedge distance, hedge expansion), Take Profit (TP mode, TP distance), Entry Signal (signal mode, direction bias, indicator periods), Filters, Risk Management (daily/weekly loss limits, consecutive-bust halt), and Position Management (breakeven mechanism). Table 2 summarises the per-group gene counts for the Martingale strategy evaluated in this research, yielding 57 evolved genes in total.
 
 *Table 2: Evolved strategy-level genes by group (Martingale strategy).*
 
@@ -131,7 +131,7 @@ The GA operator rates above (crossover 0.7, mutation 0.2, mutation σ = 0.05, to
 
 The migration topology is derived from the regime hierarchy itself: sibling groups are defined by shared macro-cluster membership. This differs from prior island-model work where topologies are specified independently of the problem domain (Lopes et al., 2012; Chideme et al., 2025).
 
-![Figure 3: Island-model topology with sibling migration. Each leaf node maintains an isolated population. Sibling migration (every 5 generations) exchanges genomes within macro-clusters via ring topology.](Figure%203%20-%20Island-Model%20Topology%20%28Hierarchical%20Migration%29.jpeg)
+![Figure 3: Island-model topology with sibling migration. Each leaf node maintains an isolated population. Sibling migration (firing approximately five times over the training run) exchanges genomes within macro-clusters via ring topology.](Figure%203%20-%20Island-Model%20Topology%20%28Hierarchical%20Migration%29.jpeg)
 
 ### 3.5 Adaptive Position Sizing
 
@@ -163,6 +163,6 @@ The application mechanism reads the strategy's hyperparameter declaration to dis
 
 **Training-mode import isolation.** The training pipeline imports from the qengine core (e.g., `qengine.research.backtest`) inside worker subprocesses, which ordinarily triggers initialisation of the full application stack including PostgreSQL model-table creation and Redis pub/sub. For training, none of these services are required; we gate their initialisation on a `QENGINE_TRAINING_MODE` environment variable, allowing the engine modules to be imported cleanly on hardware without a database or Redis instance (for example, Google Compute Engine VMs). This isolation is the difference between the training script running at all and failing at module load with a `psycopg2.OperationalError`.
 
-The regime tree is trained offline and deployed frozen during evaluation. If market dynamics shift to produce regimes not represented in the training data, the system classifies unseen states into the nearest existing regime based on GMM posterior probabilities. This is a standard limitation of fitted classifiers, partially mitigated by the hysteresis mechanism which prevents rapid oscillation during ambiguous classifications. The 10–12 individuals per island used in our evaluation are sufficient for the 57-dimensional genome produced by the Martingale strategy; strategies with substantially larger parameter spaces may require proportionally larger populations and are an explicit direction for future work.
+The regime tree is trained offline and deployed frozen during evaluation. If market dynamics shift to produce regimes not represented in the training data, the system classifies unseen states into the nearest existing regime based on GMM posterior probabilities. This is a standard limitation of fitted classifiers, partially mitigated by the hysteresis mechanism which prevents rapid oscillation during ambiguous classifications. The 10 individuals per island used in our canonical evaluation are sufficient for the 57-gene strategy genome produced by the Martingale strategy; strategies with substantially larger parameter spaces may require proportionally larger populations and are an explicit direction for future work.
 
  - 
