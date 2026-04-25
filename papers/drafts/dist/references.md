@@ -52,8 +52,6 @@ Di Matteo, T., Aste, T., & Dacorogna, M. M. (2005). Long-term memories of develo
 
 Doob, J. L. (1953). *Stochastic Processes*. Wiley.
 
-Dreiss, B. (1995). The Choppiness Index. *Technical Analysis of Stocks & Commodities*, 13(11).
-
 Eiben, A. E., & Smith, J. E. (2015). *Introduction to Evolutionary Computing* (2nd ed.). Springer.
 
 Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation. *Econometrica*, 50(4), 987--1007.
