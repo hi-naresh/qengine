@@ -1,6 +1,6 @@
 ## Appendix A: Complete Feature Pool
 
-Table A1 lists all 30 candidate features — 24 base empirical-technical indicators plus 6 theoretically-motivated extensions — with their computation details, periods, and role under the two training configurations discussed in Section 6.3.
+Table A1 lists all 30 candidate features (24 base empirical-technical indicators plus 6 theoretically-motivated extensions) with their computation details, periods, and role under the two training configurations discussed in Section 6.3.
 
 *Table A1: Complete feature pool (30 features) with computation details.*
 
@@ -12,7 +12,7 @@ Table A1 lists all 30 candidate features — 24 base empirical-technical indicat
 | 4 | BB Width | Volatility | 20 | (Upper − Lower) / Middle |
 | 5 | HL Range Norm | Structure | 1 | (High − Low) / Close |
 | 6 | Session Hour | Structure | — | UTC hour of candle |
-| 7 | CHOP_14 | Choppiness | 14 | Dreiss choppiness index |
+| 7 | CHOP_14 | Choppiness | 14 | Choppiness index per Kaufman (2013) |
 | 8 | ROC_10 | Momentum | 10 | (Close − Close[−10]) / Close[−10] |
 | 9 | DM Diff | Trend | 14 | DM+ − DM− |
 | 10 | EMA Slope 21 | Trend | 21 | (EMA[t] − EMA[t−1]) / EMA[t−1] |
@@ -65,7 +65,7 @@ The primary trained regime tree (5m, 2022–2024, fallback partition) contains 6
 | 9 | 8 | 90,605 | 26.7% |
 | **Total** | **73** | **339,533** | **100%** |
 
-The macro-clusters exhibit substantial variation in population size — from macro 5 (1,786 observations, 0.5%) to macro 9 (90,605 observations, 26.7%), a 50× range. This skew reflects the non-uniform distribution of market conditions over the fit period: the most common macro state occurs 50× more frequently than the rarest. The number of leaves per macro ranges from 4 to 8, with BIC independently selecting the appropriate sub-cluster granularity. Despite macro 5's small population, its 4 leaves each exceed the 200-observation minimum required for meaningful evolutionary training.
+The macro-clusters exhibit substantial variation in population size: from macro 5 (1,786 observations, 0.5%) to macro 9 (90,605 observations, 26.7%), a 50-fold range. This skew reflects the non-uniform distribution of market conditions over the fit period: the most common macro state occurs 50× more frequently than the rarest. The number of leaves per macro ranges from 4 to 8, with BIC independently selecting the appropriate sub-cluster granularity. Despite macro 5's small population, its 4 leaves each exceed the 200-observation minimum required for meaningful evolutionary training.
 
 For the primary 5m 2022–2024 configuration, the 63-leaf tree distributes observations across the same 10 macro-clusters with proportionally similar relative populations, producing 6.3 average leaves per macro (std ≈ 1.6) and a minimum leaf size comfortably above the merging threshold. We report the secondary-configuration numbers in Table B1 because they illustrate the full tree-structure space: the primary configuration's leaf distribution is narrower because autocorrelation-based fallback separates features more evenly across levels.
 
@@ -78,7 +78,7 @@ Table C1 reports the sensitivity of key design parameters based on exploratory e
 | Parameter | Tested Range | Selected Value | Sensitivity |
 |---|---|---|---|
 | Hysteresis margin (δ) | 0.05 – 0.30 | 0.15 | Moderate: OOS-profitability rate varies ± 3% |
-| Population size | 4, 8, 12, 16, 30 | 12 (cloud) / 8 (pre-flight) | Moderate: small pops (< 8) exhibit elite-cloning; pops ≥ 12 give adequate diversity |
+| Population size | 4, 8, 10, 16, 30 | 10 (cloud) / 8 (pre-flight) | Moderate: small pops (< 8) exhibit elite-cloning; pops ≥ 10 give adequate diversity for the 62-gene genome |
 | Tournament size k | 2, 3, 5 | 3 | Low: OOS rate varies ± 0.5% |
 | Mutation rate | 0.1, 0.2, 0.3 | 0.2 | Low: OOS rate varies ± 1.5% |
 | Mutation σ (genome-relative) | 0.03, 0.05, 0.10 | 0.05 | Low: σ > 0.10 produces overshoot from bound-edge genomes |
@@ -90,7 +90,7 @@ Table C1 reports the sensitivity of key design parameters based on exploratory e
 | Fitness bust-rate cull | 0.20, 0.30, 0.40, none | 0.30 | Moderate: cull at 0.20 over-restricts early GA; cull at 0.40 admits pathological genomes |
 | Fitness session-count floor | 5, 10, 20 sessions | 10 | Moderate: floor < 10 admits "lucky few" genomes; floor > 10 punishes selective strategies |
 
-The system shows greatest sensitivity to the sizing-factor lower bound (a structural-viability constraint rather than a search tuning) and the fitness-function shape parameters (bust-rate cull, session-count floor). The latter two determine which genomes receive any fitness signal at all and therefore shape the evolutionary search's reachable set. The GA operator parameters (mutation rate, crossover rate, tournament size) show low sensitivity, consistent with the general robustness of GA performance to moderate parameter variation in low-dimensional search spaces (Eiben & Smith, 2015). Population size sits in the middle: very small populations (≤ 4) suffer from sibling-migration elite-cloning that produces genome duplicates across adjacent islands, while populations ≥ 12 provide adequate within-island diversity for the 57-dimensional genome space.
+The system shows greatest sensitivity to the sizing-factor lower bound (a structural-viability constraint rather than a search tuning) and the fitness-function shape parameters (bust-rate cull, session-count floor). The latter two determine which genomes receive any fitness signal at all and therefore shape the evolutionary search's reachable set. The GA operator parameters (mutation rate, crossover rate, tournament size) show low sensitivity, consistent with the general robustness of GA performance to moderate parameter variation in low-dimensional search spaces (Eiben & Smith, 2015). Population size sits in the middle: very small populations (≤ 4) suffer from sibling-migration elite-cloning that produces genome duplicates across adjacent islands, while populations of 10 or more provide adequate within-island diversity for the 62-gene genome space (5 pipeline + 57 strategy genes).
 
 ## Appendix D: Algorithm Pseudocode
 
