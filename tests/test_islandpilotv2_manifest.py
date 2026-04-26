@@ -243,3 +243,25 @@ def test_train_output_dir_kwarg_signature():
     sig = inspect.signature(tm.train)
     assert "output_dir" in sig.parameters
     assert sig.parameters["output_dir"].default is None
+
+
+def test_training_config_snapshot_written(tmp_path):
+    """_write_training_config_snapshot writes a JSON file with the expected fields."""
+    import json
+    from pipelines._shared.IslandPilotV2 import train as tm
+    cfg_path = tmp_path / "training_config.json"
+    tm._write_training_config_snapshot(
+        out_path=cfg_path,
+        args={"exchange": "OANDA", "symbol": "EUR-USD"},
+        resolved_config={"online_gate": {"min_cycles_for_gate": 8}},
+        tunable_groups=["General", "Grid / Hedge"],
+        evolved_gene_names=["max_levels", "tp_value"],
+    )
+    snap = json.loads(cfg_path.read_text())
+    assert snap["schema_version"] == 1
+    assert snap["args"]["exchange"] == "OANDA"
+    assert snap["tunable_groups_snapshot"] == ["General", "Grid / Hedge"]
+    assert snap["evolved_gene_names"] == ["max_levels", "tp_value"]
+    assert "started_at" in snap
+    assert "qengine_commit" in snap
+    assert snap["resolved_config"]["online_gate"]["min_cycles_for_gate"] == 8

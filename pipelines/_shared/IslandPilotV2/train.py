@@ -174,6 +174,38 @@ def _enforce_cutoff(date_str: str) -> str:
     return date_str
 
 
+def _write_training_config_snapshot(
+    out_path: Path,
+    args: dict,
+    resolved_config: dict,
+    tunable_groups: list,
+    evolved_gene_names: list,
+) -> None:
+    """Write a snapshot of what governed this training run. Used by audit."""
+    import json
+    import datetime as _dt
+    import subprocess as _sp
+
+    try:
+        out = _sp.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                      text=True, timeout=1)
+        commit = out.stdout.strip()[:12] if out.returncode == 0 else "unknown"
+    except Exception:
+        commit = "unknown"
+
+    snap = {
+        "schema_version": 1,
+        "qengine_commit": commit,
+        "started_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "args": args,
+        "resolved_config": resolved_config,
+        "tunable_groups_snapshot": list(tunable_groups),
+        "evolved_gene_names": list(evolved_gene_names),
+    }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(snap, indent=2))
+
+
 def _date_to_ts_ms(date_str: str) -> int:
     """Convert 'YYYY-MM-DD' to unix millisecond timestamp (UTC start-of-day).
 
@@ -1052,6 +1084,42 @@ def train(
     # output_dir=None and uses the package-level _MODELS_DIR default.
     models_dir = Path(output_dir) if output_dir is not None else _MODELS_DIR
     models_dir.mkdir(parents=True, exist_ok=True)
+
+    # Snapshot what governs this run so audit can interpret artifacts later.
+    # Written up-front (before heavy work) so even early-exit failures retain
+    # a record of what was attempted. Strategy-specific gene extensions are
+    # best-effort; the baseline GENE_BOUNDS captures the always-evolved genes.
+    try:
+        from .island_evolver import GENE_BOUNDS as _GENE_BOUNDS_BASE
+        _evolved_gene_names = sorted(_GENE_BOUNDS_BASE.keys())
+    except Exception:
+        _evolved_gene_names = []
+    # _TUNABLE_GROUPS is a function-local var inside build_gene_bounds_from_strategy;
+    # hardcode the same set here so the snapshot always reflects the intended
+    # evolvable surface. Keep this in sync with island_evolver.py.
+    _tunable_groups = sorted([
+        'General', 'Grid / Hedge', 'Take Profit',
+        'Entry Signal', 'Filters', 'Risk Management', 'Position Management',
+    ])
+    try:
+        from .config import DEFAULT_CONFIG as _DEFAULT_CONFIG
+        _resolved_config = _DEFAULT_CONFIG
+    except Exception:
+        _resolved_config = {}
+    _write_training_config_snapshot(
+        out_path=models_dir / 'training_config.json',
+        args={
+            'exchange': exchange, 'symbol': symbol, 'timeframe': timeframe,
+            'train_start': train_start, 'train_end': train_end,
+            'strategy_name': strategy_name, 'pop_size': pop_size,
+            'generations': generations, 'max_macro': max_macro,
+            'max_sub': max_sub, 'min_leaf_samples': min_leaf_samples,
+            'n_workers': n_workers, 'dry_run': dry_run,
+        },
+        resolved_config=_resolved_config,
+        tunable_groups=_tunable_groups,
+        evolved_gene_names=_evolved_gene_names,
+    )
 
     tf_minutes = int(jh.timeframe_to_one_minutes(timeframe))
 
