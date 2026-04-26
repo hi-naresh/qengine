@@ -8,8 +8,6 @@ Alba, E., & Tomassini, M. (2002). Parallelism and evolutionary algorithms. *IEEE
 
 Allen, F., & Karjalainen, R. (1999). Using genetic algorithms to find technical trading rules. *Journal of Financial Economics*, 51(2), 245--271.
 
-Andersen, T. G., & Bollerslev, T. (1997). Intraday periodicity and volatility persistence in financial markets. *Journal of Empirical Finance*, 4(2--3), 115--158.
-
 Ang, A., & Timmermann, A. (2012). Regime changes and financial markets. *Annual Review of Financial Economics*, 4, 313--337.
 
 Arian, H. R., Norouzi M., D., & Seco, L. A. (2024). Backtest overfitting in the machine learning era: A comparison of out-of-sample testing methods in a synthetic controlled environment. *Knowledge-Based Systems*, 305, 112477. DOI: 10.1016/j.knosys.2024.112477.
@@ -67,8 +65,6 @@ Hamilton, J. D. (1989). A new approach to the economic analysis of nonstationary
 Hamilton, J. D., & Susmel, R. (1994). Autoregressive conditional heteroskedasticity and changes in regime. *Journal of Econometrics*, 64(1--2), 307--333.
 
 Harvey, C. R., & Siddique, A. (2000). Conditional skewness in asset pricing tests. *Journal of Finance*, 55(3), 1263--1295.
-
-Hurst, H. E. (1951). Long-term storage capacity of reservoirs. *Transactions of the American Society of Civil Engineers*, 116, 770--799.
 
 Issa, Z., & Horvath, B. (2023). Non-parametric online market regime detection and regime clustering for multidimensional and path-dependent data structures. *arXiv preprint*, arXiv:2306.15835. DOI: 10.48550/arXiv.2306.15835.
 

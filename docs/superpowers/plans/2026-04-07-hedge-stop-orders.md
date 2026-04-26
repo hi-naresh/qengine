@@ -488,16 +488,17 @@ git commit -m "test: add integration tests for deep hedge levels"
 
 ```python
 # Run from CLI:
-python -c "
+python - c
+"
 import numpy as np, qengine.helpers as jh
 from qengine.research.candles import get_candles
 from qengine import research
-from strategies._admin.Martingale import Martingale
-from strategies._admin.Martingale.presets import PRESETS
+from strategies._shared.Martingale import Martingale
+from strategies._shared.Martingale import PRESETS
 
 warmup, candles = get_candles('OANDA', 'EUR-USD', '1m',
-    jh.date_to_timestamp('2026-03-16'), jh.date_to_timestamp('2026-03-20'),
-    warmup_candles_num=240)
+                              jh.date_to_timestamp('2026-03-16'), jh.date_to_timestamp('2026-03-20'),
+                              warmup_candles_num=240)
 all_candles = np.concatenate([warmup, candles])
 hp = dict(PRESETS['original'])
 hp['preset'] = 'original'
@@ -512,19 +513,21 @@ result = research.backtest(cfg, routes, [], {
 }, hyperparameters=hp)
 m = result['metrics']
 print(f'PnL: {m[\"net_profit\"]}, Trades: {m[\"total\"]}')
-trades = result.get('trades', [])
+trades =
+result.get('trades', [])
 sessions = {}
 for t in trades:
     sn = (t.get('meta') or {}).get('session')
-    if sn is not None:
-        if sn not in sessions: sessions[sn] = {'pnl': 0, 'max_level': 0}
-        sessions[sn]['pnl'] += t.get('PNL', 0)
-        sessions[sn]['max_level'] = max(sessions[sn]['max_level'], (t.get('meta') or {}).get('level', 0))
+if sn is not None:
+    if
+sn not in sessions: sessions[sn] = {'pnl': 0, 'max_level': 0}
+sessions[sn]['pnl'] += t.get('PNL', 0)
+sessions[sn]['max_level'] = max(sessions[sn]['max_level'], (t.get('meta') or {}).get('level', 0))
 level_dist = {}
 for s in sessions.values(): level_dist[s['max_level']] = level_dist.get(s['max_level'], 0) + 1
 print(f'Sessions: {len(sessions)}, Levels: {dict(sorted(level_dist.items()))}')
 print(f'Max level: {max(s[\"max_level\"] for s in sessions.values())}')
-busts = [s for s in sessions.values() if s['pnl'] < -50]
+busts =[s for s in sessions.values() if s['pnl'] < -50]
 print(f'Busts: {len(busts)}')
 "
 ```

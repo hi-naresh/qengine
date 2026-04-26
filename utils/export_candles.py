@@ -7,14 +7,14 @@ Run with the qengine conda environment:
 import sys, re, numpy as np
 from datetime import datetime, timezone
 
-sys.path.insert(0, '.')
+sys.path.insert(0, '..')
 
 from qengine.research.candles import get_candles
 from qengine.exceptions import CandleNotFoundInDatabase
 
 TRAIN_START = '2022-01-01'
 TRAIN_END   = '2024-12-31'
-OUT_FILE    = 'candles_oanda_eurusd_1m_2022_2024.npy'
+OUT_FILE    = '../candles_oanda_eurusd_1m_2022_2024.npy'
 
 def _to_ms(date_str):
     dt = datetime.strptime(date_str, '%Y-%m-%d')

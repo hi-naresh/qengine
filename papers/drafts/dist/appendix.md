@@ -11,7 +11,7 @@ Table A1 lists all 30 candidate features (24 base empirical-technical indicators
 | 3 | NATR_50 | Volatility | 50 | ATR_50 / Close × 100 |
 | 4 | BB Width | Volatility | 20 | (Upper − Lower) / Middle |
 | 5 | HL Range Norm | Structure | 1 | (High − Low) / Close |
-| 6 | Session Hour | Structure | — | UTC hour of candle |
+| 6 | Session Hour | Structure | - | UTC hour of candle |
 | 7 | CHOP_14 | Choppiness | 14 | Choppiness index per Kaufman (2013) |
 | 8 | ROC_10 | Momentum | 10 | (Close − Close[−10]) / Close[−10] |
 | 9 | DM Diff | Trend | 14 | DM+ − DM− |
@@ -26,10 +26,10 @@ Table A1 lists all 30 candidate features (24 base empirical-technical indicators
 | 18 | Stoch %K | Momentum | 14 | Lane stochastic |
 | 19 | RSI_28 | Momentum | 28 | Wilder RSI |
 | 20 | ER_100 | Choppiness | 100 | Kaufman efficiency ratio |
-| 21 | Aroon Osc | Trend | 25 | Aroon_up − Aroon_down |
+| 21 | Aroon Osc | Trend | 14 | Aroon_up − Aroon_down |
 | 22 | Hurst | Choppiness | 100 | R/S analysis |
 | 23 | Close Position | Structure | 1 | (Close − Low) / (High − Low) |
-| 24 | Day of Week | Structure | — | ISO day of week |
+| 24 | Day of Week | Structure | - | ISO day of week |
 | **Theoretically-motivated extensions (Section 3.1):** |
 | 25 | NATR_14_TF12 | Multi-scale volatility | 14 @ 12× | NATR_14 on 1h-aggregated candles, broadcast to 5m |
 | 26 | NATR_14_TF48 | Multi-scale volatility | 14 @ 48× | NATR_14 on 4h-aggregated candles, broadcast to 5m |
@@ -47,23 +47,39 @@ Table A1 lists all 30 candidate features (24 base empirical-technical indicators
 
 ### A.1 Indicator-Period Conventions
 
-Indicator periods follow standard conventions from the technical analysis literature. Period 14 is the standard lookback for RSI, ATR, and ADX (Wilder, 1978) and remains the de facto default in practitioner and academic use (Colby, 2003). Period 50 is widely adopted as a medium-term volatility benchmark in FX (Katz & McCormick, 2000) and enables the ATR ratio (ATR_14 / ATR_50). The 8/21 EMA pair follows the Fibonacci convention common in short-term momentum systems (Kaufman, 2013) and matches the Martingale strategy's own EMA-crossover entry signal so the slope features directly reflect signal generation. The Hurst-exponent window of 100 follows Di Matteo et al. (2005); the Choppiness Index at period 14 and Efficiency Ratio at periods 50/100 follow Kaufman (2013). Standard periods are retained rather than optimised: optimisation would add a degree of freedom risking overfit, and the mutual-information filter (§3.1) acts as a second guard against irrelevant periods.
+Indicator periods follow standard conventions from the technical analysis literature. Period 14 is the standard lookback for RSI, ATR, and ADX (Wilder, 1978) and remains the de facto default in practitioner and academic use (Colby, 2003). Period 50 is widely adopted as a medium-term volatility benchmark in FX (Katz & McCormick, 2000) and enables the ATR ratio (ATR_14 / ATR_50). The 8/21 EMA pair follows the Fibonacci convention common in short-term momentum systems (Kaufman, 2013) and matches the Martingale strategy's own EMA-crossover entry signal so the slope features directly reflect signal generation. The Hurst-exponent window of 100 follows Di Matteo et al. (2005); the Choppiness Index at period 14 and Efficiency Ratio at periods 50/100 follow Kaufman (2013). Standard periods are retained rather than optimised: optimisation would add a degree of freedom risking overfit, and the mutual-information filter (Section 3.1) acts as a second guard against irrelevant periods.
 
 ### A.2 Theoretically-Motivated Extensions
 
 The 6 extension features supplement the 24 empirical-technical indicators along three theoretical dimensions:
 
-**Dimension 1 — HAR-RV multi-scale volatility (2 features: NATR_14_TF12, NATR_14_TF48).** NATR_14 computed on candles aggregated by factors of 12× and 48× relative to the base 5m timeframe (≈1h and 4h horizons), broadcast back to the base timeframe. This implements Corsi's (2009) HAR-RV model: three time-horizons suffice for parsimonious realized-volatility modelling. Müller et al. (1997) showed information flows asymmetrically across scales (long → short), making multi-scale volatility a regime signal rather than a redundancy with NATR_14.
+**Dimension 1: HAR-RV multi-scale volatility (2 features: NATR_14_TF12, NATR_14_TF48).** NATR_14 computed on candles aggregated by factors of 12× and 48× relative to the base 5m timeframe (≈1h and 4h horizons), broadcast back to the base timeframe. This implements Corsi's (2009) HAR-RV model: three time-horizons suffice for parsimonious realized-volatility modelling. Müller et al. (1997) showed information flows asymmetrically across scales (long → short), making multi-scale volatility a regime signal rather than a redundancy with NATR_14.
 
-**Dimension 2 — Distributional shape (3 features: VOL_OF_VOL_50, RETURN_SKEW_100, RETURN_KURT_100).** (i) Rolling standard deviation of NATR_14 over 50 bars (vol-of-vol; Engle, 1982; Barndorff-Nielsen & Shephard, 2002), distinguishing stable high-volatility regimes from regime-transition periods. (ii) Rolling standardised skewness of log returns over 100 bars (Neuberger, 2012; Harvey & Siddique, 2000); negative skew indicates downside asymmetry, the dominant failure mode for Martingale long positions. (iii) Rolling excess kurtosis of log returns over 100 bars; elevated kurtosis signals fat-tail conditions. The 100-bar window follows Neuberger (2012) Table 1.
+**Dimension 2: Distributional shape (3 features: VOL_OF_VOL_50, RETURN_SKEW_100, RETURN_KURT_100).** (i) Rolling standard deviation of NATR_14 over 50 bars (vol-of-vol; Engle, 1982; Barndorff-Nielsen & Shephard, 2002), distinguishing stable high-volatility regimes from regime-transition periods. (ii) Rolling standardised skewness of log returns over 100 bars (Neuberger, 2012; Harvey & Siddique, 2000); negative skew indicates downside asymmetry, the dominant failure mode for Martingale long positions. (iii) Rolling excess kurtosis of log returns over 100 bars; elevated kurtosis signals fat-tail conditions. The 100-bar window follows Neuberger (2012) Table 1.
 
-**Dimension 3 — Short-lag serial dependence (1 feature: RETURN_AC_LAG1_100).** Rolling lag-1 autocorrelation of log returns over 100 bars (Lo & MacKinlay, 1988 variance-ratio framework; Box & Jenkins, 1976 AR identification). Positive values indicate trending (adverse for Martingale); negative values indicate mean-reversion. Box & Jenkins (1976) show lag-1 captures ≥80% of AR(1) information, making a single lag sufficient.
+**Dimension 3: Short-lag serial dependence (1 feature: RETURN_AC_LAG1_100).** Rolling lag-1 autocorrelation of log returns over 100 bars (Lo & MacKinlay, 1988 variance-ratio framework; Box & Jenkins, 1976 AR identification). Positive values indicate trending (adverse for Martingale); negative values indicate mean-reversion. Box & Jenkins (1976) show lag-1 captures ≥80% of AR(1) information, making a single lag sufficient.
 
 ## Appendix B: Regime Tree Structure
 
-The primary trained regime tree (5m, 2022–2024, fallback partition) contains 63 active leaves distributed across 10 macro-clusters after sparse-leaf merging with `min_leaf_samples = 200`. The 10 macro-cluster count and ~6.3 average leaves per macro emerge from BIC-selected GMM model-complexity at each level; the exact per-macro leaf counts depend on the training window and the outcome-label choice. An earlier prototype run (secondary configuration) produced 73 active leaves with macro counts as documented in Table B1 below; the primary configuration produces a somewhat more compact tree (63 leaves) due to the fallback partition using autocorrelation-based feature separation rather than MI-based selection.
+The primary trained regime tree (5m, 2022–2024, fallback partition) contains **63 active leaves distributed across 10 macro-clusters** after sparse-leaf merging with `min_leaf_samples = 200`. This is the tree used for every result in Section 6. Aggregate statistics for this primary tree are summarised in Table B1; per-macro leaf counts for an earlier secondary/prototype configuration are reported separately in Table B2 for reference.
 
-*Table B1: Regime tree macro-cluster summary (secondary/prototype configuration, 2020–2025 full-period fit, 73 leaves).*
+*Table B1: Primary regime tree summary (5m, 2022–2024 training window, fallback partition; the tree used by Section 6 results).*
+
+| Statistic | Value |
+|---|---|
+| Macro-clusters (BIC-selected) | 10 |
+| Active leaves (after sparse merge) | 63 |
+| Mean leaves per macro | 6.3 (std ≈ 1.6) |
+| Training observations (clean) | 220,608 |
+| Mean leaf size (samples) | 3,501.7 |
+| Std of leaf size (samples) | 2,377.7 |
+| Min / max leaf size | 252 / 9,982 |
+| Regime separation CV | 0.679 |
+| `min_leaf_samples` (merge threshold) | 200 |
+
+The 10-macro count and ~6.3 average leaves per macro emerge from BIC-selected GMM model-complexity at each level; the exact per-macro leaf counts depend on the training window and the outcome-label choice. The full per-leaf observation distribution is in the released `regime_tree.pkl` artefact.
+
+*Table B2: Secondary/prototype regime tree macro-cluster breakdown (2020–2025 full-period fit, **73 leaves, not used by Section 6**; reproduced for context only).*
 
 | Macro ID | Leaves | Training Obs | % of Total |
 |---|---|---|---|
@@ -77,11 +93,9 @@ The primary trained regime tree (5m, 2022–2024, fallback partition) contains 6
 | 7 | 7 | 4,431 | 1.3% |
 | 8 | 8 | 23,015 | 6.8% |
 | 9 | 8 | 90,605 | 26.7% |
-| **Total** | **73** | **339,533** | **100%** |
+| **Total (secondary)** | **73** | **339,533** | **100%** |
 
-The macro-clusters exhibit substantial variation in population size: from macro 5 (1,786 observations, 0.5%) to macro 9 (90,605 observations, 26.7%), a 50-fold range. This skew reflects the non-uniform distribution of market conditions over the fit period: the most common macro state occurs 50× more frequently than the rarest. The number of leaves per macro ranges from 4 to 8, with BIC independently selecting the appropriate sub-cluster granularity. Despite macro 5's small population, its 4 leaves each exceed the 200-observation minimum required for meaningful evolutionary training.
-
-For the primary 5m 2022–2024 configuration, the 63-leaf tree distributes observations across the same 10 macro-clusters with proportionally similar relative populations, producing 6.3 average leaves per macro (std ≈ 1.6) and a minimum leaf size comfortably above the merging threshold. We report the secondary-configuration numbers in Table B1 because they illustrate the full tree-structure space: the primary configuration's leaf distribution is narrower because autocorrelation-based fallback separates features more evenly across levels.
+Table B2's macro-clusters exhibit substantial variation in population size: from macro 5 (1,786 observations, 0.5%) to macro 9 (90,605 observations, 26.7%), a 50-fold range. The skew reflects the non-uniform distribution of market conditions over the fit period; the same skew is qualitatively present in the primary tree (Table B1) on a more compact 63-leaf footprint. Table B2 is reported because it illustrates the full per-macro structure that the primary 63-leaf tree narrows: the primary configuration distributes observations more evenly because the autocorrelation-based fallback separates features differently than the MI-based selection used for the secondary configuration.
 
 ## Appendix C: Hyperparameter Sensitivity
 
@@ -100,11 +114,11 @@ Table C1 reports the sensitivity of key design parameters based on exploratory e
 | Min leaf samples | 100, 200, 300 | 200 | Moderate: too low → noise, too high → lost granularity |
 | Feature selection α | 0.05, 0.10, 0.15 | 0.10 | Low in-regime; controls whether fallback rule fires |
 | Grace period τ | 0, 3, 5, 10 | 5 | Low: OOS rate varies ± 0.8% |
-| Sizing-factor lower bound | 1.1, 1.3, 1.5, √2 ≈ 1.414 | 1.5 | **High**: bounds < √2 admit mathematically infeasible recovery; see Sections 3.4 and 7.8 |
-| Fitness bust-rate cull | 0.20, 0.30, 0.40, none | 0.30 | Moderate: cull at 0.20 over-restricts early GA; cull at 0.40 admits pathological genomes |
+| Sizing-factor lower bound | 1.1, 1.3, 1.5, √2 ≈ 1.414 | Iter 1: 1.2 (loose); Iter 2: 1.5 (√2 floor) | **High**: bounds < √2 admit mathematically infeasible recovery; the Iter-2 [1.5, 2.5] override is a hardening of the Iter-1 [1.2, 2.0] range; see Sections 3.4, 3.4.1, and 7.8 |
+| Bust-rate penalty exponent | 1 (linear), 2, 3 (cubic), 4 | 3 | Moderate: linear (1) under-penalises bust-heavy genomes and admits pathological cycles; very steep (≥ 4) over-penalises borderline genomes early in evolution. The implemented penalty is `0.2 · (1 − bust_rate)³ · 100`, applied as a soft term in the composite fitness rather than a hard cull |
 | Fitness session-count floor | 5, 10, 20 sessions | 10 | Moderate: floor < 10 admits "lucky few" genomes; floor > 10 punishes selective strategies |
 
-The system shows greatest sensitivity to the sizing-factor lower bound (a structural-viability constraint rather than a search tuning) and the fitness-function shape parameters (bust-rate cull, session-count floor). The latter two determine which genomes receive any fitness signal at all and therefore shape the evolutionary search's reachable set. The GA operator parameters (mutation rate, crossover rate, tournament size) show low sensitivity, consistent with the general robustness of GA performance to moderate parameter variation in low-dimensional search spaces (Eiben & Smith, 2015). Population size sits in the middle: very small populations (≤ 4) suffer from sibling-migration elite-cloning that produces genome duplicates across adjacent islands, while populations of 10 or more provide adequate within-island diversity for both the Iteration 1 genome (5 pipeline + 14 strategy + 1 inert legacy = 20 dimensions) and the Iteration 2 widening (5 pipeline + 52 strategy = 57 dimensions, after Filters-group and mode-conditional exclusions).
+The system shows greatest sensitivity to the sizing-factor lower bound (a structural-viability constraint rather than a search tuning) and the fitness-function shape parameters (bust-rate penalty exponent, session-count floor). The latter two shape the curvature of the fitness landscape and the activity threshold below which genomes receive only the partial-credit floor (`0.5 · n_sessions`), and therefore shape the evolutionary search's reachable set. The GA operator parameters (mutation rate, crossover rate, tournament size) show low sensitivity, consistent with the general robustness of GA performance to moderate parameter variation in low-dimensional search spaces (Eiben & Smith, 2015). Population size sits in the middle: very small populations (≤ 4) suffer from sibling-migration elite-cloning that produces genome duplicates across adjacent islands, while populations of 10 or more provide adequate within-island diversity for both the Iteration 1 genome (5 pipeline + 14 strategy + 1 inert legacy = 20 dimensions) and the Iteration 2 widening (5 pipeline + 52 strategy = 57 dimensions, after Filters-group and mode-conditional exclusions).
 
 ## Appendix D: Algorithm Pseudocode
 
@@ -117,9 +131,9 @@ Output: evolved populations {P_1, ..., P_L}
 
 1:  for each leaf l in {1, ..., L} do
 2:      P_l <- INITIALIZE_POPULATION(pop_size, genome_bounds)
-3:          // Iteration 1: 5 pipeline + 14 strategy genes from 3 groups (General,
-4:          // Grid/Hedge, Take Profit) with safety overrides (Section 3.4 Table 2).
-4a:         // Iteration 2 widens to 5 + 52 across 7 groups (Section 3.4.1 Table 3).
+3:          // Iteration 1: 5 pipeline + 1 inert legacy + 14 strategy = 20 genes from 3 groups
+4:          // (General, Grid/Hedge, Take Profit) with safety overrides (Section 3.4 Table 2).
+4a:         // Iteration 2 widens to 5 pipeline + 52 strategy = 57 across 7 groups (legacy retired; Section 3.4.1 Table 3).
 5:  end for
 6:  set module-global _WORKER_CANDLES <- C_1m   // for fork-based workers
 7:
@@ -158,7 +172,7 @@ Output: evolved populations {P_1, ..., P_L}
 40:         end for
 41:     end if    // end of evolve-only block
 42:
-43:     if g mod migration_interval = 0 then     // migration runs after fitness, including final generation -- matches train.py:840
+43:     if g < max_gen and g mod migration_interval = 0 then     // migration also skipped on final generation (matches train.py:830, both evolve and migrate are wrapped in `if not is_last_gen`)
 44:         for each macro-cluster M do         // sibling migration
 45:             siblings <- active_leaves_in(M)
 46:             for i = 1 to |siblings| do      // ring topology
@@ -201,13 +215,12 @@ Output: fitness in [0, ~250]
 20: bust_rate <- busts / n_s  (default 1.0 when n_s = 0)
 21:
 22: if n_s < 10 then return n_s * 0.5
-23: if bust_rate > 0.30 then return 0.0
-24:
-25: F <-  0.5 * (pf - 1) * 100
-26:    + 0.2 * max(0, 100 - dd * 5)
-27:    + 0.2 * (1 - bust_rate)^3 * 100
-28:    + 0.1 * min(n_s / 100, 1) * 100
-29: return max(0, F)
+23:
+24: F <-  0.5 * (pf - 1) * 100
+25:    + 0.2 * max(0, 100 - dd * 5)
+26:    + 0.2 * (1 - bust_rate)^3 * 100   // cubic bust-rate penalty
+27:    + 0.1 * min(n_s / 100, 1) * 100
+28: return max(0, F)
 ```
 
 **Algorithm 2: IslandPilot Training Pipeline**
@@ -221,7 +234,7 @@ Stage 0: SETUP
 2:  C_tf <- RESAMPLE(C_1m, tf)
 
 Stage 1: FEATURE SELECTION
-3:  F_raw <- COMPUTE_FEATURES(C_tf, window=300)      // 30 features
+3:  F_raw <- COMPUTE_FEATURES(C_tf)                  // 30 features (per-indicator periods, max 100 for Hurst/return moments)
 4:  outcomes <- FORWARD_RANGE_EXCEEDS_THRESHOLD(C_tf, h=288)
 5:  MI <- MUTUAL_INFORMATION(F_raw, outcomes)         // Kraskov estimator
 6:  F_selected <- {f_i : MI[i] >= 0.1 * max(MI)}
@@ -241,8 +254,8 @@ Stage 2: REGIME TREE CONSTRUCTION
 
 Stage 3: ISLAND EVOLUTION
 16: bounds <- BUILD_GENE_BOUNDS_FROM_STRATEGY(S)
-17:     // Iteration 1: 5 pipeline + 14 strategy across 3 groups (cloud-trained run);
-17a:    // Iteration 2: 5 pipeline + 52 strategy across 7 groups (design endpoint);
+17:     // Iteration 1: 5 pipeline + 1 inert legacy + 14 strategy = 20 across 3 groups (cloud-trained run);
+17a:    // Iteration 2: 5 pipeline + 52 strategy = 57 across 7 groups (design endpoint, legacy retired);
 18:     // filter genes and mode-conditional thresholds excluded (Section 3.4)
 19: windows_per_leaf <- PER_LEAF_CONTIGUOUS_WINDOWS(leaves, min_days=30)
 20: leaf_date_ranges <- DATE_RANGES(windows_per_leaf, fallback=full_period)
@@ -257,17 +270,17 @@ Stage 4: MODEL PERSISTENCE
 
 **GTSBotPilot (based on Rundo et al., 2019).** The Grid Trading System Robot proposes a three-layer architecture: a regression network for trend detection, a Grid System Manager (GSM) enforcing spacing constraints between trades, and a Basket Equity System Manager (BESM) that closes all positions when aggregate profit reaches a target. Our implementation adapts these three layers as pipeline hooks over the Martingale strategy. The trend network (which the original paper acknowledges performs suboptimally in raw regression terms) is replaced with EMA-smoothed first and second derivatives, preserving the paper's stated functional purpose (noise reduction and directional classification) without the training overhead. The GSM enforces a minimum of 15 candles between same-direction entries (x-threshold) and a minimum price distance of 0.5 × ATR(14) (y-threshold). The BESM targets basket profit of 2.0 × ATR(14) before closing all positions. All thresholds scale adaptively with ATR, which the original paper implements with fixed values; the adaptive extension generalises to varying volatility regimes. GTSBotPilot requires no offline training: all parameters are rule-based and derived from current market data.
 
-**FinRLPilot (based on Liu et al., 2020).** The FinRL library provides deep reinforcement learning infrastructure for financial trading, with PPO as the primary algorithm. Our implementation adapts the RL framework to parameter-preset selection rather than direct position management. The state is a 10-dimensional feature vector from the same FeaturePool used by IslandPilot. The action space is four discrete parameter presets: conservative (4 levels, 15-pip hedge, 25-pip TP, sqrt sizing), moderate (6 levels, 10-pip hedge, 20-pip TP, geometric sizing), aggressive (8 levels, 8-pip hedge, 15-pip TP, geometric sizing), and tight-TP (4 levels, 10-pip hedge, 12-pip TP, linear sizing). Reward is cycle PnL, penalised at 0.1 × observed drawdown during the cycle. Without PyTorch installed, the policy falls back to a tabular Q-learner (3 bins per feature, 4 features used for state discretisation, n = 3 bins → 3^4 = 81 states). FinRLPilot is evaluated in inference mode with a pre-trained tabular policy, trained on the same 2022–2024 data as IslandPilot.
+**FinRLPilot (based on Liu et al., 2020).** The FinRL library provides deep reinforcement learning infrastructure for financial trading, with PPO as the primary algorithm. Our implementation adapts the RL framework to parameter-preset selection rather than direct position management. The state is a 10-dimensional feature vector from the same FeaturePool used by IslandPilot. The action space is four discrete parameter presets: conservative (4 levels, 15-pip hedge, 25-pip TP, sqrt sizing), moderate (6 levels, 10-pip hedge, 20-pip TP, geometric sizing), aggressive (8 levels, 8-pip hedge, 15-pip TP, geometric sizing), and tight-TP (5 levels, 12-pip hedge, 8-pip TP, linear sizing). Reward is cycle PnL, penalised at 0.1 × observed drawdown during the cycle. Without PyTorch installed, the policy falls back to a tabular Q-learner (3 bins per feature, 4 features used for state discretisation, n = 3 bins → 3^4 = 81 states). FinRLPilot is evaluated in inference mode with a pre-trained tabular policy, trained on the same 2022–2024 data as IslandPilot.
 
 ## Appendix F: Pre-flight Validation Protocol (Iteration 2 architectural correctness)
 
-The pre-flight protocol is the architectural-correctness check for the Iteration 2 expanded gene set (7 tunable groups, 57 genes, categorical-gene resolver, retired legacy `base_size_pct`). It is **not** the source of the §6 OOS numbers (those are produced by the Iteration 1 cloud-trained model on a 15.5-month production OOS window). The pre-flight runs in three stages on a consumer CPU and exercises the wider Iteration 2 search space on a short window to verify GA convergence, gene-encoding round-trip correctness, and engine-evolver interface stability.
+The pre-flight protocol is the architectural-correctness check for the Iteration 2 expanded gene set (7 tunable groups, 57 genes, categorical-gene resolver, retired legacy `base_size_pct`). It is **not** the source of the Section 6 OOS numbers (those are produced by the Iteration 1 cloud-trained model on a 15.5-month production OOS window). The pre-flight runs in three stages on a consumer CPU and exercises the wider Iteration 2 search space on a short window to verify GA convergence, gene-encoding round-trip correctness, and engine-evolver interface stability.
 
 **Stage 1: Import and gene-bounds correctness.** A sanity script (`pipelines/_shared/IslandPilot/preflight.py`) asserts that (i) the Iteration 2 gene-bounds builder produces a bounds dictionary containing `signal_mode` and `direction_bias` (the Entry Signal genes that the Iteration 1 cloud model does not contain), (ii) random genomes sampled from these bounds contain and vary the categorical gene values, (iii) a single backtest on synthetic candles completes with non-zero fitness, and (iv) one full generation of training runs end-to-end without crashing. This stage runs in under two minutes on a consumer CPU.
 
 **Stage 2: Short real-data training run.** With the correctness assertions passing, we run a reduced Iteration 2 training configuration on three months of real EUR-USD 5m data (2024 Q1), with 8 individuals per population and 8 generations across 9 CPU workers. This configuration completes in approximately 15–25 minutes on a consumer CPU and produces a full `island_evolver.json` model artefact structurally identical to a cloud run.
 
-**Stage 3: Held-out out-of-sample validation.** A separate script (`pipelines/_shared/IslandPilot/validate_model.py`) loads the trained model, selects the top-fitness genomes per island, and evaluates each on a held-out 3-month window (2024 Q2). For each top genome it runs a single-genome backtest on the OOS window through the same `qengine.research.backtest` API used in training, extracts session count, bust count, L0 win rate, profit factor, net P&L, and drawdown, and reports a per-genome verdict (profitable / losing / too-few-sessions). The pre-flight architectural-validation criterion: at least 10 of the top 20 genomes must be OOS-profitable on the 3-month validation window. Meeting this criterion does not predict full-scale OOS performance — the pre-flight uses a 3-month training window, the cloud run uses 36 months, and the validation window is non-comparable to the production 15.5-month OOS — but failing it reliably indicates structural bugs in the training pipeline that would otherwise consume cloud compute without producing usable genomes.
+**Stage 3: Held-out out-of-sample validation.** A separate script (`pipelines/_shared/IslandPilot/validate_model.py`) loads the trained model, selects the top-fitness genomes per island, and evaluates each on a held-out 3-month window (2024 Q2). For each top genome it runs a single-genome backtest on the OOS window through the same `qengine.research.backtest` API used in training, extracts session count, bust count, L0 win rate, profit factor, net P&L, and drawdown, and reports a per-genome verdict (profitable / losing / too-few-sessions). The pre-flight architectural-validation criterion: at least 10 of the top 20 genomes must be OOS-profitable on the 3-month validation window. Meeting this criterion does not predict full-scale OOS performance (the pre-flight uses a 3-month training window, the cloud run uses 36 months, and the validation window is non-comparable to the production 15.5-month OOS), but failing it reliably indicates structural bugs in the training pipeline that would otherwise consume cloud compute without producing usable genomes.
 
 **Result.** The Iteration 2 implementation passes the criterion (13 of 20 top-fitness genomes OOS-profitable on the 3-month validation window, mean L0 win rate 70–80% across the profitable subset). The criterion gates implementation readiness rather than predicting full-scale OOS behaviour.
 
@@ -287,7 +300,7 @@ The pre-flight protocol is the architectural-correctness check for the Iteration
 | P(≥10 of 20 random genomes profitable), Wilson upper            | 6.6 × 10⁻⁸ (at p = 0.060)           |
 | P(≥10 of 20 random genomes profitable), bootstrap (1000×, n=20) | 0.000                               |
 
-Zero of the 60 random genomes were OOS-profitable. With the observed upper bound on the random profitability rate (p ≤ 0.060 at 95% confidence), the probability that 20 random genomes contain ≥10 profitable is bounded above by 6.6 × 10⁻⁸. The 13 / 20 result reported above therefore reflects genuine training signal rather than a coin-flip-level threshold: under the null of uniform-random genome sampling, the criterion is essentially never satisfied. The dominant random-genome failure mode was insufficient activity (50 / 60 produced fewer than three sessions across the 64-day window), reflecting the joint feasibility constraints imposed at gene-bounds construction time (§3.4) — random parameter draws within those bounds frequently produce strategies that satisfy the ruin-prevention bounds but rarely fire entries on real EUR-USD candles. We also note a minor convention discrepancy: `validate_model.py`'s CLI defaults to `--top-n 10` whereas the paper text in §5.6 specifies "10 of top 20"; both Iteration 2 production pre-flight runs reported above used the 20-genome convention, with the script default left at 10 for backward compatibility with earlier Iteration 1 invocations and overridable per-run. The baseline analysis itself is limited by single OOS window, single instrument, and modest K (60), but the seven-orders-of-magnitude separation between the random-pass probability (≤ 10⁻⁷) and a naive 50% threshold means the qualitative conclusion is robust to plausible variation in the profitability rule. Methodology details: `notebooks/validation_analyses/03_preflight_criterion_discrimination.py`; numeric results in `notebooks/validation_analyses/results/03_preflight_criterion_discrimination.json`.
+Zero of the 60 random genomes were OOS-profitable. With the observed upper bound on the random profitability rate (p ≤ 0.060 at 95% confidence), the probability that 20 random genomes contain ≥10 profitable is bounded above by 6.6 × 10⁻⁸. The 13 / 20 result reported above therefore reflects genuine training signal rather than a coin-flip-level threshold: under the null of uniform-random genome sampling, the criterion is essentially never satisfied. The dominant random-genome failure mode was insufficient activity (50 / 60 produced fewer than three sessions across the 64-day window), reflecting the joint feasibility constraints imposed at gene-bounds construction time (Section 3.4): random parameter draws within those bounds frequently produce strategies that satisfy the ruin-prevention bounds but rarely fire entries on real EUR-USD candles. We also note a minor convention discrepancy: `validate_model.py`'s CLI defaults to `--top-n 10` whereas the paper text in Section 5.6 specifies "10 of top 20"; both Iteration 2 production pre-flight runs reported above used the 20-genome convention, with the script default left at 10 for backward compatibility with earlier Iteration 1 invocations and overridable per-run. The baseline analysis itself is limited by single OOS window, single instrument, and modest K (60), but the seven-orders-of-magnitude separation between the random-pass probability (≤ 10⁻⁷) and a naive 50% threshold means the qualitative conclusion is robust to plausible variation in the profitability rule. Methodology details: `notebooks/validation_analyses/03_preflight_criterion_discrimination.py`; numeric results in `notebooks/validation_analyses/results/03_preflight_criterion_discrimination.json`.
 
 ## Appendix G: Reproducibility Notes
 
@@ -295,7 +308,7 @@ Three correctness conditions discovered during training are documented here; in 
 
 **G.1 CFD margin-bust state leakage.** When a CFD position hits the margin-call close path, the engine closes each ticket individually via `record_ticket_close`, which creates a standalone `ClosedTrade` record. The position's temporary-trade accumulator (the stateful object that collects order-level entries for the in-progress trade) is not reset when this path fires. The next trading cycle's `open_trade` call retrieves the same stale accumulator, which then inherits entry orders from the previous (liquidated) cycle. In our runs this produced trades with `qty = NaN`, `entry_price = NaN`, and `exit_price = NaN` for every session after the first margin bust. Fitness values computed from such corrupted runs are not random-noise-plus-signal but structurally unrelated to genome quality. The fix is a one-line reset (`store.closed_trades._reset_current_trade`) invoked after the final ticket is force-closed and before the strategy's session-end hook is notified.
 
-**G.2 Integer-index categorical genes at evaluation time.** The pipeline's deployment-time `_apply_genome` resolves integer-indexed categoricals to their string values, but an earlier iteration of the training-time `_run_backtest_fitness` function passed the raw integer dictionary directly into the strategy. Martingale's internal checks are string-typed (e.g., `direction_bias in ('both', 'long_only')`); an integer `0` fails every such check, silently coercing `should_long` and `should_short` to `False` for every candle. The strategy emits no orders, the backtest reports zero sessions, the fitness floor assigns `F = 0`, and the GA cannot distinguish structurally correct genomes from mis-encoded ones. The fix mirrors the deployment-time resolution (§3.6) by applying the same whitelist-filtered index-to-string mapping inside the evaluation function before the genome is handed to the strategy.
+**G.2 Integer-index categorical genes at evaluation time.** The pipeline's deployment-time `_apply_genome` resolves integer-indexed categoricals to their string values, but an earlier iteration of the training-time `_run_backtest_fitness` function passed the raw integer dictionary directly into the strategy. Martingale's internal checks are string-typed (e.g., `direction_bias in ('both', 'long_only')`); an integer `0` fails every such check, silently coercing `should_long` and `should_short` to `False` for every candle. The strategy emits no orders, the backtest reports zero sessions, the fitness floor assigns `F = 0`, and the GA cannot distinguish structurally correct genomes from mis-encoded ones. The fix mirrors the deployment-time resolution (Section 3.6) by applying the same whitelist-filtered index-to-string mapping inside the evaluation function before the genome is handed to the strategy.
 
 **G.3 Training-mode import isolation.** The training pipeline imports from the qengine core (e.g., `qengine.research.backtest`) inside worker subprocesses, which ordinarily triggers initialisation of the full application stack including PostgreSQL model-table creation and Redis pub/sub. For training none of these services are required; we gate their initialisation on a `QENGINE_TRAINING_MODE` environment variable, allowing the engine modules to be imported cleanly on hardware without a database or Redis instance (for example, the Google Compute Engine VMs used for the canonical training run).
 
@@ -303,7 +316,7 @@ Three correctness conditions discovered during training are documented here; in 
 
 ## Appendix H: Random-search Control
 
-Appendices H and I jointly cover the validation-analyses programme woven into §6.2 (Appendix H, random-search control) and §6.3 (Appendix I, regime-tree feature-set sensitivity), with the Iteration 2 pre-flight criterion baseline-rate analysis completing the programme in Appendix F. Each analysis was run after the primary results were in hand to honestly stress-test a specific load-bearing claim of the dissertation, and each is reported here with its limitations. The two appendices share an evidence philosophy: where a full performance ablation would have cost prohibitive compute, a structurally-meaningful reduced version was run instead and the deferred full version is named explicitly. Appendix H quantifies the GA's search-efficiency contribution against uniform random sampling of the same gene space; Appendix I quantifies the regime tree's structural sensitivity to the MI fallback. The pre-flight criterion baseline rate (Appendix F, "Baseline rate of the criterion") completes the programme.
+Appendices H and I jointly cover the validation-analyses programme woven into Section 6.2 (Appendix H, random-search control) and Section 6.3 (Appendix I, regime-tree feature-set sensitivity), with the Iteration 2 pre-flight criterion baseline-rate analysis completing the programme in Appendix F. Each analysis was run after the primary results were in hand to honestly stress-test a specific load-bearing claim of this research, and each is reported here with its limitations. The two appendices share an evidence philosophy: where a full performance ablation would have cost prohibitive compute, a structurally-meaningful reduced version was run instead and the deferred full version is named explicitly. Appendix H quantifies the GA's search-efficiency contribution against uniform random sampling of the same gene space; Appendix I quantifies the regime tree's structural sensitivity to the MI fallback. The pre-flight criterion baseline rate (Appendix F, "Baseline rate of the criterion") completes the programme.
 
 Using the same gene-bounds the production GA actually used (extracted directly from the trained `island_evolver.json` to guarantee an apples-to-apples comparison; 20 genes spanning pipeline-level controls and Martingale strategy hyperparameters), we sampled N = 80 random genomes uniformly from the parameter space and evaluated each on the production composite fitness over a 6-month real-engine backtest window (2022-01-01 → 2022-07-01). The same fitness formula, backtest configuration (exchange = OANDA, symbol = EUR-USD, type = cfd, starting_balance = 10 000, route timeframe 30m, cost-model on, no fee), and Martingale strategy class as the production training run were used. Joint-feasibility constraints (TP > 1.5 × hedge distance; deepest-ticket exposure ≤ 20% of equity) were enforced identically to the GA. Pipeline-only genes (6 of 20) were excluded from the strategy hyperparameter dict, mirroring `_apply_genome` in the IslandPilot pipeline. *Timeframe note:* the random-control was evaluated at 30m route timeframe rather than the 5m production timeframe; the d=5.38 dominance is far above any plausible timeframe-induced shift, so this does not affect the directional conclusion.
 
@@ -320,7 +333,7 @@ Using the same gene-bounds the production GA actually used (extracted directly f
 
 The trained GA outperforms random sampling by **51.04 fitness units** (Cohen's d = 5.38; the gap is 3.8 standard deviations of the random-search distribution). Approximately **0.0%** of random genomes exceed the trained-GA mean-best fitness (58.87), and **0.0%** exceed the best-trained genome (max = 59.20). The random distribution also reveals a high baseline failure rate: 46.2% of random genomes evaluate to fitness 0 (either zero/under-10 sessions in the 6-month window, or a corrupted PnL state from extreme parameter combinations), whereas every trained-island best is above F = 58. Median random session count was 2 with 65.0% of random genomes generating fewer than 10 sessions in the 6-month window.
 
-This **supports the claim** that the GA contributes search efficiency beyond what uniform random sampling of the same gene-space would achieve. The random control is necessarily evaluated on a shorter (6-month) window than the production training run (full 2022-2024); the 6-month window is a strict subset of the training period, so the relative dominance of the trained population over random sampling is conservative — the same comparison on the full 3-year window would, at minimum, preserve this ordering. Random search of this 20-gene Martingale-pipeline space cannot find competitive genomes: the search problem is genuinely non-trivial, and the per-regime island populations are the mechanism by which IslandPilot localises that search.
+This **supports the claim** that the GA contributes search efficiency beyond what uniform random sampling of the same gene-space would achieve. The random control is necessarily evaluated on a shorter (6-month) window than the production training run (full 2022-2024); the 6-month window is a strict subset of the training period, so the relative dominance of the trained population over random sampling is conservative: the same comparison on the full 3-year window would, at minimum, preserve this ordering. Random search of this 20-gene Martingale-pipeline space cannot find competitive genomes: the search problem is genuinely non-trivial, and the per-regime island populations are the mechanism by which IslandPilot localises that search.
 
 Methodology details: random-control script is `notebooks/validation_analyses/01_evolutionary_search_contribution.py`; full numeric results in `notebooks/validation_analyses/results/01_evolutionary_search_contribution.json`. Sequential evaluation, seed = 20260426, wall-clock 4.37 min on the author's laptop. The fitness formula reported in the table is the production training fitness (cubic bust-penalty: `0.5·(PF−1)·100 + 0.2·max(0, 100 − DD·5) + 0.2·(1 − B)³·100 + 0.1·min(N/100, 1)·100`, floored at 0; <10 sessions returns `0.5·N`). The alternative composite stated in earlier drafts (linear bust-penalty: `0.4·(PF−1)·100 + 0.3·max(0, 100 − DD·5) + 0.2·(1 − B)·100 + 0.1·min(N/100, 1)·100`) gives random mean = 11.70 and is reported in the JSON for completeness; conclusions are unchanged.
 
@@ -338,13 +351,13 @@ To test whether the fallback materially changed the discovered regime structure,
 | Std of leaf size (samples)          | 3 677.3           | 2 377.7             |
 | Min / max leaf size                 | 596 / 20 061      | 252 / 9 982         |
 | Regime separation CV                | 0.783             | 0.679               |
-| Adjusted Rand Index (A vs B)        | —                 | 0.034               |
-| Normalised Mutual Info (A vs B)     | —                 | 0.168               |
+| Adjusted Rand Index (A vs B)        | -                 | 0.034               |
+| Normalised Mutual Info (A vs B)     | -                 | 0.168               |
 
-ARI = 0.034 is low: the two trees produce structurally different partitions of the same data. The fallback to all 30 features materially changed the discovered regime topology. The production tree absorbs the additional 27 features as informative regime discriminators (most notably trend, time-of-day, distributional skew/kurtosis and serial dependence — dimensions that the 3 NATR-family MI features cannot represent at all), so a large structural divergence is expected by construction, not a sign of instability: the fallback tree partitions a strictly richer feature space. We flag this as a genuine sensitivity of the production pipeline: the choice to fall back changes which regimes the GA evolves against. The performance consequence is not quantified here; a full performance ablation (re-running the per-leaf GA on Tree A) is left to future work. We note that the regime separation CV is comparable for both trees (0.783 vs 0.679 — both well above the 0.15 structural-validity threshold), so neither tree is degenerate.
+ARI = 0.034 is low: the two trees produce structurally different partitions of the same data. The fallback to all 30 features materially changed the discovered regime topology. The production tree absorbs the additional 27 features as informative regime discriminators (most notably trend, time-of-day, distributional skew/kurtosis and serial dependence, dimensions that the 3 NATR-family MI features cannot represent at all), so a large structural divergence is expected by construction, not a sign of instability: the fallback tree partitions a strictly richer feature space. We flag this as a genuine sensitivity of the production pipeline: the choice to fall back changes which regimes the GA evolves against. The performance consequence is not quantified here; a full performance ablation (re-running the per-leaf GA on Tree A) is left to future work. We note that the regime separation CV is comparable for both trees (0.783 vs 0.679, both well above the 0.15 structural-validity threshold), so neither tree is degenerate.
 
 The shipped production tree (`pipelines/_shared/IslandPilot/models/regime_tree.pkl`) has 10 macro clusters and 63 leaves; our locally-rebuilt Tree B has 10 macro / 63 leaves and agrees with the shipped tree at ARI = 1.0, confirming the local rebuild faithfully reproduces the production topology. The ablation above is therefore a like-for-like structural comparison between the choice that was made (Tree B, 30 features) and the counterfactual (Tree A, 3 MI features).
 
-This ablation is **structural only**. A full performance ablation — running the per-leaf GA evolution on Tree A and comparing PnL, drawdown and bust rate against the production results — would cost roughly 10 hours of compute and is deferred to future work. The ARI and NMI metrics above quantify the *partition distance* between the two trees: ARI = 1 implies identical leaf assignments (and therefore, under identical GA seeds, identical strategies), while ARI = 0 implies the partitions are unrelated. The reported ARI = 0.034 sits near the lower bound and shows that the two regime decompositions are materially different objects; whether the corresponding evolved strategies differ in PnL by a large or small amount is a separate empirical question that this ablation does not resolve. Methodology details: `notebooks/validation_analyses/02_regime_tree_feature_set_sensitivity.py`; numeric results in `notebooks/validation_analyses/results/02_regime_tree_feature_set_sensitivity.json`.
+This ablation is **structural only**. A full performance ablation (running the per-leaf GA evolution on Tree A and comparing PnL, drawdown and bust rate against the production results) would cost roughly 10 hours of compute and is deferred to future work. The ARI and NMI metrics above quantify the *partition distance* between the two trees: ARI = 1 implies identical leaf assignments (and therefore, under identical GA seeds, identical strategies), while ARI = 0 implies the partitions are unrelated. The reported ARI = 0.034 sits near the lower bound and shows that the two regime decompositions are materially different objects; whether the corresponding evolved strategies differ in PnL by a large or small amount is a separate empirical question that this ablation does not resolve. Methodology details: `notebooks/validation_analyses/02_regime_tree_feature_set_sensitivity.py`; numeric results in `notebooks/validation_analyses/results/02_regime_tree_feature_set_sensitivity.json`.
 
  - 

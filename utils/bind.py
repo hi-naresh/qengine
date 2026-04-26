@@ -12,7 +12,6 @@ import argparse
 from pathlib import Path
 
 # Ordered list of sections to include in the final document.
-# version_log.md is intentionally excluded (internal tracking only).
 SECTION_ORDER = [
     "0_title_abstract.md",
     "1_introduction.md",

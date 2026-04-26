@@ -1,18 +1,18 @@
 ## 3. System Architecture
 
-IslandPilot operates as a five-layer pipeline that intercepts strategy execution at defined lifecycle hooks (`on_before`, `gate_entry`, `suggest_exit`, `on_cycle_end`) without modifying strategy source code. The five layers, described in subsections §3.1 to §3.5, are: (1) feature extraction from candle data; (2) hierarchical regime discovery; (3) hysteresis-based regime inference; (4) island-model genetic evolution; and (5) adaptive position sizing. Section §3.6 documents parameter application and supporting design constraints that span all five layers.
+IslandPilot operates as a five-layer pipeline that intercepts strategy execution at defined lifecycle hooks (`on_before`, `gate_entry`, `suggest_exit`, `on_cycle_end`) without modifying strategy source code. The five layers, described in subsections Section 3.1 to Section 3.5, are: (1) feature extraction from candle data; (2) hierarchical regime discovery; (3) hysteresis-based regime inference; (4) island-model genetic evolution; and (5) adaptive position sizing. Section 3.6 documents parameter application and supporting design constraints that span all five layers.
 
 ![Figure 1: IslandPilot architecture. Each layer operates per-candle during strategy execution. The feedback loop updates island fitness after each completed trading cycle.](../figures/Figure1.png)
 
 ### 3.1 Feature Extraction
 
-The FeaturePool computes 30 market indicators from OHLCV candle data across five categories — volatility, trend, choppiness, momentum, market structure — comprising 24 empirical-technical indicators (standard conventions: Wilder, 1978; Bollinger, 2002; Chande, 1997; Lambert, 1983; Lane, 1984; Kaufman, 2013) and 6 theoretically-motivated extensions covering HAR-RV multi-scale volatility (Corsi, 2009; Müller et al., 1997), distributional shape (Engle, 1982; Neuberger, 2012), and short-lag serial dependence (Box & Jenkins, 1976; Lo & MacKinlay, 1988). Features are computed on a fixed 300-candle sliding window for O(1) per-candle cost. The complete feature pool with computation details, periods, and indicator-period justifications is given in **Appendix A**. The 5-minute base timeframe is justified in §5.1.
+The FeaturePool computes 30 market indicators from OHLCV candle data across five categories (volatility, trend, choppiness, momentum, market structure) comprising 24 empirical-technical indicators (standard conventions: Wilder, 1978; Bollinger, 2002; Chande, 1997; Lambert, 1983; Lane, 1984; Kaufman, 2013) and 6 theoretically-motivated extensions covering HAR-RV multi-scale volatility (Corsi, 2009; Müller et al., 1997), distributional shape (Engle, 1982; Neuberger, 2012), and short-lag serial dependence (Box & Jenkins, 1976; Lo & MacKinlay, 1988). Features are computed on a fixed 300-candle sliding window for O(1) per-candle cost. The complete feature pool with computation details, periods, and indicator-period justifications is given in **Appendix A**. The 5-minute base timeframe is justified in Section 5.1.
 
-Feature selection uses mutual information (Kraskov et al., 2004) between each feature and a binary forward-outcome label derived from realised range exceeding a volatility threshold (precise label construction in §4 Stage 1). MI is preferred over linear methods such as LASSO or F-test because the relationship between technical-indicator features and Martingale cycle outcomes is plausibly non-linear; MI captures arbitrary statistical dependence without imposing a parametric form. Given MI scores {s_1, ..., s_30}, the selection rule retains feature *i* if:
+Feature selection uses mutual information (Kraskov et al., 2004) between each feature and a binary forward-outcome label derived from realised range exceeding a volatility threshold (precise label construction in Section 4 Stage 1). MI is preferred over linear methods such as LASSO or F-test because the relationship between technical-indicator features and Martingale cycle outcomes is plausibly non-linear; MI captures arbitrary statistical dependence without imposing a parametric form. Given MI scores {s_1, ..., s_30}, the selection rule retains feature *i* if:
 
 $$s_i \geq \alpha \cdot \max_j s_j$$
 
-where α = 0.1 is the minimum score-ratio threshold. A fallback rule activates when fewer than five features pass the threshold (the minimum required for a stable macro/sub partition): the pool reverts to all 30 indicators, partitioned by lag-10 autocorrelation (≥ 0.7 → macro/slow-changing; < 0.7 → sub/faster-changing). The empirical outcome on the canonical 2022–2024 training window is reported in §6.3.
+where α = 0.1 is the minimum score-ratio threshold. A fallback rule activates when fewer than five features pass the threshold (the minimum required for a stable macro/sub partition): the pool reverts to all 30 indicators, partitioned by lag-10 autocorrelation (≥ 0.7 → macro/slow-changing; < 0.7 → sub/faster-changing). The empirical outcome on the canonical 2022–2024 training window is reported in Section 6.3.
 
 ![Figure 2: Feature processing and selection. The raw 30-feature pool (24 empirical-technical indicators plus 6 theoretically-motivated extensions) is reduced by a mutual-information filter with score-ratio threshold α = 0.1, then partitioned into a slow-changing macro feature set (input to the macro-level GMM) and a fast-changing sub feature set (input to the sub-level GMM).](../figures/Figure2.png)
 
@@ -20,7 +20,7 @@ where α = 0.1 is the minimum score-ratio threshold. A fallback rule activates w
 
 The RegimeTree implements a two-level hierarchical clustering using Gaussian Mixture Models with BIC-based model selection at both levels, following the standard formulation of Schwarz (1978) as applied to mixture models by McLachlan and Peel (2000).
 
-The choice of a two-level hierarchy over a single flat GMM is motivated by the observation that financial market states exhibit structure at multiple scales: broad regimes (e.g., high vs. low volatility) contain finer sub-states (e.g., trending vs. ranging within a high-volatility regime). A flat GMM with many components risks overfitting fine structure in dense regions while underfitting sparse regions; the hierarchical approach lets BIC independently determine the appropriate granularity at each level (flat-GMM ablation: §8.1).
+The choice of a two-level hierarchy over a single flat GMM is motivated by the observation that financial market states exhibit structure at multiple scales: broad regimes (e.g., high vs. low volatility) contain finer sub-states (e.g., trending vs. ranging within a high-volatility regime). A flat GMM with many components risks overfitting fine structure in dense regions while underfitting sparse regions; the hierarchical approach lets BIC independently determine the appropriate granularity at each level (flat-GMM ablation: Section 8.1).
 
 **Macro-level clustering.** A GMM is fitted to the macro feature matrix X_macro in R^{n x 5} with the number of components k selected by minimising the Bayesian Information Criterion:
 
@@ -56,9 +56,9 @@ The hysteresis margin δ = 0.15 corresponds to requiring approximately a one-and
 
 ### 3.4 Island-Model Genetic Algorithm
 
-Each regime leaf maintains an isolated genetic population. The canonical training run uses 10 individuals per island, balancing search coverage against per-evaluation cost (§4). Each individual (genome) encodes execution parameters that control trading behaviour when the corresponding regime is active.
+Each regime leaf maintains an isolated genetic population. The canonical training run uses 10 individuals per island, balancing search coverage against per-evaluation cost (Section 4). Each individual (genome) encodes execution parameters that control trading behaviour when the corresponding regime is active.
 
-**Genome representation.** A genome consists of 5 pipeline-level genes (Table 1) and a variable number of strategy-level genes discovered at runtime from the strategy's `hyperparameters()` declaration. The active model whose results §6 reports evolves 14 strategy-level genes across three groups (General, Grid/Hedge, Take Profit), giving a 20-dimensional genome including one inert legacy carrier; full enumeration and the architectural-evolution context are deferred to §3.4.1.
+**Genome representation.** A genome consists of 5 pipeline-level genes (Table 1) and a variable number of strategy-level genes discovered at runtime from the strategy's `hyperparameters()` declaration. The active model whose results Section 6 reports evolves 14 strategy-level genes across three groups (General, Grid/Hedge, Take Profit), giving a 20-dimensional genome including one inert legacy carrier; full enumeration and the architectural-evolution context are deferred to Section 3.4.1.
 
 *Table 1: Pipeline-level genome parameters and their bounds.*
 
@@ -70,7 +70,7 @@ Each regime leaf maintains an isolated genetic population. The canonical trainin
 | confidence_sensitivity | [0.5, 2.0] | float | Exponent for confidence-based size scaling |
 | recovery_aggression | [0.3, 1.0] | float | Drawdown-based size reduction factor |
 
-**Categorical gene encoding.** Categorical strategy parameters (e.g., `tp_mode` with 4 options) encode as integer indices into a broker-safe whitelist; the GA evolves over `{0, 1, …, k−1}` and resolves each integer back to its string value at fitness-evaluation time, mirroring the runtime `_apply_genome` hook used at deployment. This round-trip identity is required for correctness: the strategy's internal checks are string-typed, so an unresolved integer fails every check silently and the strategy emits no orders. The empirical impact of this correctness condition is documented in §4.2.
+**Categorical gene encoding.** Categorical strategy parameters (e.g., `tp_mode` with 4 options) encode as integer indices into a broker-safe whitelist; the GA evolves over `{0, 1, …, k−1}` and resolves each integer back to its string value at fitness-evaluation time, mirroring the runtime `_apply_genome` hook used at deployment. This round-trip identity is required for correctness: the strategy's internal checks are string-typed, so an unresolved integer fails every check silently and the strategy emits no orders. The empirical impact of this correctness condition is documented in Section 4.2.
 
 The complete evolutionary algorithm is specified formally in Appendix D (Algorithm 1). The key operators are as follows.
 
@@ -96,7 +96,7 @@ The migration topology is derived from the regime hierarchy itself: sibling grou
 
 #### 3.4.1 Genome scope across iterations
 
-The pipeline is reported in two iterations distinguished by genome scope. **Iteration 1** is the cloud-trained model whose results §6 reports: 20 evolved parameters (5 pipeline + 1 inert legacy + 14 strategy-level across three groups). **Iteration 2** is the architectural endpoint identified by Iteration 1's evidence: 57 evolved parameters across seven strategy-level groups, adding Entry Signal, Filters, Risk Management, and Position Management. Iteration 2 is implementation-complete and pre-flight validated (§5.6, §6.8) but its full-scale evaluation is targeted in §8.1 and is not part of the §6 numbers. Numerical claims that depend on Iteration 2 are attributed explicitly wherever they appear.
+The pipeline is reported in two iterations distinguished by genome scope. **Iteration 1** is the cloud-trained model whose results Section 6 reports: 20 evolved parameters (5 pipeline + 1 inert legacy + 14 strategy-level across three groups). **Iteration 2** is the architectural endpoint identified by Iteration 1's evidence: 57 evolved parameters across seven strategy-level groups, adding Entry Signal, Filters, Risk Management, and Position Management. Iteration 2 is implementation-complete and pre-flight validated (Section 5.6, Section 6.8) but its full-scale evaluation is targeted in Section 8.1 and is not part of the Section 6 numbers. Numerical claims that depend on Iteration 2 are attributed explicitly wherever they appear.
 
 *Table 2: Iteration 1 evolved strategy-level genes by group (cloud-trained Martingale model).*
 
@@ -107,17 +107,17 @@ The pipeline is reported in two iterations distinguished by genome scope. **Iter
 | Take Profit | 3 | `tp_mode`, `tp_value`, `tp_atr_period` |
 | **Strategy-level total** | **14** | (per genome) |
 | Pipeline-level (Table 1) | 5 | (shared with Iteration 2) |
-| Legacy carrier (Iteration 1 only) | 1 | `base_size_pct` — present in the genome but filtered out by `_apply_genome` at deployment; consumes one GA dimension without affecting the strategy. Retired in Iteration 2. |
+| Legacy carrier (Iteration 1 only) | 1 | `base_size_pct`: present in the genome but filtered out by `_apply_genome` at deployment; consumes one GA dimension without affecting the strategy. Retired in Iteration 2. |
 | **Genome total (Iteration 1)** | **20** | (5 pipeline + 1 inert legacy + 14 strategy) |
 
-*Table 3: Iteration 2 expanded gene set (design endpoint; not exercised by §6 results).*
+*Table 3: Iteration 2 expanded gene set (design endpoint; not exercised by Section 6 results).*
 
 | Group | Evolved genes | Notes |
 |---|---|---|
 | General | 5 | unchanged from Iteration 1 |
 | Grid / Hedge | 6 | unchanged from Iteration 1 |
 | Take Profit | 3 | unchanged from Iteration 1 |
-| Entry Signal | 24 | adds `signal_mode`, `direction_bias`, `entry_on_crossover`, EMA/RSI/MACD/Supertrend/Stochastic/CCI/ADX/dual-indicator periods. Mode-conditional thresholds (`rsi_ob`, `rsi_os`, `stoch_ob`, `stoch_os`, `cci_ob`, `cci_os`, `bb_period`, `bb_std`) and `model_lookback` excluded — they take effect only when their parent signal is active. |
+| Entry Signal | 24 | adds `signal_mode`, `direction_bias`, `entry_on_crossover`, EMA/RSI/MACD/Supertrend/Stochastic/CCI/ADX/dual-indicator periods. Mode-conditional thresholds (`rsi_ob`, `rsi_os`, `stoch_ob`, `stoch_os`, `cci_ob`, `cci_os`, `bb_period`, `bb_std`) and `model_lookback` excluded: they take effect only when their parent signal is active. |
 | Filters | 0 | full 13-gene group excluded from evolution; see "Bound safety overrides" below |
 | Risk Management | 12 | `max_daily_loss_pct`, `max_weekly_loss_pct`, `max_consec_busts`, `max_exposure_pct`, `cooldown_mode`, `cooldown_value`, `abort_mode`, `abort_level`, `abort_time_bars`, `abort_pnl_pct`, `equity_curve_filter`, `equity_ema_period` |
 | Position Management | 2 | `breakeven_mode`, `breakeven_levels` |
@@ -125,9 +125,9 @@ The pipeline is reported in two iterations distinguished by genome scope. **Iter
 | Pipeline-level (Table 1) | 5 | unchanged |
 | **Genome total (Iteration 2)** | **57** | legacy `base_size_pct` retired |
 
-**Bound safety overrides (Iteration 2).** `sizing_factor` is clamped to [1.5, 2.5]: the lower bound of 1.5 ≈ √2 enforces mathematical viability — sizing factors below √2 cannot geometrically recover prior losses and produce "TP-hit" sessions with net-negative P&L (Iteration 1's looser bound [1.2, 2.0] permitted such genomes empirically). `max_levels` is clamped to [2, 8] with the joint feasibility constraint `base_size × sizing_factor^max_levels ≤ 20%` of equity enforced at construction and after each mutation/crossover. Gating filters (13 genes total) are excluded from evolution: random initialisation across these categoricals assigns a blocking filter with near-certainty (~99.9% for typical option cardinality), starving the GA of non-zero fitness signal — verified empirically. Mode-conditional thresholds (`rsi_ob/os`, `stoch_ob/os`, `cci_ob/os`, `bb_period`, `bb_std`) are likewise excluded since they take effect only when their parent `signal_mode` is active. Iteration 2 adds two categorical genes (`signal_mode` with 9 options, `direction_bias`) on top of the four Iteration 1 categoricals. Iteration 1 used narrower bounds (`sizing_factor ∈ [1.2, 2.0]`, `max_levels ∈ [2, 6]`) and did not require filter-group or mode-conditional exclusions.
+**Bound safety overrides (Iteration 2).** `sizing_factor` is clamped to [1.5, 2.5]: the lower bound of 1.5 ≈ √2 enforces mathematical viability: sizing factors below √2 cannot geometrically recover prior losses and produce "TP-hit" sessions with net-negative P&L (Iteration 1's looser bound [1.2, 2.0] permitted such genomes empirically). `max_levels` is clamped to [2, 8] with the joint feasibility constraint `base_size × sizing_factor^max_levels ≤ 20%` of equity enforced at construction and after each mutation/crossover. Gating filters (13 genes total) are excluded from evolution: random initialisation across these categoricals assigns a blocking filter with near-certainty (~99.9% for typical option cardinality), starving the GA of non-zero fitness signal, verified empirically. Mode-conditional thresholds (`rsi_ob/os`, `stoch_ob/os`, `cci_ob/os`, `bb_period`, `bb_std`) are likewise excluded since they take effect only when their parent `signal_mode` is active. Iteration 2 adds two categorical genes (`signal_mode` with 9 options, `direction_bias`) on top of the four Iteration 1 categoricals. Iteration 1 used narrower bounds (`sizing_factor ∈ [1.2, 2.0]`, `max_levels ∈ [2, 6]`) and did not require filter-group or mode-conditional exclusions.
 
-The 10-individual population suits Iteration 1's 14-gene strategy genome; the 52-gene Iteration 2 search space likely warrants a proportionally larger population, identified as future work (§8.1).
+The 10-individual population suits Iteration 1's 14-gene strategy genome; the 52-gene Iteration 2 search space likely warrants a proportionally larger population, identified as future work (Section 8.1).
 
 ### 3.5 Adaptive Position Sizing
 
@@ -159,6 +159,4 @@ The application mechanism reads the strategy's hyperparameter declaration to dis
 
 The regime tree is trained offline and deployed frozen during evaluation. If market dynamics shift to produce regimes not represented in the training data, the system classifies unseen states into the nearest existing regime based on GMM posterior probabilities. This is a standard limitation of fitted classifiers, partially mitigated by the hysteresis mechanism which prevents rapid oscillation during ambiguous classifications.
 
-The hyperparameter choices throughout this section (hysteresis margin §3.3, GA operator rates §3.4, drawdown-function constants §3.5) were selected for behavioural plausibility rather than tuned (sensitivity analyses: §8.1).
-
- - 
+The hyperparameter choices throughout this section (hysteresis margin Section 3.3, GA operator rates Section 3.4, drawdown-function constants Section 3.5) were selected for behavioural plausibility rather than tuned (sensitivity analyses: Section 8.1).
