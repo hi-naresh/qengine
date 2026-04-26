@@ -10,6 +10,7 @@ See docs/superpowers/specs/2026-04-26-islandpilotv2-preflight-design.md §4.1.
 from __future__ import annotations
 
 import atexit
+import builtins
 import datetime as _dt
 import gzip
 import json
@@ -248,3 +249,33 @@ def merge_worker_events(events: list[dict]) -> None:
     if _records_since_flush >= _FLUSH_EVERY:
         _fp.flush()
         _records_since_flush = 0
+
+
+def load_manifest(path: Path) -> list[dict]:
+    """Read all events from a gzipped JSONL manifest. Skips malformed lines.
+    Raises ValueError if header schema_version mismatches."""
+    path = Path(path)
+    events: list[dict] = []
+    skipped = 0
+    opener = gzip.open if str(path).endswith(".gz") else builtins.open
+    with opener(path, "rt", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                skipped += 1
+                continue
+            events.append(rec)
+    if skipped > 0:
+        sys.stderr.write(f"manifest: skipped {skipped} malformed lines in {path}\n")
+    if events and events[0].get("event") == "_header":
+        sv = events[0].get("schema_version")
+        if sv != _SCHEMA_VERSION:
+            raise ValueError(
+                f"manifest schema_version {sv} != current {_SCHEMA_VERSION}; "
+                f"refusing to interpret {path}"
+            )
+    return events

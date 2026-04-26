@@ -165,3 +165,37 @@ def test_worker_buffer_caps_at_100k(tmp_path):
         manifest.record("evt", i=i)
     events = manifest.drain_worker_buffer()
     assert len(events) == 100_000
+
+
+def test_load_manifest_reads_gzipped(tmp_path):
+    manifest.open(tmp_path / "m.jsonl")
+    manifest.record("e1", x=1)
+    manifest.record("e2", y=2)
+    manifest.close()
+    events = manifest.load_manifest(tmp_path / "m.jsonl.gz")
+    types = [e["event"] for e in events]
+    assert "e1" in types
+    assert "e2" in types
+
+
+def test_load_manifest_skips_malformed_lines(tmp_path):
+    """Audit must tolerate a manifest that was truncated mid-write."""
+    p = tmp_path / "broken.jsonl.gz"
+    with gzip.open(p, "wt") as f:
+        f.write('{"event": "_header", "ts": "2026-01-01T00:00:00Z", "schema_version": 1}\n')
+        f.write('{"event": "good", "ts": "2026-01-01T00:00:01Z"}\n')
+        f.write('{"event": "bad", broken_json\n')  # malformed
+        f.write('{"event": "good_again", "ts": "2026-01-01T00:00:02Z"}\n')
+    events = manifest.load_manifest(p)
+    types = [e["event"] for e in events]
+    assert "good" in types
+    assert "good_again" in types
+    assert "bad" not in types
+
+
+def test_load_manifest_refuses_wrong_schema(tmp_path):
+    p = tmp_path / "wrong.jsonl.gz"
+    with gzip.open(p, "wt") as f:
+        f.write('{"event": "_header", "schema_version": 99}\n')
+    with pytest.raises(ValueError, match="schema_version"):
+        manifest.load_manifest(p)
