@@ -384,6 +384,8 @@ Manifest opening, tap subscription, and worker-buffer aggregation are independen
 
 ### 4.4 `audit.py`
 
+CLI: `python audit.py <models_dir>` — `models_dir` is positional, defaults to `pipelines/_shared/IslandPilotV2/models/` if omitted, accepts any path. Audit writes its report into the same directory as the artifacts so the report travels with what it audits.
+
 ```python
 def main(models_dir: Path):
     manifest_path = models_dir / "activation_manifest.jsonl.gz"
@@ -763,8 +765,8 @@ Each AC includes its **verification method** so the implementer can prove satisf
   - Add an early `return` at the top of `_apply_genome` → A01 fails.
   *Verification:* a manual run of each break-and-restore in §8.3, captured as four short shell snippets in the PR description.
 
-- **AC4.** `python audit.py models/` exits 0 with a JSON report at `models/audit_report.json` on a `models/` directory containing `island_evolver.json`, `regime_tree.pkl`, `leaf_date_ranges.json`, `training_config.json`, and `activation_manifest.jsonl.gz` produced by a successful preflight run.
-  *Verification:* run preflight (which produces a complete `models/` set under `tmp/`), copy that to `models/`, run audit, parse the resulting JSON, assert verdict ∈ {ok, degraded}.
+- **AC4.** `python audit.py <dir>` accepts any directory containing the five expected artifact files and exits 0 with a JSON report written to `<dir>/audit_report.json`. Verdict ∈ {ok, degraded, broken}.
+  *Verification:* run `python preflight.py`, capture the printed tmpdir path, run `python audit.py <that_path>`, parse `<that_path>/audit_report.json`, assert verdict ∈ {ok, degraded}. No copy step needed because audit accepts arbitrary paths.
 
 - **AC5.** Sequential backtest overhead from `manifest.record()` calls is ≤ 1% measured wall-time on the preflight slice. Cloud-scale extrapolation of this proxy is sufficient; the spec does not require re-running cloud training to verify.
   *Verification:* `pytest tests/test_islandpilotv2_manifest_overhead.py` (one new test) runs the preflight backtest twice — once with `manifest.open()`, once without — and asserts the open-case is ≤ 101% of the closed-case wall-time, averaged over 5 trials.
