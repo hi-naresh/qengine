@@ -62,7 +62,7 @@ pipelines/_shared/IslandPilotV2/
 ├── train.py                 [PATCH]    +12 lines manifest.record() + worker-result unpacking
 ├── __init__.py              [PATCH]    +20 lines manifest.record() at event sites
 ├── island_evolver.py        [PATCH]    +5 lines  manifest.record() at migration accept/reject
-├── regime_inferencer.py     [PATCH]    +5 lines  manifest.record() at transition + unknown-regime
+├── regime_inferencer.py     [PATCH]    +2 lines  manifest.record('transition', ...) only
 ```
 tests/                                              [top-level repo dir, existing convention]
 └── test_islandpilotv2_preflight_checks.py  [NEW]  ~150 LOC  meta-tests for each check
@@ -236,6 +236,15 @@ class CheckResult:
     message: str
     evidence: dict = field(default_factory=dict)
     duration_ms: float = 0.0
+
+    # Populated by the runner from the @check decorator metadata, NOT by the
+    # check function itself. Available on the result object for downstream
+    # severity filtering (e.g. exit-code logic in preflight.py).
+    id: str = ""
+    category: str = ""
+    severity: Literal["critical", "warn", "info"] = "warn"
+    sources_run: list[str] = field(default_factory=list)
+
     @classmethod
     def pass_(cls, msg, evidence=None): ...
     @classmethod
@@ -255,17 +264,20 @@ def main():
     args = parse_args()
     tmp = Path(tempfile.mkdtemp(prefix="qengine_preflight_"))
     manifest.open(tmp / "preflight_manifest.jsonl")
-    captured: list[dict] = []
-    manifest.tap(captured.append)
+    captured_smoke: list[dict] = []
+    captured_comprehensive: list[dict] = []
 
     # Phase 1 — Smoke (fail-fast, ~30s)
+    manifest.tap(captured_smoke.append)
     smoke_results = run_smoke_phase()
+    manifest.untap()
     if any(r.status == "fail" and r.severity == "critical"
            for r in smoke_results):
         write_report(smoke_results, tmp, exit_code=1)
         sys.exit(1)
 
     # Phase 2 — Comprehensive (~4.5 min, runs all even on failure)
+    manifest.tap(captured_comprehensive.append)
     cfg = preflight_config()  # see §5 for exact knobs
     train(
         candles_file=ensure_minislice_cached(),
@@ -275,31 +287,34 @@ def main():
         max_sub=cfg.max_sub,
         min_leaf_samples=cfg.min_leaf_samples,
         n_workers=cpu_count(),
-        preflight_mode=True,    # NEW: lowers gate thresholds, accepts manifest_tap
+        preflight_mode=True,    # NEW: lowers gate thresholds; see below
     )
+    manifest.untap()
 
     # Phase 2b — Force-trigger gates G01–G06 in isolation (~5s)
     force_trigger_results = run_gate_unit_checks()
 
     # Run all registered checks against captured events + artifacts
     ctx = CheckContext(
-        events=captured,
+        events=captured_comprehensive,           # NOT captured_smoke
         artifacts=load_artifacts(),
-        config=load_config(),
+        config=load_preflight_config(tmp),
         available_sources={"unit", "runtime", "artifact"},
     )
     all_results = run_registered_checks(ctx)
 
     write_report(smoke_results + all_results + force_trigger_results,
-                 tmp, exit_code=0 if all_pass(...) else 1)
+                 tmp, exit_code=0 if all_critical_passed(...) else 1)
 ```
 
-The `--preflight-mode` flag added to `train()` does three things and only three things:
-1. Lowers `online_gate.min_cycles_for_gate` from 8 to 2.
-2. Lowers `safety.min_genome_fitness` from 55.0 to 0.0.
-3. Sets a context-local flag readable by gate-firing call sites so they can elect to fire even when underlying conditions are not naturally met (used by force-trigger checks).
+Phase separation: smoke and comprehensive events are captured into separate lists. The check-running step uses only `captured_comprehensive` so smoke's synthetic-data noise (from the existing 4 smoke checks that run a tiny synthetic backtest) cannot accidentally satisfy outcome checks like O01 ("≥3 regimes have ≥1 cycle").
 
-Otherwise training is unchanged.
+The `preflight_mode: bool` kwarg added to `train()` does three things and only three things:
+1. Lowers `online_gate.min_cycles_for_gate` from 8 to 2 (so the natural-trigger path can fire within the bare-min 24-backtest budget; the unit-source G01 check still independently force-triggers).
+2. Lowers `safety.min_genome_fitness` from 55.0 to 0.0 (don't gate deployment in preflight where every genome's fitness will be low on 30 days of data).
+3. Sets a context-local flag readable by gate-firing call sites so phase 2b's force-trigger checks can elect to fire gates even when underlying conditions are not naturally met.
+
+Manifest opening, tap subscription, and worker-buffer aggregation are independent of `preflight_mode` — they always happen if `manifest.open()` was called. Otherwise training is unchanged.
 
 ### 4.4 `audit.py`
 
@@ -316,8 +331,9 @@ def main(models_dir: Path):
             "island_evolver.json":    load_evolver(models_dir),
             "regime_tree.pkl":        load_tree(models_dir),
             "leaf_date_ranges.json":  load_ranges(models_dir),
+            "training_config.json":   load_training_config(models_dir),
         },
-        config=load_config(models_dir),
+        config=load_training_config(models_dir),  # the snapshot from training time
         available_sources=available_sources,
     )
     results = run_registered_checks(ctx, sources=available_sources)
@@ -348,7 +364,11 @@ Total backtests in phase 2: ~3 leaves × 4 pop × 2 gen ≈ 24 backtests on 30d 
 
 ### 5.2 Data acquisition
 
-Preflight first checks `~/.qengine_preflight_cache/eurusd_5m_30d.npy`. If missing, exports from local Postgres via existing `get_candles()`. One-time cost ~10s; cached forever after. Cache file is invalidated by deleting it manually (no automatic invalidation — preflight is a verification harness, not a data freshness checker).
+Preflight uses a fixed slice from within the **training period** (not OOS, to keep the OOS evaluation window uncontaminated): **2024-06-01 to 2024-06-30** OANDA EUR-USD 5m. This window is chosen once and locked in; preflight is reproducible because the slice is deterministic.
+
+Preflight first checks `~/.qengine_preflight_cache/eurusd_5m_2024-06-01_2024-06-30.npy`. If missing, exports from local Postgres via existing `get_candles()`. One-time cost ~10s; cached forever after. Cache invalidation is manual — delete the file. Preflight is a verification harness, not a data freshness checker.
+
+If Postgres is unavailable on a fresh laptop, preflight prints a single-line instruction with the cache path and exits 2.
 
 ### 5.3 Manifest event schema
 
@@ -372,9 +392,9 @@ All events carry `ts` (ISO8601) and `event` (str) in addition to listed fields.
 | File | Lines added | Event type emitted |
 |---|---|---|
 | `train.py` | ~12 | `regime_fit, feature_partition, genome_evaluated`, plus worker-result unpacking (results now `(fitness, events)` tuples; parent calls `manifest.merge_worker_events(...)`) |
-| `__init__.py` | ~6 | `apply_genome, gate_fire, cycle_complete` |
+| `__init__.py` | ~7 | `apply_genome, gate_fire (all 6 gates incl. unknown_regime decided here), cycle_complete` |
 | `island_evolver.py` | ~3 | `migration, feasibility_correction, categorical_resolve` |
-| `regime_inferencer.py` | ~3 | `transition, gate_fire (unknown_regime)` |
+| `regime_inferencer.py` | ~2 | `transition` only |
 
 Most additions are single lines: `manifest.record("event_name", key=value, ...)`. The `train.py` patch is slightly larger because it must also (a) call `manifest.start_worker_buffer()` at the top of `_run_backtest_fitness`, (b) change the return type to `(fitness, events)`, and (c) call `manifest.merge_worker_events(events)` for each result in the parent loop. No control-flow changes; same evaluation order, same fitness values.
 
@@ -389,7 +409,7 @@ The 32 checks fall into 7 categories. Full predicates are written in `preflight_
 | ID | Description | Source | Severity |
 |---|---|---|---|
 | R01 | Feature partition produces ≥2 macro and ≥1 sub feature | runtime, artifact | critical |
-| R02 | Lag-10 autocorrelation threshold respected (≥0.7 macro, <0.7 sub) | runtime, artifact | warn |
+| R02 | Feature partition reports whether the lag-10 autocorrelation threshold (≥0.7 macro, <0.7 sub) was met or fell back to top-half/bottom-half rank split (informational which path was taken) | runtime, artifact | warn |
 | R03 | GMM fit completes; ≥2 macro × ≥2 sub leaves before sparse-merge | runtime, artifact | critical |
 | R04 | Sparse-leaf merge fires; merges leaves below `min_leaf_samples` | runtime, artifact | warn |
 | R05 | Hysteresis margin prevents whipsaw (≥1 boundary classification did not switch) | runtime, manifest | warn |
@@ -490,7 +510,7 @@ Phase 2 — Comprehensive (3m 47s)
   Roundtrip      V01–V03         ✓ 3/3
 
 VERDICT: ✗ FAIL  (1 critical, 1 warning)
-First critical: E05 — see preflight_report.json:checks[12].evidence
+First critical: E05 — see preflight_report.json:checks[id=E05_intended_groups_mutate].evidence
 
 Do NOT commit to cloud training until critical issues are resolved.
 ```
@@ -568,7 +588,7 @@ This guards against the failure mode where someone refactors `manifest.record()`
 
 ### 8.2 Self-test mode
 
-`python preflight.py --self-test` runs only the meta-tests (no training). Target: <5s. Suitable for pre-commit hooks if the user wants them later.
+`python preflight.py --self-test` exec's `pytest tests/test_islandpilotv2_preflight_checks.py -q` and exits with pytest's exit code. No training, no manifest, no data acquisition. Target: <5s. Suitable for pre-commit hooks if the user wants them later.
 
 ### 8.3 Manual verification on first run
 
@@ -598,7 +618,25 @@ Each manifest file's first line is a header record:
 ```json
 {"event": "_header", "schema_version": 1, "qengine_commit": "abc1234", "ts": "..."}
 ```
+
+`qengine_commit` is captured via `subprocess.run(['git', 'rev-parse', 'HEAD'])` at `manifest.open()` time, with a 1-second timeout; falls back to `"unknown"` if git is unavailable or the working tree isn't a repo. Best-effort, never blocks training.
+
 Audit refuses to run if `schema_version` does not match its own (currently 1). This prevents silently misinterpreting old manifests when the schema evolves.
+
+### 9.6 Training config snapshot
+
+Training writes `models/training_config.json` at the start of `train()`:
+```json
+{
+  "schema_version": 1,
+  "qengine_commit": "abc1234",
+  "started_at": "2026-04-26T17:42:13Z",
+  "args": {"exchange": "OANDA", "symbol": "EUR-USD", "timeframe": "5m", ...},
+  "resolved_config": { ... merged DEFAULT_CONFIG with any preflight_mode overrides ... }
+}
+```
+
+Audit reads this to know what config governed training. Without it, audit cannot tell whether `preflight_mode` was active, what gate thresholds were in effect, etc. Add ~3 lines to `train.py` to write this file.
 
 ### 9.3 `manifest.record()` call discipline
 
