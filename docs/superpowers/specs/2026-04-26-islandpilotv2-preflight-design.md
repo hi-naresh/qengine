@@ -59,7 +59,7 @@ pipelines/_shared/IslandPilotV2/
 ├── preflight_checks.py      [NEW]      ~1000 LOC ~34 @check functions
 ├── preflight.py             [REWRITE]  ~250 LOC  smoke (30s) + comprehensive (≤4.5 min)
 ├── audit.py                 [NEW]      ~150 LOC  post-training auditor
-├── train.py                 [PATCH]    +12 lines manifest.record() + worker-result unpacking
+├── train.py                 [PATCH]    +17 lines manifest.record() + worker-result unpack + output_dir kwarg
 ├── __init__.py              [PATCH]    +20 lines manifest.record() at event sites
 ├── island_evolver.py        [PATCH]    +5 lines  manifest.record() at migration accept/reject
 ├── regime_inferencer.py     [PATCH]    +2 lines  manifest.record('transition', ...) only
@@ -68,13 +68,23 @@ tests/                                              [top-level repo dir, existin
 └── test_islandpilotv2_preflight_checks.py  [NEW]  ~150 LOC  meta-tests for each check
 ```
 
-Outputs (all under existing `models/`):
+Outputs:
 ```
-models/
-├── activation_manifest.jsonl.gz   [training output]
-├── preflight_report.json          [preflight output]
-├── audit_report.json              [audit output]
+pipelines/_shared/IslandPilotV2/models/         [cloud training only]
+├── activation_manifest.jsonl.gz                [training output]
+├── training_config.json                        [training output]
+├── audit_report.json                           [audit output, written next to artifacts]
+
+$TMPDIR/qengine_preflight_<random>/             [preflight only — does not touch real models/]
+├── regime_tree.pkl                             [preflight output, isolated]
+├── island_evolver.json                         [preflight output, isolated]
+├── leaf_date_ranges.json                       [preflight output, isolated]
+├── preflight_manifest.jsonl                    [preflight output, isolated]
+├── training_config.json                        [preflight output, isolated]
+├── preflight_report.json                       [preflight output, isolated]
 ```
+
+Preflight runs in a temp dir to keep the real `models/` directory untouched. The path of the tmpdir is printed at end of preflight so reports can be inspected.
 
 ### 3.2 Three execution paths, one shared registry
 
@@ -340,7 +350,8 @@ def main():
         max_sub=cfg.max_sub,
         min_leaf_samples=cfg.min_leaf_samples,
         n_workers=cpu_count(),
-        preflight_mode=True,    # NEW: lowers gate thresholds; see below
+        preflight_mode=True,    # NEW: lowers gate thresholds; see §9.6
+        output_dir=tmp,         # NEW: redirect artifacts away from real models/
     )
     manifest.untap()
 
@@ -444,7 +455,7 @@ All events carry `ts` (ISO8601) and `event` (str) in addition to listed fields.
 
 | File | Lines added | Event type emitted |
 |---|---|---|
-| `train.py` | ~12 | `regime_fit, feature_partition, genome_evaluated`, plus worker-result unpacking (results now `(fitness, events)` tuples; parent calls `manifest.merge_worker_events(...)`) |
+| `train.py` | ~17 | `regime_fit, feature_partition, genome_evaluated`, worker-result unpacking, plus `output_dir` kwarg threading (replace ~5 `_MODELS_DIR` occurrences with `models_dir = output_dir or _MODELS_DIR`) |
 | `__init__.py` | ~7 | `apply_genome, gate_fire (all 6 gates incl. unknown_regime decided here), cycle_complete` |
 | `island_evolver.py` | ~3 | `migration, feasibility_correction, categorical_resolve` |
 | `regime_inferencer.py` | ~2 | `transition` only |
@@ -718,13 +729,18 @@ For Iteration 2 (planned 30 pop × 100 gen × 63 islands ≈ 189k evals, per CLO
 
 Old `models/` directories (from cloud runs before this change) lack `activation_manifest.jsonl.gz`. Audit runs only artifact-source checks against them, returns `skip` with reason `"no manifest"` for manifest-source checks. Audit verdict is `degraded` rather than `broken` if all artifact checks pass.
 
-### 9.6 Preflight-mode flag in `train()`
+### 9.6 Preflight-mode flag and output redirect in `train()`
 
-The new `preflight_mode: bool = False` kwarg on `train.train()`:
-- When `True`: applies the threshold overrides documented in §5.1 *before* config is finalized.
-- When `False`: zero behavioral change. Existing call sites need no edit.
+Two new kwargs on `train.train()`:
 
-Adds one line near the top of `train()`: `if preflight_mode: cfg = apply_preflight_overrides(cfg)`.
+- `preflight_mode: bool = False` — when `True`, applies the threshold overrides documented in §5.1 *before* config is finalized.
+- `output_dir: Path | None = None` — when set, writes `regime_tree.pkl`, `island_evolver.json`, `leaf_date_ranges.json`, `training_config.json`, and `activation_manifest.jsonl.gz` to this dir instead of the hardcoded `_MODELS_DIR` (currently `pipelines/_shared/IslandPilotV2/models/`, train.py:159). When `None`, behavior is unchanged.
+
+Required because `_MODELS_DIR` is hardcoded; without an override, preflight invoking `train()` would clobber real cloud-trained artifacts. Preflight always passes its tmpdir; cloud training leaves the kwarg unset.
+
+Implementation: add `models_dir = output_dir or _MODELS_DIR` near the top of `train()`, then replace every `_MODELS_DIR` reference inside `train()` with `models_dir` (~5 occurrences per train.py grep).
+
+Existing call sites (CLI `python -m pipelines._shared.IslandPilotV2.train`, validate_model.py) do not pass either kwarg and see zero behavioral change.
 
 ---
 
