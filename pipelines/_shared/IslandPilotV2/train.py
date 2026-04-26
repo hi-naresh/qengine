@@ -474,6 +474,15 @@ def _fit_regime_tree(
         persistence_threshold=persistence_threshold,
     )
 
+    from . import manifest as _manifest
+    _manifest.record(
+        "feature_partition",
+        n_macro_feats=len(macro_indices),
+        n_sub_feats=len(sub_indices),
+        autocorr_threshold=persistence_threshold,
+        lag=lag,
+    )
+
     print(f'[train] Fitting RegimeTree: {len(macro_indices)} macro features, '
           f'{len(sub_indices)} sub features...')
 
@@ -847,6 +856,14 @@ def _evolve_islands(tree,
                 fitness, worker_events = result
                 evolver.populations[lid].individuals[idx].fitness = fitness
                 _manifest.merge_worker_events(worker_events)
+                # Emit summary event in parent (worker did not have aggregates)
+                _manifest.record(
+                    "genome_evaluated",
+                    island=lid,
+                    generation=gen,
+                    genome_id=evolver.populations[lid].individuals[idx].id,
+                    fitness=fitness,
+                )
         else:
             for lid, pop in evolver.populations.items():
                 start, end, _ = leaf_date_ranges.get(lid, (train_start, train_end, False))
@@ -1310,6 +1327,16 @@ def train(
     if not separation['valid']:
         print(f'[train] WARNING: {separation["recommendation"]}')
         # Continue anyway — user may still want the models
+
+    from . import manifest as _manifest
+    _manifest.record(
+        "regime_fit",
+        n_macro_clusters=getattr(tree, "n_macro", None) or len(getattr(tree, "macros", []) or []) or None,
+        n_sub_per_macro={},
+        leaves_before_merge=getattr(tree, "leaves_before_merge", None),
+        leaves_after_merge=len(tree.leaf_sample_counts),
+        separation_dict=separation,
+    )
 
     if dry_run:
         print('[train] --dry-run: skipping GA evolution.')

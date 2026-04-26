@@ -287,6 +287,14 @@ class IslandPilot(Pipeline):
         if self.inferencer is not None and not self.inferencer.is_known_regime:
             self._gate_block_count += 1
             self._last_block_reason = 'unknown_regime'
+            from . import manifest as _manifest
+            _manifest.record(
+                "gate_fire",
+                gate="unknown_regime",
+                regime=str(self._active_regime),
+                reason="confidence_below_threshold",
+                blocked=True,
+            )
             return False
 
         # Proven-fitness gate: only trade regimes whose evolved genome scored
@@ -300,6 +308,14 @@ class IslandPilot(Pipeline):
             if self._active_fitness is None or self._active_fitness < min_fitness:
                 self._gate_block_count += 1
                 self._last_block_reason = 'low_fitness'
+                from . import manifest as _manifest
+                _manifest.record(
+                    "gate_fire",
+                    gate="proven_fitness",
+                    regime=str(self._active_regime),
+                    reason="genome_fitness_below_min",
+                    blocked=True,
+                )
                 return False
 
         # Online per-regime PF gating (meta-learning).
@@ -324,6 +340,14 @@ class IslandPilot(Pipeline):
                 if busts >= max_busts:
                     self._gate_block_count += 1
                     self._last_block_reason = 'regime_busted'
+                    from . import manifest as _manifest
+                    _manifest.record(
+                        "gate_fire",
+                        gate="online",
+                        regime=str(self._active_regime),
+                        reason="regime_busted",
+                        blocked=True,
+                    )
                     return False
 
             n = self._regime_cycles.get(rk, 0)
@@ -334,6 +358,14 @@ class IslandPilot(Pipeline):
                 if pf < min_pf:
                     self._gate_block_count += 1
                     self._last_block_reason = 'regime_pf_low'
+                    from . import manifest as _manifest
+                    _manifest.record(
+                        "gate_fire",
+                        gate="online",
+                        regime=str(self._active_regime),
+                        reason="regime_pf_low",
+                        blocked=True,
+                    )
                     return False
 
         # PHASE6: Drift detection — if overall recent-N PF drops well below
@@ -355,6 +387,14 @@ class IslandPilot(Pipeline):
                     self._drift_block_count = getattr(self, '_drift_block_count', 0) + 1
                     self._gate_block_count += 1
                     self._last_block_reason = 'drift'
+                    from . import manifest as _manifest
+                    _manifest.record(
+                        "gate_fire",
+                        gate="drift",
+                        regime=str(self._active_regime),
+                        reason="recent_pf_drop",
+                        blocked=True,
+                    )
                     return False
 
         self._gate_allow_count += 1
@@ -459,6 +499,14 @@ class IslandPilot(Pipeline):
                 # Trigger when loss exceeds halt_pct (e.g. 0.05 = 5% of equity)
                 if balance > 0 and float_pnl < -(halt_pct * balance):
                     self._abort_count += 1
+                    from . import manifest as _manifest
+                    _manifest.record(
+                        "gate_fire",
+                        gate="session_halt",
+                        regime=str(self._active_regime),
+                        reason="float_loss_above_pct",
+                        blocked=False,
+                    )
                     return {'action': 'close_all'}
             except Exception:
                 pass
@@ -470,6 +518,14 @@ class IslandPilot(Pipeline):
         danger = self._compute_danger(strategy)
         if danger > threshold:
             self._abort_count += 1
+            from . import manifest as _manifest
+            _manifest.record(
+                "gate_fire",
+                gate="abort_volatility",
+                regime=str(self._active_regime),
+                reason="danger_above_threshold",
+                blocked=False,
+            )
             return {'action': 'close_all'}
 
         return None
@@ -539,6 +595,21 @@ class IslandPilot(Pipeline):
         self._recent_pnls.append(float(pnl))
         if len(self._recent_pnls) > 100:
             self._recent_pnls = self._recent_pnls[-100:]
+
+        from . import manifest as _manifest
+        rk = str(self._active_regime) if self._active_regime is not None else "unknown"
+        wins = self._regime_wins.get(rk, 0.0)
+        losses = self._regime_losses.get(rk, 0.0)
+        regime_pf = (wins / losses) if losses > 0 else (float("inf") if wins > 0 else 0.0)
+        _manifest.record(
+            "cycle_complete",
+            regime=rk,
+            pnl=float(pnl),
+            n_legs=int(strategy.vars.get('n_legs', 0)) if hasattr(strategy, 'vars') else 0,
+            was_bust=bool(strategy.vars.get('last_session_bust', False)) if hasattr(strategy, 'vars') else False,
+            regime_pf_after=regime_pf if regime_pf != float("inf") else None,
+            regime_cycles_after=int(self._regime_cycles.get(rk, 0)),
+        )
 
     # ------------------------------------------------------------------
     # Stats & persistence
@@ -1039,6 +1110,13 @@ class IslandPilot(Pipeline):
                     idx = int(round(val))
                     idx = max(0, min(idx, len(options) - 1))
                     hp[hp_name] = options[idx]
+                    from . import manifest as _manifest
+                    _manifest.record(
+                        "categorical_resolve",
+                        gene=str(hp_name),
+                        index=int(idx),
+                        resolved_to=str(options[idx]),
+                    )
                 elif val in options:
                     hp[hp_name] = val
                 applied[hp_name] = hp[hp_name]
@@ -1132,6 +1210,14 @@ class IslandPilot(Pipeline):
                     self._apply_debug_logged = True
             except Exception:
                 self._apply_debug_logged = True
+
+        from . import manifest as _manifest
+        _manifest.record(
+            "apply_genome",
+            regime=str(self._active_regime),
+            genes_applied=dict(applied) if isinstance(applied, dict) else {},
+            position_open=bool(strategy.is_open) if hasattr(strategy, 'is_open') else False,
+        )
 
     def _compute_danger(self, strategy) -> float:
         """Simple volatility-based danger proxy in [0, 1]."""

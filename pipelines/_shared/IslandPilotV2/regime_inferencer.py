@@ -149,6 +149,14 @@ class RegimeInferencer:
                 "confidence": float(confidence),
                 "classify_count": self._classify_count,
             })
+            from . import manifest as _manifest
+            _manifest.record(
+                "transition",
+                from_regime=str(old) if old is not None else None,
+                to_regime=str(regime_id),
+                confidence=float(confidence),
+                hysteresis_passed=True,
+            )
 
         # Count the first classification too
         if is_first:
