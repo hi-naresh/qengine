@@ -119,7 +119,7 @@ Output: evolved populations {P_1, ..., P_L}
 2:      P_l <- INITIALIZE_POPULATION(pop_size, genome_bounds)
 3:          // Iteration 1: 5 pipeline + 14 strategy genes from 3 groups (General,
 4:          // Grid/Hedge, Take Profit) with safety overrides (Section 3.4 Table 2).
-4a:         // Iteration 2 widens to 5 + 52 across 7 groups (Section 3.4 Table 3).
+4a:         // Iteration 2 widens to 5 + 52 across 7 groups (Section 3.4.1 Table 3).
 5:  end for
 6:  set module-global _WORKER_CANDLES <- C_1m   // for fork-based workers
 7:
@@ -303,7 +303,7 @@ Three correctness conditions discovered during training are documented here; in 
 
 ## Appendix H: Random-search Control
 
-Appendices H and I jointly cover the validation-analyses programme summarised in §6.9. Each analysis was run after the primary results were in hand to honestly stress-test a specific load-bearing claim of the dissertation, and each is reported here with its limitations. The two appendices share an evidence philosophy: where a full performance ablation would have cost prohibitive compute, a structurally-meaningful reduced version was run instead and the deferred full version is named explicitly. Appendix H quantifies the GA's search-efficiency contribution against uniform random sampling of the same gene space; Appendix I quantifies the regime tree's structural sensitivity to the MI fallback. The pre-flight criterion baseline rate (Appendix F, "Baseline rate of the criterion") completes the programme.
+Appendices H and I jointly cover the validation-analyses programme woven into §6.2 (Appendix H, random-search control) and §6.3 (Appendix I, regime-tree feature-set sensitivity), with the Iteration 2 pre-flight criterion baseline-rate analysis completing the programme in Appendix F. Each analysis was run after the primary results were in hand to honestly stress-test a specific load-bearing claim of the dissertation, and each is reported here with its limitations. The two appendices share an evidence philosophy: where a full performance ablation would have cost prohibitive compute, a structurally-meaningful reduced version was run instead and the deferred full version is named explicitly. Appendix H quantifies the GA's search-efficiency contribution against uniform random sampling of the same gene space; Appendix I quantifies the regime tree's structural sensitivity to the MI fallback. The pre-flight criterion baseline rate (Appendix F, "Baseline rate of the criterion") completes the programme.
 
 Using the same gene-bounds the production GA actually used (extracted directly from the trained `island_evolver.json` to guarantee an apples-to-apples comparison; 20 genes spanning pipeline-level controls and Martingale strategy hyperparameters), we sampled N = 80 random genomes uniformly from the parameter space and evaluated each on the production composite fitness over a 6-month real-engine backtest window (2022-01-01 → 2022-07-01). The same fitness formula, backtest configuration (exchange = OANDA, symbol = EUR-USD, type = cfd, starting_balance = 10 000, route timeframe 30m, cost-model on, no fee), and Martingale strategy class as the production training run were used. Joint-feasibility constraints (TP > 1.5 × hedge distance; deepest-ticket exposure ≤ 20% of equity) were enforced identically to the GA. Pipeline-only genes (6 of 20) were excluded from the strategy hyperparameter dict, mirroring `_apply_genome` in the IslandPilot pipeline.
 
