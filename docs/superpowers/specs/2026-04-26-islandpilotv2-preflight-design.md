@@ -10,7 +10,9 @@
 
 ## 1. Problem Statement
 
-The current IslandPilotV2 preflight (`preflight.py`) is a 4-check smoke test on synthetic GBM data. It runs in ~2 min and confirms the code does not crash. It does **not** confirm:
+The current IslandPilotV2 preflight (`preflight.py`) is a 4-check smoke test on synthetic GBM data. It runs in ~2 min and confirms the code does not crash. **It also has a pre-existing bug**: every import path inside it points at V1 (`pipelines._shared.IslandPilot.*`, verified at lines 11, 35, 81, 101–103, 158), not V2 — the file was duplicated when V2 was forked and the imports were never updated. So even what it checks today is checking the wrong codebase.
+
+The current preflight does **not** confirm:
 
 1. Every tunable hyperparameter group that the design intends to evolve is actually being mutated, **and** every group that is intentionally excluded (e.g. the Filters group is in `_SKIP_PARAMS` because >99% of evolved filter combinations block all entries — see comment at `island_evolver.py:184–187`) is documented as such in the audit log so the exclusion is visible rather than silent.
 2. Every regime leaf gets HP variation across the population.
@@ -45,7 +47,7 @@ A second gap: even when training completes successfully, there is no post-hoc re
 - **N3.** Touching IslandPilot V1.
 - **N4.** A web UI for the report. Terminal pretty-print + JSON sidecar only.
 - **N5.** CI integration. Local-only invocation; CI is a future concern.
-- **N6.** Backwards compatibility with old `models/` artifacts that lack a manifest. Audit on those will skip manifest-source checks and report `n/a` rather than fail.
+- **N6.** Strict backwards compatibility with old `models/` artifacts that pre-date the manifest. Audit *gracefully degrades* on these (skips manifest-source checks, returns verdict `degraded`; see §9.5), but the spec does not promise feature parity with audits run on a manifest-bearing artifact. Re-run training to get full audit fidelity.
 
 ---
 
