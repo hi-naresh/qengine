@@ -59,7 +59,42 @@ The Iteration 1 cloud training run (Google Cloud `c2-standard-60` spot, 60 vCPU 
 | **Iteration 1 cloud (full 2022 to 2024)** | 63 × 10 × 20 | 12,600 | c2-standard-60 (spot), 60 workers | 10 h 33 min | **Primary reported result (§6.1, 6.4–6.6)** |
 | Iteration 2 pre-flight (3-month) | 63 × 8 × 8 | 4,032 | Consumer CPU, 9 workers | ≈ 2.8 h | Architectural validation only (§5.6, §6.7) |
 
-The per-generation fitness trajectory shows mean best-fitness climbing from 55.96 at generation 1 to 58.87 at generation 20, with sibling migration firing every 4 generations. Min-fitness rose from 51.5 to 58.1, indicating that the weakest islands converged toward the elite configuration over the run rather than diverging — a signal that per-island GA dynamics produced consistent rather than scattered evolution under the 3-group, 20-gene search space. On this run no leaf accumulated a 30-day contiguous activation window under the fallback feature partition, so all 63 islands evolved on the full 2022–2024 training window; the fitness-isolation mechanism remains available in code for future windows.
+*Table 6a: Per-generation fitness distribution across 63 islands (Iteration 1 cloud run, source: cloud_training_2026-04-23.log). Migration generations marked ★.*
+
+| Gen | Mean best-fitness | Min | Max | Wall-time (s) |
+|---:|---:|---:|---:|---:|
+| 1 | 55.964 | 51.529 | 58.977 | 1,843 |
+| 2 | 56.507 | 51.974 | 59.077 | 1,917 |
+| 3 | 56.974 | 52.900 | 59.077 | 1,903 |
+| 4 ★ | 57.881 | 55.981 | 59.077 | 1,900 |
+| 5 | 57.952 | 55.981 | 59.077 | 1,895 |
+| 6 | 58.008 | 56.145 | 59.084 | 1,892 |
+| 7 | 58.073 | 56.495 | 59.084 | 1,884 |
+| 8 ★ | 58.394 | 57.440 | 59.084 | 1,884 |
+| 9 | 58.425 | 57.440 | 59.084 | 1,880 |
+| 10 | 58.478 | 57.440 | 59.084 | 1,880 |
+| 11 | 58.498 | 57.440 | 59.084 | 1,882 |
+| 12 ★ | 58.652 | 57.579 | 59.084 | 1,879 |
+| 13 | 58.665 | 57.579 | 59.084 | 1,882 |
+| 14 | 58.681 | 57.579 | 59.180 | 1,885 |
+| 15 | 58.690 | 57.680 | 59.180 | 1,883 |
+| 16 ★ | 58.782 | 57.841 | 59.180 | 1,883 |
+| 17 | 58.789 | 57.841 | 59.180 | 1,887 |
+| 18 | 58.797 | 57.841 | 59.180 | 1,884 |
+| 19 | 58.805 | 57.841 | 59.200 | 1,883 |
+| 20 ★ | 58.867 | 58.090 | 59.200 | 1,880 |
+
+![Figure 8: Per-generation fitness distribution across 63 islands. Vertical dashed lines mark the five sibling-migration events (every 4 generations). The minimum (red) lifts from 51.53 → 58.09 (+12.7%) while the maximum (blue) stays essentially flat (58.98 → 59.20, +0.4%). The min–max envelope compresses from 7.45 at gen 1 to 1.11 at gen 20.](../figures/Figure8_fitness_distribution.png)
+
+Three observations from Figure 8 and Table 6a sharpen the convergence story:
+
+1. **The maximum is essentially flat from generation 1 (58.98 → 59.20, +0.4% over 20 generations).** The elite islands converged on near-optimal genomes within the very first generation; further generations did not improve the *best* island's fitness meaningfully. This indicates that for the 20-gene Iteration 1 search space the GA's exploration phase is short — most of the work happens early, on the best regimes, where regime-specific structure makes a high-fitness configuration accessible quickly.
+
+2. **All convergence comes from the weakest islands rising, not from the best islands improving.** Min-fitness lifted from 51.53 to 58.09 (+12.7%), mean climbed from 55.96 to 58.87 (+5.2%), while max barely moved. The min–max spread compressed from 7.45 to 1.11 over the run — by generation 20 every island is within 1.1 fitness points of the elite, where at generation 1 the spread was nearly seven times larger. This is exactly the *consistent rather than scattered* convergence pattern the regime-conditioned island design was intended to produce.
+
+3. **Migration is doing real work, with diminishing returns.** Generation 4 (the first migration) produces the largest single jump in min-fitness (52.90 → 55.98, **+3.08**). Subsequent migrations contribute progressively less (+0.95, +0.14, +0.16, +0.25 at generations 8, 12, 16, 20). The first migration breaks the worst islands out of poor-initial-population basins by injecting elite genomes from sibling regimes; later migrations operate on already-improved populations where the marginal benefit is smaller. By generation 8 the search is largely converged — extending to 30+ generations would yield only marginal gains on the min-fitness axis given the diminishing-return pattern, supporting the choice of 20 generations as adequate for the 20-gene Iteration 1 search space.
+
+On this run no leaf accumulated a 30-day contiguous activation window under the fallback feature partition, so all 63 islands evolved on the full 2022–2024 training window; the fitness-isolation mechanism remains available in code for future windows where regime-specific contiguous activation regions do form.
 
 ### 6.3 Feature Importance
 
