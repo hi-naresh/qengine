@@ -91,8 +91,8 @@ def open(path: Path) -> None:  # noqa: A001
     """Open the manifest at `path` for append-only writes. Idempotent re-open
     flushes the prior file and starts a new one."""
     global _path, _fp, _records_since_flush
+    prior_path_str = str(_path) if _fp is not None else None
     if _fp is not None:
-        record("_session_restart", prior_path=str(_path))
         close()
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -109,6 +109,8 @@ def open(path: Path) -> None:  # noqa: A001
     _fp.flush()
     _install_signal_handlers()
     atexit.register(close)
+    if prior_path_str is not None:
+        record("_session_restart", prior_path=prior_path_str)
 
 
 def record(event_type: str, **data) -> None:

@@ -73,3 +73,25 @@ def test_double_close_is_idempotent(tmp_path):
     manifest.open(tmp_path / "m.jsonl")
     manifest.close()
     manifest.close()  # must not raise
+
+
+def test_reopen_writes_session_restart_to_new_file(tmp_path):
+    p1 = tmp_path / "first.jsonl"
+    p2 = tmp_path / "second.jsonl"
+    manifest.open(p1)
+    manifest.record("e1", x=1)
+    # Re-open without explicit close
+    manifest.open(p2)
+    manifest.record("e2", y=2)
+    manifest.close()
+    # The first file should be gzipped (closed by the re-open) and NOT contain _session_restart
+    with gzip.open(tmp_path / "first.jsonl.gz", "rt") as f:
+        first_events = [json.loads(l) for l in f if l.strip()]
+    assert all(e["event"] != "_session_restart" for e in first_events), \
+        "_session_restart should NOT appear in prior file"
+    # The second (new) file should contain _session_restart with prior_path
+    with gzip.open(tmp_path / "second.jsonl.gz", "rt") as f:
+        second_events = [json.loads(l) for l in f if l.strip()]
+    restarts = [e for e in second_events if e["event"] == "_session_restart"]
+    assert len(restarts) == 1
+    assert "first.jsonl" in restarts[0]["prior_path"]
