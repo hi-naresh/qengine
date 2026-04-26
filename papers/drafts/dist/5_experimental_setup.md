@@ -33,15 +33,15 @@ The 36-month training window is motivated by three constraints. First, GMM stabi
 
 ### 5.4 Comparison Systems
 
-Three benchmark systems are evaluated alongside IslandPilot on the 2025–2026 OOS period:
+Four systems are evaluated on the 2025–2026 OOS period under identical engine conditions (qengine production engine, real per-candle OANDA spread/slippage, $10,000 starting balance, same Martingale strategy substrate):
 
-**Baseline.** The unenhanced Martingale strategy with the original preset and no pipeline attached — the lower bound against which pipeline value is measured. All systems share the same entry signals, starting balance ($10,000), and execution engine.
+**Baseline.** The unenhanced Martingale strategy with the original preset and no pipeline attached — the lower bound against which pipeline value is measured.
 
-**GTSBotPilot** adapts Rundo et al. (2019) as pipeline hooks over the Martingale strategy: a trend layer (EMA-smoothed derivatives replacing the original regression network), an ATR-scaled grid spacing manager, and a basket equity manager closing positions at 2.0 × ATR(14) profit. Rule-based, no offline training required.
+**GTSBotPilot** is an in-house re-implementation of the GTSBot algorithm family (Rundo et al., 2019) as pipeline hooks over the Martingale strategy: a trend layer (EMA-smoothed derivatives replacing the original regression network), an ATR-scaled grid spacing manager, a basket equity manager closing positions at 2.0 × ATR(14) profit, and a trend-abort guard that *would* terminate cycles at level ≥ 3 under specified threshold conditions. Rule-based, no offline training required.
 
-**FinRLPilot** adapts Liu et al. (2020) FinRL infrastructure to discrete parameter-preset selection across four hedge/TP/depth configurations using a tabular Q-learner trained on 2022–2024 data.
+**FinRLPilot** is an in-house re-implementation of the FinRL algorithm family (Liu et al., 2020), adapting deep-RL infrastructure to discrete parameter-preset selection. Four trained discrete actions span hedge/TP/depth configurations (conservative / moderate / aggressive / tight-TP). A tabular Q-learner backend trained on 2022–2024 data is evaluated in inference mode (no online updates) over the OOS window. Full preset specifications and policy-distribution observations are in Appendix E.
 
-Full implementation details for both comparison systems are in **Appendix E**. Honest re-runs of GTSBotPilot and FinRLPilot under the same production execution engine on the canonical 2025-01-01 to 2026-04-19 OOS window are pending; the primary baseline-vs-pipeline comparison in §6 establishes the load-bearing scientific claim, and comparison-system results will be integrated in the journal extension.
+Both comparison pipelines run on the same engine, the same instrument, the same OOS window, and against the same Martingale strategy substrate as IslandPilot — making the §6 comparison **engine-controlled**: differences in OOS metrics are attributable to the pipeline layer rather than to engine, broker, fill, or data choices. The phrase "FinRL family" and "GTSBot family" should be read in the dissertation as the in-house ports specified here, not as benchmarks against the canonical published external systems. Results are reported in §6.1 Table 5 and analysed in §6.8.
 
 ### 5.5 Execution Cost Model
 
