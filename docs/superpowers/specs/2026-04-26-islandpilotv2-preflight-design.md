@@ -70,23 +70,28 @@ tests/                                              [top-level repo dir, existin
 └── test_islandpilotv2_preflight_checks.py  [NEW]  ~150 LOC  meta-tests for each check
 ```
 
-Outputs:
-```
-pipelines/_shared/IslandPilotV2/models/         [cloud training only]
-├── activation_manifest.jsonl.gz                [training output]
-├── training_config.json                        [training output]
-├── audit_report.json                           [audit output, written next to artifacts]
+Outputs (new files added by this spec marked **NEW**; existing artifacts the pipeline already writes are listed for completeness):
 
-$TMPDIR/qengine_preflight_<random>/             [preflight only — does not touch real models/]
-├── regime_tree.pkl                             [preflight output, isolated]
-├── island_evolver.json                         [preflight output, isolated]
-├── leaf_date_ranges.json                       [preflight output, isolated]
-├── preflight_manifest.jsonl                    [preflight output, isolated]
-├── training_config.json                        [preflight output, isolated]
-├── preflight_report.json                       [preflight output, isolated]
+```
+pipelines/_shared/IslandPilotV2/models/         [cloud training writes here by default]
+├── regime_tree.pkl                             [pre-existing]
+├── island_evolver.json                         [pre-existing]
+├── leaf_date_ranges.json                       [pre-existing]
+├── activation_manifest.jsonl.gz                [NEW: training output]
+├── training_config.json                        [NEW: training output, snapshot of what governed run]
+├── audit_report.json                           [NEW: audit writes here next to the artifacts it audits]
+
+$TMPDIR/qengine_preflight_<random>/             [preflight writes everything here — never touches models/]
+├── regime_tree.pkl                             [isolated copy from preflight's tiny train() invocation]
+├── island_evolver.json                         [isolated]
+├── leaf_date_ranges.json                       [isolated]
+├── activation_manifest.jsonl.gz                [isolated]
+├── training_config.json                        [isolated]
+├── preflight_report.json                       [NEW: preflight output]
+├── audit_report.json                           [NEW: written if audit.py is invoked on this tmpdir]
 ```
 
-Preflight runs in a temp dir to keep the real `models/` directory untouched. The path of the tmpdir is printed at end of preflight so reports can be inspected.
+Preflight uses `tempfile.mkdtemp(prefix="qengine_preflight_")`. The tmpdir path is printed at the end of preflight so the user can inspect reports or re-run audit against it. The tmpdir is **not** auto-cleaned (so reports survive); manual cleanup via OS tmp expiry or explicit `rm -rf`.
 
 ### 3.2 Three execution paths, one shared registry
 
