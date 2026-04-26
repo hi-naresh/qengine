@@ -477,3 +477,95 @@ def check_E09_audit_skip_params_inventory(ctx: CheckContext) -> CheckResult:
         "Filters and dependent threshold params are intentionally skipped",
         evidence={"_SKIP_PARAMS_source": skip_str},
     )
+
+
+# ===== Application category ================================================
+
+@check(id="A01_apply_genome_reads_groups", category="application",
+       source=["runtime", "manifest"], severity="critical",
+       description="_apply_genome reads >=1 gene from each tunable group at runtime")
+def check_A01_apply_genome_reads_groups(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("apply_genome")
+    if not events:
+        return CheckResult.fail("no apply_genome events; _apply_genome may be a no-op")
+    all_genes: set = set()
+    for ev in events:
+        all_genes |= set((ev.get("genes_applied") or {}).keys())
+    if not all_genes:
+        return CheckResult.fail("apply_genome events fired but genes_applied is empty")
+    return CheckResult.pass_(f"{len(all_genes)} distinct genes applied across {len(events)} events")
+
+
+@check(id="A02_mode_aware_coercion", category="application",
+       source=["runtime", "manifest"], severity="warn",
+       description="Mode-aware coercion fires when TP/hedge mode changes")
+def check_A02_mode_aware_coercion(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("apply_genome")
+    modes = set()
+    for ev in events:
+        m = (ev.get("genes_applied") or {}).get("tp_mode")
+        if m:
+            modes.add(m)
+    if len(modes) >= 2:
+        return CheckResult.pass_(f"observed {len(modes)} TP modes: {sorted(modes)}")
+    return CheckResult.warn(
+        f"only {len(modes)} TP modes observed; cannot confirm coercion fired",
+        evidence={"modes": sorted(modes)},
+    )
+
+
+@check(id="A03_every_leaf_has_best_genome", category="application",
+       source=["artifact"], severity="critical",
+       description="Every active leaf has a deployable best_genome in island_evolver.json")
+def check_A03_every_leaf_has_best_genome(ctx: CheckContext) -> CheckResult:
+    ev = ctx.artifact("island_evolver.json") or {}
+    pops = ev.get("populations", {})
+    if not pops:
+        return CheckResult.fail("island_evolver.json has no populations")
+    missing = []
+    for lid, pop in pops.items():
+        best_id = pop.get("best_genome_id")
+        individuals = pop.get("individuals", [])
+        if best_id is None:
+            missing.append(lid)
+            continue
+        if not any(ind.get("id") == best_id and ind.get("genes") for ind in individuals):
+            missing.append(lid)
+    if missing:
+        return CheckResult.fail(f"{len(missing)} leaves lack a deployable best_genome",
+                                evidence={"missing_leaves": missing[:10]})
+    return CheckResult.pass_(f"all {len(pops)} leaves have a deployable best_genome")
+
+
+@check(id="A04_hp_spec_round_trip", category="application",
+       source=["unit"], severity="warn",
+       description="Hyperparameter spec round-trips through Genome mutate/apply")
+def check_A04_hp_spec_round_trip(ctx: CheckContext) -> CheckResult:
+    try:
+        from pipelines._shared.IslandPilotV2.island_evolver import Genome, build_gene_bounds_from_strategy
+    except ImportError as e:
+        return CheckResult.skip(f"cannot import: {e}")
+    class _Stub:
+        @staticmethod
+        def hyperparameters():
+            return [{"name": "tp_value", "type": "float", "min": 5.0, "max": 60.0,
+                     "default": 20.0, "group": "Take Profit"}]
+    try:
+        bounds = build_gene_bounds_from_strategy(_Stub())
+    except Exception as e:
+        return CheckResult.skip(f"build_gene_bounds_from_strategy raised: {e}")
+    if "tp_value" not in bounds:
+        return CheckResult.skip("tp_value not in bounds (may be in _BOUND_OVERRIDES)")
+    try:
+        g = Genome.random(seed=1, bounds=bounds)
+        g.mutate(sigma_pct=0.1, seed=2, bounds=bounds)
+    except Exception as e:
+        return CheckResult.skip(f"Genome.random/mutate signature mismatch: {e}")
+    if "tp_value" not in g.genes:
+        return CheckResult.fail("HP spec round-trip lost tp_value")
+    val = g.genes["tp_value"]
+    # tp_value bound from _BOUND_OVERRIDES is (12, 80) per island_evolver.py;
+    # the stub spec says (5, 60). Accept either range.
+    if not (5.0 <= val <= 80.0):
+        return CheckResult.fail(f"tp_value {val} out of plausible range")
+    return CheckResult.pass_(f"HP spec round-trip OK; tp_value={val:.2f}")

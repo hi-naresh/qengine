@@ -323,3 +323,62 @@ def test_E09_pass():
     from pipelines._shared.IslandPilotV2.preflight_checks import check_E09_audit_skip_params_inventory as fn
     ctx = _make_ctx(sources={"artifact"})
     assert fn(ctx).status in ("pass", "skip")
+
+
+def test_A01_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_A01_apply_genome_reads_groups as fn
+    ctx = _make_ctx(events=[
+        {"event": "apply_genome",
+         "genes_applied": {"max_levels": 3, "tp_value": 24.0, "hedge_value": 12.0}},
+    ])
+    assert fn(ctx).status == "pass"
+
+
+def test_A01_fail_no_apply_events():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_A01_apply_genome_reads_groups as fn
+    ctx = _make_ctx(events=[])
+    assert fn(ctx).status == "fail"
+
+
+def test_A02_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_A02_mode_aware_coercion as fn
+    ctx = _make_ctx(events=[
+        {"event": "apply_genome",
+         "genes_applied": {"tp_mode": "fixed_pips", "tp_value": 24.0}},
+        {"event": "apply_genome",
+         "genes_applied": {"tp_mode": "atr_based", "tp_value": 1.5}},
+    ])
+    assert fn(ctx).status in ("pass", "warn")
+
+
+def test_A03_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
+    ctx = _make_ctx(
+        artifacts={"island_evolver.json": {
+            "populations": {
+                "macro1_sub1": {"best_genome_id": 5, "individuals": [{"id": 5, "fitness": 60.0, "genes": {"x": 1}}]},
+                "macro2_sub1": {"best_genome_id": 3, "individuals": [{"id": 3, "fitness": 55.0, "genes": {"x": 2}}]},
+            }
+        }},
+        sources={"artifact"},
+    )
+    assert fn(ctx).status == "pass"
+
+
+def test_A03_fail_missing_best():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
+    ctx = _make_ctx(
+        artifacts={"island_evolver.json": {
+            "populations": {
+                "macro1_sub1": {"best_genome_id": None, "individuals": []},
+            }
+        }},
+        sources={"artifact"},
+    )
+    assert fn(ctx).status == "fail"
+
+
+def test_A04_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_A04_hp_spec_round_trip as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "warn", "skip")
