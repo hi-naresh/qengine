@@ -28,7 +28,9 @@ class TrendFilter:
     def __init__(self, config: dict):
         self.smoothing_period: int = config.get('smoothing_period', 14)
         self.delta_atr_mult: float = config.get('delta_atr_mult', 0.02)
-        self.confirm_bars: int = config.get('confirm_bars', 3)
+        self.confirm_bars: int = config.get('confirm_bars', 2)
+        self.null_tolerance: int = config.get('null_tolerance', 1)  # NULL bars allowed within streak
+        self.require_acceleration: bool = config.get('require_acceleration', False)
         self.require_direction_match: bool = config.get('require_direction_match', True)
         self.enabled: bool = config.get('enabled', True)
 
@@ -39,6 +41,7 @@ class TrendFilter:
         self.delta: float = 0.0  # adaptive, computed from ATR
         self._raw_trend: str = TREND_NULL       # single-bar classification
         self._confirm_count: int = 0            # consecutive bars confirming same trend
+        self._null_streak: int = 0              # consecutive NULL bars within a streak
         self._pending_trend: str = TREND_NULL   # trend being confirmed
 
         # Stats
@@ -77,27 +80,45 @@ class TrendFilter:
             self.delta = close * 0.00001  # 1 pip equivalent
 
         # Single-bar raw classification
-        if self.d1 > self.delta and self.d2 > 0:
+        # Paper formula: d1 > delta AND d2 > 0 (requires acceleration).
+        # With require_acceleration=False (default), only d1 is checked —
+        # the d2 condition is too noisy on raw EMA without the paper's SCG NN smoother.
+        if self.require_acceleration:
+            is_long = self.d1 > self.delta and self.d2 > 0
+            is_short = self.d1 < -self.delta and self.d2 < 0
+        else:
+            is_long = self.d1 > self.delta
+            is_short = self.d1 < -self.delta
+
+        if is_long:
             self._raw_trend = TREND_LONG
-        elif self.d1 < -self.delta and self.d2 < 0:
+        elif is_short:
             self._raw_trend = TREND_SHORT
         else:
             self._raw_trend = TREND_NULL
 
-        # Confirmation: require confirm_bars consecutive same-direction bars
+        # Confirmation: require confirm_bars consecutive same-direction bars.
+        # null_tolerance allows N null bars within a streak without full reset —
+        # prevents choppy 1-minute candles from destroying every confirmation streak.
         if self._raw_trend == TREND_NULL:
-            # Null breaks any streak
-            self._confirm_count = 0
-            self._pending_trend = TREND_NULL
-            self.current_trend = TREND_NULL
+            if self._pending_trend != TREND_NULL and self._null_streak < self.null_tolerance:
+                # Within tolerance: pause streak, don't reset
+                self._null_streak += 1
+            else:
+                # Exceeded tolerance — full reset
+                self._null_streak = 0
+                self._confirm_count = 0
+                self._pending_trend = TREND_NULL
+                self.current_trend = TREND_NULL
         elif self._raw_trend == self._pending_trend:
-            # Same direction — increment streak
+            # Same direction — resume/increment streak
+            self._null_streak = 0
             self._confirm_count += 1
             if self._confirm_count >= self.confirm_bars:
                 self.current_trend = self._pending_trend
-            # else: keep current_trend as-is (could be previous confirmed or null)
         else:
             # Direction changed — start new streak
+            self._null_streak = 0
             self._pending_trend = self._raw_trend
             self._confirm_count = 1
             if self.confirm_bars <= 1:

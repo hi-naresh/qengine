@@ -9,7 +9,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'trend_filter': {
         'smoothing_period': 14,
         'delta_atr_mult': 0.02,          # delta = ATR * mult (adaptive to volatility)
-        'confirm_bars': 3,               # require N consecutive bars confirming trend direction
+        'confirm_bars': 2,               # require N consecutive bars confirming trend direction
+        'null_tolerance': 1,             # allow N null bars within a streak before resetting
+        'require_acceleration': False,   # True=paper's d2>0 check (strict), False=d1 only (practical)
         'require_direction_match': True,
         'enabled': True,
     },
@@ -17,7 +19,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'x_threshold': 15,               # min candles between same-direction trades within a cycle
         'y_threshold_atr_mult': 0.5,     # min price distance as ATR multiple
         'max_operations': 13,
-        'cycle_cooldown': 30,            # min candles to wait after cycle ends before new entry
+        'cycle_cooldown': 10,            # min candles to wait after cycle ends before new entry
         'adaptive': True,
         'enabled': True,
     },

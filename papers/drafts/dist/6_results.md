@@ -1,27 +1,44 @@
 ## 6. Results
 
+*Table 4a: Scope of claims — which result belongs to which iteration, training window, and OOS window.*
+
+| Section | Iteration | Training window | OOS window | Reports |
+|---|---|---|---|---|
+| §6.1 Table 5 | Iteration 1 (20 genes, 3 groups) | 2022-2024 (36m) | 2025-01-02 → 2026-04-19 (15.5m) | Headline pipeline-vs-baseline + 4-system comparison |
+| §6.2 Fitness evolution | Iteration 1 | 2022-2024 | — | Per-generation trajectory across 63 islands |
+| §6.3 Feature importance | Iteration 1 | 2022-2024 | — | MI ranking + fallback partition |
+| §6.4 Pipeline behaviour | Iteration 1 | — | 2025-2026 | Evolved-parameter ranges + depth distribution |
+| §6.5 Cost analysis | Iteration 1 | — | 2025-2026 | Spread-cost mechanics |
+| §6.6 Mechanism analysis | Iteration 1 | — | 2025-2026 | Three risk-bounding mechanisms + their evidence |
+| §6.7 Pre-flight (Iteration 2) | Iteration 2 (57 genes, 7 groups) | 2024 Q1 (3m) | 2024 Q2 (3m, held-out) | Architectural-validation only — *not* §6.1 numbers |
+| §6.8 Pipeline comparison | All four pipelines | as above | 2025-01-02 → 2026-04-19 | Engine-controlled three-way comparison + figures |
+
+The §6 numerical results all come from Iteration 1 acting on 2025–2026 data through the corrected qengine engine. Iteration 2 (the design endpoint described in §3.4 Table 3) is implementation-complete in source but is **not** the model that produced §6.1.
+
 ### 6.1 Primary Out-of-Sample Result
 
-Table 5 reports the primary comparison on the 15.5-month strictly out-of-sample period (Jan 2025 to mid-Apr 2026), under identical execution conditions: $10,000 starting balance and the qengine production engine with real per-candle OANDA spread, swap, and slippage. The pipeline was trained exclusively on 2022–2024; no 2025–2026 data entered fitting of any genome, regime tree, or parameter.
+Table 5 reports the primary engine-controlled comparison across **four pipelines** on the 15.5-month strictly out-of-sample period (2025-01-02 to 2026-04-19), under identical conditions: $10,000 starting balance, the qengine production engine, real per-candle OANDA spread, swap and slippage cost model, and the same Martingale strategy substrate. IslandPilot was trained exclusively on 2022–2024; no 2025–2026 data entered fitting of any genome, regime tree, or parameter. FinRLPilot's tabular Q-learner was trained on the same 2022–2024 window. GTSBotPilot is rule-based and requires no offline training. The Baseline runs the original Martingale preset with no pipeline attached.
 
-*Table 5: Pipeline vs baseline, primary out-of-sample result (5m EUR-USD, 2025-01-01 to 2026-04-19).*
+*Table 5: Engine-controlled pipeline comparison, EUR-USD 5m, 2025-01-02 to 2026-04-19 (15.5 months OOS).*
 
-| Metric | Baseline | IslandPilot | Delta |
-|---|---|---|---|
-| Sessions | 1,619 | 72 | -96.0% |
-| Trades | 5,238 | 245 | -95.3% |
-| Profit factor | 0.717 | 0.877 | +0.160 (+22%) |
-| Net profit % | -87.38% | -0.83% | +86.55 pp |
-| Max drawdown % | 84.73% | 0.75% | -83.98 pp (≈113× smaller) |
-| Annual return | -89.65% | -0.91% | +88.74 pp |
-| Session win rate | 83.3% | 43.1% | -40.2 pp |
-| Bust rate | 16.8% | 50.0% | +33.2 pp |
-| Level-0 win rate | 26.4% | 5.6% | -20.8 pp |
-| Peak equity usage | 63.7% | 10.3% | -53.4 pp |
-| Worst bust P&L | -$148.99 | -$71.79 | +$77.20 |
-| Cost drag | 29.9% | 19.2% | -10.7 pp |
-| Gross profit | +$21,432 | +$475 | (scale-adjusted) |
-| Gross loss | -$29,893 | -$542 | (scale-adjusted) |
+| Metric | Baseline | GTSBotPilot¹ | FinRLPilot¹ | **IslandPilot** | IP vs Baseline |
+|---|---:|---:|---:|---:|---:|
+| Sessions / cycles | 1,619 | 2,812 | 1,170 | **72** | -96.0% |
+| Trades | 5,238 | 6,614 | 2,837 | **245** | -95.3% |
+| Net profit % | -87.38% | -58.23% | -14.51% | **-0.83%** | +86.55 pp |
+| Profit factor | 0.717 | 0.80 | 0.90 | **0.877** | +0.160 (+22%) |
+| **Max drawdown %** | **84.73%** | **58.38%** | **17.97%** | **0.75%** | **-83.98 pp (≈113× smaller)** |
+| Peak equity usage % | 63.7% | 63.13% | 46.74% | **10.3%** | -53.4 pp |
+| Session win rate | 83.3% | 78% | 54% | **43.1%** | -40.2 pp |
+| Bust rate² | 16.8% | 1.7% | 19% | **50.0%** | +33.2 pp |
+| Worst bust loss | -$148.99 | -$126.55 | -$195.32 | **-$71.79** | +$77.20 |
+| Level-0 win rate | 26.4% | 44% | 35% | **5.6%** | -20.8 pp |
+| Cost drag % | 29.9% | 15.65% | 10.42% | **19.2%** | -10.7 pp |
+| Account blown? | No (1,262 left) | No | No | **No (9,917 left)** | — |
+
+¹ FinRLPilot and GTSBotPilot are in-house re-implementations of the FinRL (Liu et al., 2020) and GTSBot (Rundo et al., 2019) algorithm families running on the same qengine substrate. Full implementation specifications are in Appendix E. The comparison is engine-controlled — same instrument, window, engine, cost model, and base strategy — not a benchmark against the original published external systems. Differences in OOS metrics are attributable to the pipeline layer rather than to engine, broker, fill, or data choices.
+
+² *Bust-rate definitional note.* IslandPilot's 50.0% bust rate counts engine-level CFD margin trips on small dollar amounts; FinRL/GTSBot count strategy-level max-level escapes. The numbers are *not directly comparable in rate*; they are comparable in **absolute worst-bust dollar loss** (IslandPilot -$72 vs FinRL -$195 vs GTSBot -$127) and **net % impact** (IslandPilot -0.83% vs FinRL -14.51% vs GTSBot -58.23%). The high bust-rate reading on IslandPilot reflects how few sessions it opens (72 total) rather than a higher absolute risk profile; full discussion in §6.8.
 
 Three findings dominate Table 5: drawdown collapses by approximately two orders of magnitude (84.73% → 0.75%), peak equity usage falls from 63.7% to 10.3%, and profit factor rises from 0.717 to 0.877 while remaining sub-unity. The pipeline does not produce positive absolute expectancy: PF < 1.0 means gross losses still exceed gross profits, and the run finishes at -0.83% rather than above zero. The honest reading: regime-structured evolutionary optimisation cannot manufacture directional alpha absent from a random-entry Martingale on a mean-zero spot FX signal. The contribution is capital preservation — the approach bounds the drawdown envelope and collapses peak exposure enough to convert a catastrophic strategy into a near-breakeven one.
 
@@ -29,7 +46,7 @@ Three findings dominate Table 5: drawdown collapses by approximately two orders 
 
 **Why the baseline loses 87.4%.** The baseline operates the `'original'` preset with a random entry signal (signal_mode='none', long_only) under a 10-pip hedge distance, 20-pip take-profit, 6 maximum depth levels (depths 0 to 5), and geometric sizing with factor 2.0. A depth-5 bust costs the cumulative geometric sum 1 + 2 + 4 + 8 + 16 + 32 = 63 base units. Across 1,619 sessions, 272 busts occur (16.8% bust rate), with 271 reaching depth 5 (depth distribution table in Section 6.4). These deep busts contribute approximately -$12,784 to the gross loss denominator, overwhelming the +$4,323 in gross profit from depths 0 to 4 and driving net equity from $10,000 to $1,262.
 
-**Comparison systems.** Comparison against GTSBotPilot (Rundo et al., 2019) and FinRLPilot (Liu et al., 2020) on this exact OOS window and cost model is deferred to Section 7 once honest re-run values are available. The primary result here establishes the baseline-to-pipeline comparison alone, which is the load-bearing scientific claim.
+**Comparison systems.** GTSBotPilot and FinRLPilot have been re-run on the canonical OOS window and engine and are reported in Table 5 above. The four-way ordering — IslandPilot ≪ FinRL ≪ GTSBot ≪ Baseline on both net loss and max drawdown — is analysed in §6.8 (mechanism comparison) and §7.5 (architectural comparison), with equity and drawdown trajectories visualised in Figures 5–7.
 
 ### 6.2 Fitness Evolution
 
@@ -79,19 +96,24 @@ Depths 0 and 2 are net-positive; depths 1, 3, 5, and 6 are net-negative. Depth 4
 
 The evolved parameters show meaningful differentiation across the 63 islands, reflecting regime-specific adaptation. Table 9 reports the ranges of key pipeline-level parameters across the trained islands.
 
-*Table 9: Evolved pipeline-level parameter ranges across 63 trained islands.*
+*Table 9: Evolved pipeline-level parameter statistics across 171 individuals (63 islands × ~3 valid individuals each, extracted from the cloud-trained `island_evolver.json` artefact 2026-04-25).*
 
-| Parameter | Min | Max | Mean | Purpose |
-|---|---|---|---|---|
-| gate_confidence_min | 0.000 | 0.349 | ≈ 0.18 | Entry selectivity per regime |
-| abort_aggressiveness | 0.042 | 0.346 | ≈ 0.21 | Cycle termination sensitivity |
-| confidence_sensitivity | 0.736 | 2.000 | ≈ 1.46 | Confidence-based size scaling exponent |
-| recovery_aggression | 0.308 | 0.894 | ≈ 0.57 | Drawdown-based size reduction rate |
-| hysteresis_margin | 0.071 | 0.270 | ≈ 0.18 | Regime switch reluctance |
+| Parameter | Min | Max | Mean | Median | Purpose |
+|---|---:|---:|---:|---:|---|
+| gate_confidence_min | 0.026 | 0.500 | 0.293 | 0.308 | Entry selectivity per regime |
+| abort_aggressiveness | 0.000 | 0.385 | 0.207 | 0.195 | Cycle termination sensitivity |
+| confidence_sensitivity | 0.500 | 1.928 | 1.241 | 1.239 | Confidence-based size scaling exponent |
+| recovery_aggression | 0.311 | 0.927 | 0.611 | 0.609 | Drawdown-based size reduction rate |
+| hysteresis_margin | 0.050 | 0.278 | 0.191 | 0.208 | Regime switch reluctance |
 
-The abort_aggressiveness range (0.042 to 0.346) indicates that the GA has learned when to cut losses early: high-abort-aggressiveness islands terminate sessions before they reach maximum depth, accepting a small certain loss over a potentially catastrophic bust. Low-abort-aggressiveness islands let sessions run, reflecting regimes where recovery probability is higher. The confidence_sensitivity exponent evolves above unity in most regimes (mean ≈ 1.46), producing convex scaling that aggressively penalises low-confidence regime classifications, a conservative stance consistent with the general Martingale risk asymmetry.
+The `gate_confidence_min` mean of 0.29 (and median 0.31) indicates that the GA evolved *moderately restrictive* entry gating — well above the lower bound of 0.0 — meaning the regime confidence must reach approximately 30% before the pipeline allows entry in most evolved configurations. This is the primary lever behind the 96% session-volume collapse (§6.6 Mechanism 1). The `abort_aggressiveness` range (0.000 to 0.385, mean 0.21) shows that the GA has learned when to cut losses early: high-abort-aggressiveness islands terminate sessions before they reach maximum depth, accepting a small certain loss over a potentially catastrophic bust; low-abort-aggressiveness islands let sessions run, reflecting regimes where recovery probability is higher. `confidence_sensitivity` evolves above unity in most regimes (mean 1.24), producing convex scaling that penalises low-confidence regime classifications.
 
-Beyond the pipeline-level genes, Iteration 1's 14 strategy-level genes (§3.4 Table 2) show meaningful per-island variation: evolved `max_levels` spans Iteration 1's full bound [2, 6] (depth-6 sessions in Table 8 arise because `max_levels = N` allows L0 + N hedges); evolved `sizing_factor` distributes across [1.2, 2.0]; mode genes evolve different preferences across `fixed_pips`/`atr_based`/`bucket_pct`/`risk_reward` per regime. The load-bearing controls for the observed drawdown collapse are these depth-related strategy genes (`max_levels`, `sizing_factor`, `hedge_value`) combined with the pipeline-level genes (`gate_confidence_min`, `abort_aggressiveness`, `recovery_aggression`). Iteration 1 contains **no** `signal_mode` or `direction_bias` gene — entry direction is not regime-conditioned in the cloud-trained model, and the mechanism analysis in §6.6 follows directly from this fact.
+**Strategy-level gene findings (artefact verification).** Across the 171 individuals from the cloud-trained model, two findings emerge that the §6 narrative previously misstated:
+
+- **`max_levels` is essentially uniform at the upper bound.** 165 of 171 individuals (96.5%) evolved `max_levels = 6` (the Iteration 1 upper bound); 6 individuals at `max_levels = 5`; **none** lower. The depth-distribution shift visible in Table 8 (most pipeline sessions resolving at depths 1–4) does *not* arise from cross-island `max_levels` diversity — every island has the maximum depth available — but from `abort_aggressiveness` terminating sessions early. This corrects an earlier reading of the parameter ranges and sharpens Mechanism 3 below.
+- **`sizing_factor` distributes across [1.259, 2.000], with 68/171 individuals (39.8%) below the √2 ≈ 1.414 mathematical-viability floor.** Iteration 1's looser bound permitted such genomes; the §6 capital-preservation result emerges *despite* 40% of evolved configurations being mathematically infeasible by the recovery-arithmetic argument (§7.8). This is itself a finding: capital preservation under Iteration 1 is supplied by the abort + gate + size-compression layers, not by the recovery-arithmetic guarantee. Iteration 2 tightens the bound to [1.5, 2.5] explicitly (§3.4).
+
+Iteration 1 contains **no** `signal_mode` or `direction_bias` gene — entry direction is not regime-conditioned in the cloud-trained model, and the mechanism analysis in §6.6 follows directly from this fact.
 
 ### 6.5 Transaction Cost Analysis
 
@@ -118,15 +140,41 @@ The pipeline is, demonstrably, not engineering better entries. Its Level-0 win r
 
 Three mechanisms, all concerned with risk bounding rather than return generation, account for the observed improvement.
 
-**Mechanism 1: Session-volume collapse (regime-gated selectivity).** The pipeline opens 72 sessions against the baseline's 1,619, a 96% reduction. The reduction is produced by the regime inferencer's hysteresis-gated entry (Section 3.6) combined with the per-island `gate_confidence_min` parameter evolved by the GA (mean ≈ 0.18 across islands). In most candles of the OOS period, either the regime confidence is below the evolved threshold or the currently-classified regime has an evolved genome that prohibits entry under current feature values. The pipeline sits out most of the market. This is the dominant contribution to the reduced drawdown: each avoided session is an avoided opportunity to accumulate a depth-5 bust.
+**Mechanism 1: Session-volume collapse (regime-gated selectivity).** The pipeline opens 72 sessions against the baseline's 1,619, a 96% reduction. The reduction is produced by the regime inferencer's hysteresis-gated entry (§3.6) combined with the per-island `gate_confidence_min` parameter evolved by the GA (mean 0.29, median 0.31 across 171 individuals; §6.4 Table 9). In most candles of the OOS period, either the regime confidence is below the evolved threshold or the currently-classified regime has an evolved genome that prohibits entry under current feature values. The pipeline sits out most of the market. This is the dominant contribution to the reduced drawdown: each avoided session is an avoided opportunity to accumulate a depth-5 bust.
 
-**Mechanism 2: Position-size compression (peak-exposure bounding).** Peak equity usage falls from 63.7% (baseline) to 10.3% (pipeline), a reduction of 53.4 percentage points in absolute terms and 84% in relative terms. The AdaptiveSizer (Section 3.5) reduces position size via three multiplicative factors: confidence (f_conf), drawdown (f_dd), and base size (f_base). The evolved `confidence_sensitivity` exponent (mean ≈ 1.46 across islands) produces convex scaling that aggressively penalises regimes where GMM posterior probability is spread across multiple leaves; the evolved `recovery_aggression` parameter (mean ≈ 0.57) scales position down during drawdown. The combined effect is that the pipeline rarely commits more than ten percent of equity to open exposure, even when it does open sessions. A baseline depth-5 bust at full sizing costs up to -$148.99 (worst-case observed); the pipeline's worst-case bust at compressed sizing is -$71.79, a 52% reduction in worst-case loss magnitude.
+**Mechanism 2: Position-size compression (peak-exposure bounding).** Peak equity usage falls from 63.7% (baseline) to 10.3% (pipeline), a reduction of 53.4 percentage points in absolute terms and 84% in relative terms. The AdaptiveSizer (§3.5) reduces position size via confidence and drawdown multiplicative factors. The evolved `confidence_sensitivity` exponent (mean 1.24 across islands) produces convex scaling that penalises regimes where GMM posterior probability is spread across multiple leaves; the evolved `recovery_aggression` parameter (mean 0.61) scales position down during drawdown. The combined effect is that the pipeline rarely commits more than ten percent of equity to open exposure, even when it does open sessions. A baseline depth-5 bust at full sizing costs up to -$148.99 (worst-case observed); the pipeline's worst-case bust at compressed sizing is -$71.79, a 52% reduction in worst-case loss magnitude.
 
-**Mechanism 3: Catastrophic-chain avoidance (depth distribution shift).** The baseline's loss is driven by 271 depth-5 busts (Section 6.1). The pipeline's 72 sessions show a shallower depth distribution: depth 5 accounts for only 2 sessions (2.8%) and depth 6 for 4 sessions (5.6%). The majority of pipeline sessions resolve at depths 1 to 4 (62 of 72, or 86%). This shift reflects both the evolved `max_levels` parameter per island (Iteration 1 bound range [2, 6]; some islands evolved to the upper bound and produced the depth-6 sessions observed in Table 8) and the evolved `abort_aggressiveness` (mean ≈ 0.21), which terminates sessions early in regimes where continued hedging is evaluated as having low recovery probability. The practical effect is that when pipeline sessions do bust, they bust shallow rather than deep.
+**Mechanism 3: Catastrophic-chain avoidance via early abort, not max-depth restriction.** The baseline's loss is driven by 271 depth-5 busts (§6.1). The pipeline's 72 sessions show a shallower depth distribution: depths 5 and 6 together account for only 6 sessions (8.4%); the majority resolve at depths 1–4 (62 of 72, or 86%). The artefact-verified evolved-parameter findings in §6.4 sharpen the mechanism: **`max_levels` evolved uniformly to the Iteration 1 upper bound of 6 across 96.5% of individuals** — every island has the maximum depth ceiling available. The depth-distribution shift therefore comes *not* from per-island depth-cap diversity, but from `abort_aggressiveness` (mean 0.21, range 0.000–0.385) terminating sessions early in regimes where continued hedging is evaluated as having low recovery probability. The practical effect is that when pipeline sessions do escalate, the abort logic intervenes well before the depth ceiling, producing shallow busts rather than deep ones. This is a sharper finding than the original "depth capping" framing: the GA, given the freedom to lower `max_levels`, did not — it found capital preservation through the orthogonal lever of *when to terminate the cycle*, not through the lever of *how deep the cycle is allowed to go*.
 
 **What the three mechanisms together do not do.** None of these mechanisms manufactures positive expectancy. The pipeline's profit factor remains 0.877, below break-even. The pipeline still loses money on the OOS window (-0.83% net). The three mechanisms collectively bound the loss envelope tightly enough that the loss is immaterial relative to account size (under one percentage point over 15.5 months), but they do not convert a zero-expectancy random-entry Martingale into a positive-expectancy strategy. For that, either a different entry signal would need to carry genuine directional edge in each regime, or the underlying instrument would need to supply an exploitable structural asymmetry.
 
 **Why the drawdown collapse is a structural rather than statistical result.** Mechanisms 1 to 3 operate independently and compound multiplicatively on the drawdown path. Selectivity removes most paths to drawdown (fewer sessions). Size compression reduces the per-session equity impact. Depth-distribution shift removes the tail of the per-session loss distribution. A 113-fold drawdown reduction is therefore not a statistical artefact of a lucky OOS window; it is the structural consequence of three risk-bounding mechanisms operating in combination. The reproducibility of this specific 0.75% number on a different OOS window is not guaranteed, but the qualitative result (drawdown under one percent against a baseline that loses more than eighty percent) is expected to hold across any window where the learned regime structure is recognisable.
+
+### 6.8 Engine-Controlled Comparison Across Pipeline Approaches
+
+The four-pipeline comparison in Table 5 holds instrument, OOS window, execution engine, cost model, and base strategy fixed; differences in OOS metrics are therefore attributable to the *pipeline layer* — the decision mechanism wrapping the Martingale strategy — rather than to engine, broker, fill, or data choices. Figures 5 and 6 visualise the equity and drawdown trajectories; Figure 7 summarises the maximum-drawdown ranking.
+
+![Figure 5: Equity curve comparison across the four pipelines on EUR-USD 5m, 2025-01-02 to 2026-04-19. Same starting balance, same execution engine, same OANDA cost model. IslandPilot's curve sits within ~$80 of the starting balance throughout; FinRLPilot drifts to -$1,451; GTSBotPilot accumulates -$5,823 of cumulative loss; Baseline collapses to -$8,738.](../figures/Figure5_equity_comparison.png)
+
+![Figure 6: Drawdown trajectory comparison. The shaded area below each curve is the percentage drawdown from the running peak. IslandPilot's drawdown envelope stays within 1% of peak throughout; FinRLPilot reaches 17.97%; GTSBotPilot reaches 58.38%; Baseline reaches 84.73%.](../figures/Figure6_drawdown_comparison.png)
+
+![Figure 7: Maximum drawdown comparison across pipelines. The 20% reference line marks a typical retail-tolerance threshold; only IslandPilot and FinRLPilot stay below it.](../figures/Figure7_maxdd_bars.png)
+
+**Six findings frame the architectural comparison** (full implementation specifications for FinRLPilot and GTSBotPilot in Appendix E):
+
+1. **The capital-preservation gap is large and engine-controlled.** IslandPilot's max drawdown (0.75%) is **24× smaller than FinRLPilot's (17.97%)** and **78× smaller than GTSBotPilot's (58.38%)**. Net loss is similarly ordered: -0.83% vs -14.51% vs -58.23%. None of the three is positive OOS — the contribution is bounded loss under unseen 2025-2026 conditions, not alpha generation. Phrased correctly: this is *competitive capital preservation against in-house implementations of two prominent algorithm families on identical engine substrate*, not outperformance against canonical published systems.
+
+2. **Trade-frequency collapse is the mechanism, not a side-effect.** IslandPilot opens 72 sessions; GTSBot opens 2,812 (39× more); FinRL opens 1,170 (16× more). The pipeline's regime-conditioned gate is doing the work — *not* by improving win rate per session (43% vs 54% vs 78%, the lowest of the three) but by *refusing to trade* in regimes where the underlying Martingale is structurally negative-EV. The contribution is **selectivity at the regime layer**, not improved trading inside any one regime.
+
+3. **Q-learning preset selection (FinRL family) under-utilises its action space on this problem.** FinRLPilot has four trained discrete actions; over 1,170 OOS cycles the policy selects `conservative` 87.9% of the time, `moderate` 8.7%, `tight_tp` 3.3%, and `aggressive` 0%. The Q-policy concentrates on its lowest-leverage preset and never selects the highest-leverage one, yet still loses 14.5% — suggesting the algorithm's expressivity is not the bottleneck. The bottleneck is that *coarse discrete preset selection cannot match the granularity that per-regime continuous parameter evolution provides*.
+
+4. **Hand-set rule-based ablation guards (GTSBot family) require parameterisation that hand-tuning cannot supply.** GTSBot's trend-abort module — designed to cut losses at level ≥ 3 — fired **zero times across 2,812 cycles**, despite L3-L5 contributing -$10,704 of pure loss (level performance: L0–L2 grosses +$4,992; L3–L5 grosses -$10,704). The control surface existed but the activation thresholds were never reached given hand-set parameters. This is the load-bearing motivation for *evolving safety thresholds rather than hand-setting them*, which is what IslandPilot does for its 5 pipeline-level genes.
+
+5. **Cost-drag rank-order inverts trade-frequency rank-order at the per-trade level.** Total cost-drag percentages: IslandPilot 19.2%, GTSBot 15.65%, FinRL 10.42%. Per-trade IslandPilot pays the highest spread share — yet preserves the most capital. The pipeline is *not* preserving capital by trading more cheaply; it is preserving capital by trading *less often*, which inverts cost-per-trade economics. This nuance is worth declaring rather than burying.
+
+6. **The session-win-rate paradox anchors the story.** GTSBot has the highest session win rate (78%) and the worst net result (-58%); FinRL is in the middle on both (54%, -14.5%); IslandPilot has the lowest win rate (43%) and the best net result (-0.83%). Session win rate is **anti-correlated** with net result across the three Martingale-family implementations, because winning small sessions repeatedly does not pay for the rare deep-level loss; the only way out is reducing exposure to those rare-but-large losses. This is the cleanest motivation for the regime-gate contribution: a high win rate is misleading if the loss tail is unbounded.
+
+**Why the differences are this large.** All three non-baseline pipelines have *some* mechanism for limiting downside on the same Martingale strategy, but the mechanisms differ in expressiveness and conditioning. GTSBot's hand-set thresholds never adapt to the regime; FinRL's Q-learner adapts at coarse preset granularity (4 discrete actions, in practice collapsing to 1); IslandPilot adapts at the per-regime continuous-parameter granularity (5 pipeline + 14 strategy parameters per regime, with 63 regimes). The capital-preservation result is *not* unique to evolutionary computation — both FinRL and GTSBot bound losses better than the unenhanced baseline — but the gap to zero (sub-1% net loss vs 14.5% and 58%) is a property of the per-regime continuous-parameter conditioning that only the island-model GA in this work supplies.
 
 ### 6.7 Iteration 2 Architectural Validation (Pre-flight)
 
