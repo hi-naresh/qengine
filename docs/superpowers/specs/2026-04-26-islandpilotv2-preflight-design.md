@@ -31,7 +31,7 @@ A second gap: even when training completes successfully, there is no post-hoc re
 
 ### Goals
 
-- **G1.** Pre-training preflight that verifies all ~31 layers of the pipeline exercise themselves on bare-minimum real data, in **under 5 minutes** on an M-series laptop with all cores.
+- **G1.** Pre-training preflight that runs ~32 layer checks against the pipeline on bare-minimum real data, in **under 5 minutes** on an M-series laptop with all cores.
 - **G2.** Post-training audit that, given a completed `models/` directory, produces a structured report of what fired, what did not, and what was applied per regime — answering "did training do what it should have done?" without re-running anything.
 - **G3.** Both surfaces share the same check predicates so they cannot drift apart.
 - **G4.** Adding a new check requires writing one decorated function and one meta-test. No registry edits, no orchestrator edits.
@@ -56,7 +56,7 @@ A second gap: even when training completes successfully, there is no post-hoc re
 ```
 pipelines/_shared/IslandPilotV2/
 ├── manifest.py              [NEW]      ~80 LOC   global event recorder
-├── preflight_checks.py      [NEW]      ~1000 LOC ~31 @check functions
+├── preflight_checks.py      [NEW]      ~1000 LOC ~32 @check functions
 ├── preflight.py             [REWRITE]  ~250 LOC  smoke (30s) + comprehensive (≤4.5 min)
 ├── audit.py                 [NEW]      ~150 LOC  post-training auditor
 ├── train.py                 [PATCH]    +20 lines manifest.record() at event sites
@@ -101,7 +101,7 @@ The `@check` decorator stamps each check with `source ∈ {unit, runtime, artifa
 - `artifact` — read final pkl/json files (audit only)
 - `manifest` — read events from gzipped JSONL (audit only)
 
-Most checks register two sources, e.g. `source=["runtime", "manifest"]`, so the same predicate runs in both contexts against different evidence streams.
+Most checks register two sources, e.g. `source=["runtime", "manifest"]`. At runtime the check inspects `ctx.available_sources` and runs against whichever source is present (preflight contributes `runtime`+`unit`+`artifact`; audit contributes `manifest`+`artifact`). The predicate body is identical; only the evidence stream differs.
 
 ### 3.3 Coupling via `manifest.py`
 
@@ -348,7 +348,7 @@ Each addition is a single line: `manifest.record("event_name", key=value, ...)`.
 
 ## 6. Check Catalog
 
-The ~31 checks fall into 7 categories. Full predicates are written in `preflight_checks.py`; this section is the index.
+The 32 checks fall into 7 categories. Full predicates are written in `preflight_checks.py`; this section is the index.
 
 ### Regime (R01–R06)
 
@@ -448,7 +448,7 @@ Terminal pretty-print (preflight):
 Phase 1 — Smoke (32s)            ✓ 4/4 passed
 Phase 2 — Comprehensive (3m 47s)
   Regime         R01–R06         ✓ 6/6
-  Evolver        E01–E08         ✗ 7/8 — E05 (Filters group never mutated)
+  Evolver        E01–E09         ✗ 8/9 — E05 (Take Profit group produced 0 mutations)
   Application    A01–A04         ✓ 4/4
   Gates          G01–G06         ✓ 6/6 (all force-triggered)
   Migration      M01–M02         ⚠ 1/2 — M01 (only 1/3 sibling pairs accepted)
@@ -475,12 +475,12 @@ JSON sidecar shape (`preflight_report.json` and `audit_report.json` share the sa
   "summary": {"critical_failures": 1, "warnings": 1, "passes": 28, "skips": 1},
   "checks": [
     {
-      "id": "E05_filters_group_mutates",
+      "id": "E05_intended_groups_mutate",
       "category": "evolver",
       "status": "fail",
       "severity": "critical",
-      "message": "No Filters genes ever applied. _SKIP list likely dropped them.",
-      "evidence": {"filters_keys": [...], "n_events": 24},
+      "message": "Intended groups produced zero mutations: ['Take Profit']",
+      "evidence": {"intended": ["General","Grid / Hedge","Take Profit","Entry Signal","Risk Management","Position Management"], "seen": ["General","Grid / Hedge","Entry Signal","Risk Management","Position Management"]},
       "duration_ms": 4.2,
       "sources_run": ["runtime"]
     },
@@ -508,19 +508,25 @@ JSON sidecar shape (`preflight_report.json` and `audit_report.json` share the sa
 `tests/test_preflight_checks.py` contains one test per check. Each builds a synthetic `CheckContext` that *should* fail and asserts the check returns `fail`. Plus one matching context that *should* pass.
 
 ```python
-def test_E05_filters_group_mutates_fails_when_no_filters_events():
-    ctx = make_synthetic_ctx(events=[
-        {"event": "apply_genome", "genes_applied": {"signal_mode": "ema_cross"}}
-    ])
-    result = check_filters_group_mutates(ctx)
+def test_E05_fails_when_intended_group_silent():
+    # Intended groups derived from synthetic bounds covering 'General' + 'Take Profit'
+    # but events only show 'General' genes applied.
+    ctx = make_synthetic_ctx(
+        bounds={"max_levels": (2, 8, int), "tp_value": (12, 80, float)},
+        events=[{"event": "apply_genome",
+                 "genes_applied": {"max_levels": 5}}],  # tp_value missing
+    )
+    result = check_intended_groups_mutate(ctx)
     assert result.status == "fail"
-    assert "Filters" in result.message
+    assert "Take Profit" in result.message
 
-def test_E05_filters_group_mutates_passes_when_filters_seen():
-    ctx = make_synthetic_ctx(events=[
-        {"event": "apply_genome", "genes_applied": {"session_filter": True}}
-    ])
-    result = check_filters_group_mutates(ctx)
+def test_E05_passes_when_all_intended_groups_seen():
+    ctx = make_synthetic_ctx(
+        bounds={"max_levels": (2, 8, int), "tp_value": (12, 80, float)},
+        events=[{"event": "apply_genome",
+                 "genes_applied": {"max_levels": 5, "tp_value": 24.0}}],
+    )
+    result = check_intended_groups_mutate(ctx)
     assert result.status == "pass"
 ```
 
@@ -534,8 +540,9 @@ This guards against the failure mode where someone refactors `manifest.record()`
 
 After implementation, before relying on preflight:
 1. Run `preflight.py` once; expect green or specific known issues.
-2. Manually break the Filters skip in `island_evolver._SKIP` (remove one filter param), re-run, expect E05 to fail.
-3. Restore, run again, expect green.
+2. Manually move a currently-evolved parameter (e.g. `tp_value`) into `island_evolver._SKIP_PARAMS`, re-run, expect E05 to fail with "Take Profit produced zero mutations". Restore.
+3. Manually short-circuit `_apply_genome` to return early, re-run, expect A01 to fail. Restore.
+4. Run again, expect green.
 
 This confirms the harness actually catches what it claims to catch.
 
@@ -593,7 +600,7 @@ Adds one line near the top of `train()`: `if preflight_mode: cfg = apply_preflig
 
 A successful implementation of this spec satisfies:
 
-- **AC1.** All 31 checks implemented; each has at least one passing and one failing meta-test.
+- **AC1.** All 32 checks implemented; each has at least one passing and one failing meta-test (informational E09 needs only a passing test since it never fails).
 - **AC2.** `python preflight.py` exits within 5 minutes on M-series laptop (`time` ≤ 300s) when the pipeline is healthy.
 - **AC3.** `python preflight.py` exits 1 with a clear message identifying the cause if any of the following are deliberately broken (one at a time):
   - Move a currently-evolved General/TP/Grid param into `_SKIP_PARAMS` so its group goes silent → E05 fails.
