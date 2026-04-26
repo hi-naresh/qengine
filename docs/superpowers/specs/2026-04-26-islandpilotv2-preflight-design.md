@@ -83,9 +83,9 @@ Path 1: Preflight (pre-training)              Path 2: Training (cloud)          
 ─────────────────────────────────             ─────────────────────────                  ─────────────────────────────
 $ python preflight.py                         $ python train.py --workers 60             $ python audit.py models/
 
-  ├─ Phase 1: Smoke (~10s, fail-fast)            ├─ manifest.open(models/...)               ├─ load activation_manifest.jsonl.gz
-  │   ALL @check(source=["unit"]) checks:       ├─ regime tree fit                          ├─ load island_evolver.json
-  │   E01,E02,E03,E07,E08,A04,R06,V03           │   → manifest.record('regime_fit', ...)    ├─ load regime_tree.pkl
+  ├─ Phase 1: Smoke (~5s, fail-fast)             ├─ manifest.open(models/...)               ├─ load activation_manifest.jsonl.gz
+  │   7 unit-source @check predicates:          ├─ regime tree fit                          ├─ load island_evolver.json
+  │   R06,E01,E02,E07,E08,A04,V03               │   → manifest.record('regime_fit', ...)    ├─ load regime_tree.pkl
   │                                             ├─ evolution loop                           │
   ├─ Phase 2: Comprehensive (~4.5 min)          │   → manifest.record('apply_genome',…)     ├─ run all @check(source ∈
   │   30d real EUR-USD 5m, max workers          │   → manifest.record('migration', …)       │       {artifact, manifest})
@@ -312,17 +312,18 @@ def main():
     captured_smoke: list[dict] = []
     captured_comprehensive: list[dict] = []
 
-    # Phase 1 — Smoke (fail-fast, ~30s)
-    # Smoke = the cohort of @check predicates with source=["unit"] only.
-    # No training, no data acquisition — they verify static properties:
-    # GENE_BOUNDS coverage, _SKIP_PARAMS shape, categorical resolver
-    # round-trip, multiprocessing pickling, hyperparameter spec round-trip,
-    # transition grace candles unit logic, manifest gzip round-trip.
-    # The four existing smoke checks (gene bounds present, genome variety,
-    # one synthetic backtest, one generation) are NOT re-implemented as
-    # smoke — checks (a) and (b) become E01/E03 unit-source predicates;
-    # checks (c) and (d) are subsumed by phase 2's bare-minimum real run.
-    smoke_results = run_unit_source_checks()
+    # Phase 1 — Smoke (fail-fast, ~5s)
+    # Smoke = the 7 @check predicates with 'unit' in their source list:
+    #   R06 (transition grace candles), E01 (gene bounds cover groups),
+    #   E02 (_SKIP_PARAMS shape), E07 (categorical resolver round-trip),
+    #   E08 (multiprocess pickling), A04 (HP spec round-trip),
+    #   V03 (manifest gzip round-trip).
+    # No training, no data acquisition. The four existing smoke checks
+    # (gene bounds present, genome variety, one synthetic backtest, one
+    # generation) are NOT re-implemented as smoke — checks (a) and (b)
+    # become E01 (unit) and E03 (runtime); checks (c) and (d) are subsumed
+    # by phase 2's bare-minimum real run.
+    smoke_results = run_unit_source_checks()  # only ['unit'] in source list
     if any(r.status == "fail" and r.severity == "critical"
            for r in smoke_results):
         write_report(smoke_results, tmp, exit_code=1)
