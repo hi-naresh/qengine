@@ -1,0 +1,36 @@
+{
+  "iteration_1": {
+    "groups": [
+      "General",
+      "Grid / Hedge",
+      "Take Profit"
+    ],
+    "counts": {
+      "General": 7,
+      "Grid / Hedge": 4,
+      "Take Profit": 3
+    },
+    "total": 14
+  },
+  "iteration_2": {
+    "groups": [
+      "General",
+      "Grid / Hedge",
+      "Take Profit",
+      "Entry Signal",
+      "Filters",
+      "Risk Management",
+      "Position Management"
+    ],
+    "counts": {
+      "General": 4,
+      "Grid / Hedge": 4,
+      "Take Profit": 2,
+      "Entry Signal": 3,
+      "Filters": 6,
+      "Risk Management": 7,
+      "Position Management": 1
+    },
+    "total": 27
+  }
+}
