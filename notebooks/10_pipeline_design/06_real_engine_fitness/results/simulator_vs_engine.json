@@ -1,0 +1,15 @@
+{
+  "surrogate": {
+    "total_pnl": -3256.0,
+    "avg_win": 1.0,
+    "avg_bust": -63.0,
+    "bust_rate": 0.0258,
+    "n_busts": 129
+  },
+  "engine": {
+    "total_pnl": -400.300394,
+    "n_sessions": 206,
+    "n_busts": 6,
+    "bust_rate": 0.02912621359223301
+  }
+}
