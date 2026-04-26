@@ -59,12 +59,13 @@ pipelines/_shared/IslandPilotV2/
 ├── preflight_checks.py      [NEW]      ~1000 LOC ~32 @check functions
 ├── preflight.py             [REWRITE]  ~250 LOC  smoke (30s) + comprehensive (≤4.5 min)
 ├── audit.py                 [NEW]      ~150 LOC  post-training auditor
-├── train.py                 [PATCH]    +20 lines manifest.record() at event sites
+├── train.py                 [PATCH]    +12 lines manifest.record() + worker-result unpacking
 ├── __init__.py              [PATCH]    +20 lines manifest.record() at event sites
 ├── island_evolver.py        [PATCH]    +5 lines  manifest.record() at migration accept/reject
 ├── regime_inferencer.py     [PATCH]    +5 lines  manifest.record() at transition + unknown-regime
-└── tests/
-    └── test_preflight_checks.py  [NEW] ~150 LOC  meta-tests for each check
+```
+tests/                                              [top-level repo dir, existing convention]
+└── test_islandpilotv2_preflight_checks.py  [NEW]  ~150 LOC  meta-tests for each check
 ```
 
 Outputs (all under existing `models/`):
@@ -122,20 +123,53 @@ This makes `manifest.record(...)` calls in training code safe to leave in always
 Public API:
 
 ```python
+# Parent-process API
 manifest.open(path: Path) -> None
 manifest.record(event_type: str, **data) -> None
 manifest.close() -> None
-manifest.tap(subscriber: Callable[[dict], None]) -> None  # preflight-only
+manifest.tap(subscriber: Callable[[dict], None]) -> None     # preflight-only
+
+# Worker-process API (fork children)
+manifest.start_worker_buffer() -> None                       # call at top of worker fn
+manifest.drain_worker_buffer() -> list[dict]                 # call at end of worker fn
+manifest.merge_worker_events(events: list[dict]) -> None     # parent re-emits each event
 ```
 
 Implementation notes:
 - Module-level singleton. Re-opening overwrites prior path.
-- `record()` is no-op if not opened. No exception, no warning.
-- Events are flushed every N records (N=100) and on close.
+- `record()` is no-op if not opened in parent **and** no worker buffer active. No exception, no warning.
+- In parent process: `record()` writes JSONL to disk and fires the tap (if subscribed).
+- In worker process (after `start_worker_buffer()`): `record()` appends to a thread-local list. **No disk writes from workers.** This avoids file-handle interleaving and the cost of cross-process file locking.
+- Events are flushed to disk every N records (N=100) and on close.
 - `close()` gzips the file in place, leaves `.jsonl.gz` artifact.
-- On training exit (atexit), automatically calls `close()` if open.
+- On parent process exit (atexit), automatically calls `close()` if open.
 - Subscriber callback is fired synchronously inside `record()` after disk write.
 - Records are JSON-serializable dicts with mandatory keys: `ts` (ISO8601), `event` (str). Caller passes additional keys via `**data`.
+
+#### Multiprocessing aggregation
+
+`train.py` evaluates fitness via `multiprocessing.Pool` with `'fork'` context (train.py:809). The `_run_backtest_fitness` worker function is invoked in child processes which inherit a fresh copy of the manifest singleton via copy-on-write but cannot write to the parent's open file handle without race conditions.
+
+The aggregation pattern:
+
+```python
+# Worker side (in _run_backtest_fitness)
+def _run_backtest_fitness(genes, *args) -> tuple[float, list[dict]]:
+    manifest.start_worker_buffer()
+    fitness = ... # existing backtest logic; manifest.record() inside this
+                  # appends to the worker buffer
+    return fitness, manifest.drain_worker_buffer()
+
+# Parent side (in train.py main loop)
+results = pool.starmap(_run_backtest_fitness, tasks)
+for (lid, idx), (fitness, worker_events) in zip(task_keys, results):
+    evolver.populations[lid].individuals[idx].fitness = fitness
+    manifest.merge_worker_events(worker_events)  # re-emits each event in parent
+```
+
+The events the worker emits (`apply_genome`, `gate_fire`, `cycle_complete`, `transition`) are exactly the bulk-volume events. By batching them into the per-task return value, IPC cost stays at one transfer per backtest (~10 KB) rather than per `record()` call.
+
+Sequential mode (`n_workers == 1`) skips the worker-buffer dance: `record()` writes to the parent file directly, since the "worker" is the parent.
 
 Event schema (full list in §5).
 
@@ -337,12 +371,12 @@ All events carry `ts` (ISO8601) and `event` (str) in addition to listed fields.
 
 | File | Lines added | Event type emitted |
 |---|---|---|
-| `train.py` | ~8 | `regime_fit, feature_partition, genome_evaluated` |
+| `train.py` | ~12 | `regime_fit, feature_partition, genome_evaluated`, plus worker-result unpacking (results now `(fitness, events)` tuples; parent calls `manifest.merge_worker_events(...)`) |
 | `__init__.py` | ~6 | `apply_genome, gate_fire, cycle_complete` |
 | `island_evolver.py` | ~3 | `migration, feasibility_correction, categorical_resolve` |
 | `regime_inferencer.py` | ~3 | `transition, gate_fire (unknown_regime)` |
 
-Each addition is a single line: `manifest.record("event_name", key=value, ...)`. No control-flow changes in any patched file.
+Most additions are single lines: `manifest.record("event_name", key=value, ...)`. The `train.py` patch is slightly larger because it must also (a) call `manifest.start_worker_buffer()` at the top of `_run_backtest_fitness`, (b) change the return type to `(fitness, events)`, and (c) call `manifest.merge_worker_events(events)` for each result in the parent loop. No control-flow changes; same evaluation order, same fitness values.
 
 ---
 
@@ -623,6 +657,8 @@ A successful implementation of this spec satisfies:
 - **R-2.** Force-triggered gate checks may diverge from natural-trigger conditions if gate code is later refactored. *Mitigation:* unit checks in G01–G06 directly invoke the gate function with synthetic inputs — same code path as production, just hand-fed state.
 - **R-3.** Manifest size could exceed 10 MB on runs with denser cycle activity. *Mitigation:* if violated in practice, add per-event-type sampling (e.g. emit only every 10th `genome_evaluated`).
 - **R-4.** Bare-minimum config (3 leaves × 4 pop × 2 gen) may not produce ≥3 regimes-with-cycles on every 30-day window. *Mitigation:* preflight cache fixes the slice; pick a 30-day window known to span multiple regime types (will be selected once, locked in).
+- **R-5.** Multiprocessing aggregation correctness: if a worker raises before reaching `drain_worker_buffer()`, its events are lost (process-local). *Mitigation:* wrap the worker body in `try/finally` so the buffer is drained and returned even on exception (with the exception itself recorded as a `worker_error` event). Lost-events rate must be 0 in steady state — preflight check E08 (multiprocessing pickling round-trip) extended to also assert that an artificially raised exception in the worker still surfaces its events.
+- **R-6.** Sequential-mode parity: when `n_workers == 1`, the worker-buffer dance is bypassed and `record()` writes to the parent file directly. The two paths must produce identical event sequences. *Mitigation:* one of the meta-tests runs the same backtest sequentially and in parallel and asserts the merged manifest matches.
 
 ### Open Questions
 
