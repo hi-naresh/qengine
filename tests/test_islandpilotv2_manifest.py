@@ -278,3 +278,12 @@ def test_run_backtest_fitness_returns_tuple_signature():
     assert (ret_anno is tuple
             or "tuple" in str(ret_anno).lower()
             or "Tuple" in str(ret_anno))
+
+
+def test_preflight_mode_kwarg_signature():
+    """train() must accept preflight_mode kwarg with default False."""
+    import inspect
+    from pipelines._shared.IslandPilotV2 import train as tm
+    sig = inspect.signature(tm.train)
+    assert "preflight_mode" in sig.parameters
+    assert sig.parameters["preflight_mode"].default is False

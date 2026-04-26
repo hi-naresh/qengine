@@ -1089,6 +1089,7 @@ def train(
     n_workers: int = 1,
     candles_file: Optional[str] = None,
     output_dir: Optional[Path] = None,
+    preflight_mode: bool = False,
 ) -> dict:
     """Full IslandPilot training pipeline.
 
@@ -1132,6 +1133,17 @@ def train(
         _resolved_config = _DEFAULT_CONFIG
     except Exception:
         _resolved_config = {}
+
+    if preflight_mode:
+        # Preflight runs on a tiny 30-day slice with 24 total backtests.
+        # Lower thresholds so the natural-trigger paths for online_gate
+        # and proven_fitness can fire within that budget. Deep-copy so we
+        # never mutate the imported DEFAULT_CONFIG (other tests / runtime
+        # consumers re-read it).
+        from copy import deepcopy
+        _resolved_config = deepcopy(_resolved_config) if _resolved_config else {}
+        _resolved_config.setdefault("online_gate", {})["min_cycles_for_gate"] = 2
+        _resolved_config.setdefault("safety", {})["min_genome_fitness"] = 0.0
     _write_training_config_snapshot(
         out_path=models_dir / 'training_config.json',
         args={
