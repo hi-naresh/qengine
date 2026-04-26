@@ -265,3 +265,16 @@ def test_training_config_snapshot_written(tmp_path):
     assert "started_at" in snap
     assert "qengine_commit" in snap
     assert snap["resolved_config"]["online_gate"]["min_cycles_for_gate"] == 8
+
+
+def test_run_backtest_fitness_returns_tuple_signature():
+    """_run_backtest_fitness must signal a tuple return after the patch.
+    The actual call requires DB; we verify the contract via signature inspection."""
+    import inspect
+    from pipelines._shared.IslandPilotV2 import train as tm
+    sig = inspect.signature(tm._run_backtest_fitness)
+    ret_anno = sig.return_annotation
+    # Accept several spellings of "tuple"
+    assert (ret_anno is tuple
+            or "tuple" in str(ret_anno).lower()
+            or "Tuple" in str(ret_anno))

@@ -842,17 +842,23 @@ def _evolve_islands(tree,
             with _ctx.Pool(processes=n_workers) as pool:
                 results = pool.starmap(_run_backtest_fitness, tasks)
 
-            for (lid, idx), fitness in zip(task_keys, results):
+            from . import manifest as _manifest
+            for (lid, idx), result in zip(task_keys, results):
+                fitness, worker_events = result
                 evolver.populations[lid].individuals[idx].fitness = fitness
+                _manifest.merge_worker_events(worker_events)
         else:
             for lid, pop in evolver.populations.items():
                 start, end, _ = leaf_date_ranges.get(lid, (train_start, train_end, False))
                 s = _date_to_ts_ms(start)
                 e = _date_to_ts_ms(end) + 86_400_000
 
+                from . import manifest as _manifest
                 def _fn(genes, _s=s, _e=e):
-                    return _run_backtest_fitness(genes, exchange, symbol,
-                                                 timeframe, strategy_name, _s, _e)
+                    fitness, worker_events = _run_backtest_fitness(
+                        genes, exchange, symbol, timeframe, strategy_name, _s, _e)
+                    _manifest.merge_worker_events(worker_events)
+                    return fitness
                 pop.evaluate(_fn)
 
         # Only produce next generation's children if there's going to be a next
@@ -893,8 +899,8 @@ def _run_backtest_fitness(
     strategy_name: str,
     start_ts_ms: int,
     end_ts_ms: int,
-) -> float:
-    """Run a qengine backtest over a 1m candle subset and return composite fitness.
+) -> tuple:
+    """Run one backtest, return (fitness, manifest_events).
 
     Fitness = 0.4·(PF−1)·100 + 0.3·max(0,100−DD·5) + 0.2·(1−bust_rate)·100 + 0.1·min(sessions/100, 1)·100
 
@@ -907,7 +913,23 @@ def _run_backtest_fitness(
 
     Candles are read from the module-level `_WORKER_CANDLES` global which is set
     in the parent process before forking workers, avoiding 10 MB serialization per task.
+
+    Forked workers reset SIGTERM/SIGINT to SIG_DFL so signals delivered to
+    the worker do not invoke the parent's manifest close handler. Workers
+    accumulate manifest events into a process-local buffer and return them
+    alongside the fitness; the parent merges them via
+    manifest.merge_worker_events() after pool.starmap returns.
     """
+    import signal as _signal
+    try:
+        _signal.signal(_signal.SIGTERM, _signal.SIG_DFL)
+        _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
+    except (OSError, ValueError):
+        pass
+
+    from . import manifest as _manifest
+    _manifest.start_worker_buffer()
+
     import traceback as _tb
     try:
         from qengine.research.backtest import backtest as run_bt
@@ -916,7 +938,7 @@ def _run_backtest_fitness(
         candles_1m = _WORKER_CANDLES
         if candles_1m is None:
             print('[fitness] ERROR: _WORKER_CANDLES is None — candles not set before forking')
-            return 0.0
+            return 0.0, _manifest.drain_worker_buffer()
 
         # Subset candles to the evaluation window, then fill gaps so the
         # backtest validator (checks candles[1][0]-candles[0][0]==60000ms) passes.
@@ -926,7 +948,7 @@ def _run_backtest_fitness(
         subset = candles_1m[mask]
         subset = _trim_to_contiguous_start(subset)
         if len(subset) < 2000:  # less than ~1.4 days of 1m candles
-            return 0.0
+            return 0.0, _manifest.drain_worker_buffer()
 
         config = {
             'starting_balance': 10_000,
@@ -1002,7 +1024,7 @@ def _run_backtest_fitness(
         if _net is not None:
             try:
                 if math.isnan(float(_net)):
-                    return 0.0
+                    return 0.0, _manifest.drain_worker_buffer()
             except (TypeError, ValueError):
                 pass
 
@@ -1023,7 +1045,7 @@ def _run_backtest_fitness(
         # beats a marginally-losing random-entry strategy in every other term.
         # Below 10 sessions return tiny fitness scaling with activity.
         if n_sessions < 10:
-            return float(n_sessions * 0.5)
+            return float(n_sessions * 0.5), _manifest.drain_worker_buffer()
 
         # Full fitness: PF/DD/bust/session-count composite. PF-term can be
         # negative (strategies losing money), bust-term uses a cubic penalty
@@ -1034,12 +1056,16 @@ def _run_backtest_fitness(
             0.2 * ((1.0 - bust_rate) ** 3) * 100 +         # cubic bust penalty
             0.1 * min(n_sessions / 100.0, 1.0) * 100       # rewards activity
         )
-        return max(0.0, float(fitness))
+        return max(0.0, float(fitness)), _manifest.drain_worker_buffer()
 
     except Exception as e:
         print(f'[fitness] ERROR: {e}')
         print(_tb.format_exc())
-        return 0.0
+        try:
+            _manifest.record("worker_error", traceback=_tb.format_exc())
+        except Exception:
+            pass
+        return 0.0, _manifest.drain_worker_buffer()
 
 
 # ---------------------------------------------------------------------------
