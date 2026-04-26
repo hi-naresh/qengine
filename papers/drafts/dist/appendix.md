@@ -63,7 +63,7 @@ The 6 extension features supplement the 24 empirical-technical indicators along 
 
 The primary trained regime tree (5m, 2022–2024, fallback partition) contains 63 active leaves distributed across 10 macro-clusters after sparse-leaf merging with `min_leaf_samples = 200`. The 10 macro-cluster count and ~6.3 average leaves per macro emerge from BIC-selected GMM model-complexity at each level; the exact per-macro leaf counts depend on the training window and the outcome-label choice. An earlier prototype run (secondary configuration) produced 73 active leaves with macro counts as documented in Table B1 below; the primary configuration produces a somewhat more compact tree (63 leaves) due to the fallback partition using autocorrelation-based feature separation rather than MI-based selection.
 
-*Table B1: Regime tree macro-cluster summary (secondary/prototype configuration, 2006–2025 full-period fit, 73 leaves).*
+*Table B1: Regime tree macro-cluster summary (secondary/prototype configuration, 2020–2025 full-period fit, 73 leaves).*
 
 | Macro ID | Leaves | Training Obs | % of Total |
 |---|---|---|---|
@@ -156,18 +156,18 @@ Output: evolved populations {P_1, ..., P_L}
 38:             end while
 39:             P_l <- offspring[1..pop_size]
 40:         end for
-41:
-42:         if g mod migration_interval = 0 then
-43:             for each macro-cluster M do      // sibling migration
-44:                 siblings <- active_leaves_in(M)
-45:                 for i = 1 to |siblings| do   // ring topology
-46:                     donor <- siblings[(i-1) mod |siblings|]
-47:                     best <- BEST_GENOME(P_donor)
-48:                     INJECT(P_{siblings[i]}, CLONE(best))  // replace worst
-49:                 end for
+41:     end if    // end of evolve-only block
+42:
+43:     if g mod migration_interval = 0 then     // migration runs after fitness, including final generation -- matches train.py:840
+44:         for each macro-cluster M do         // sibling migration
+45:             siblings <- active_leaves_in(M)
+46:             for i = 1 to |siblings| do      // ring topology
+47:                 donor <- siblings[(i-1) mod |siblings|]
+48:                 best <- BEST_GENOME(P_donor)
+49:                 INJECT(P_{siblings[i]}, CLONE(best))  // replace worst
 50:             end for
-51:         end if
-52:     end if    // end of non-final-generation block
+51:         end for
+52:     end if
 53: end for
 54:
 55: return {P_1, ..., P_L}
@@ -305,7 +305,7 @@ Three correctness conditions discovered during training are documented here; in 
 
 Appendices H and I jointly cover the validation-analyses programme woven into §6.2 (Appendix H, random-search control) and §6.3 (Appendix I, regime-tree feature-set sensitivity), with the Iteration 2 pre-flight criterion baseline-rate analysis completing the programme in Appendix F. Each analysis was run after the primary results were in hand to honestly stress-test a specific load-bearing claim of the dissertation, and each is reported here with its limitations. The two appendices share an evidence philosophy: where a full performance ablation would have cost prohibitive compute, a structurally-meaningful reduced version was run instead and the deferred full version is named explicitly. Appendix H quantifies the GA's search-efficiency contribution against uniform random sampling of the same gene space; Appendix I quantifies the regime tree's structural sensitivity to the MI fallback. The pre-flight criterion baseline rate (Appendix F, "Baseline rate of the criterion") completes the programme.
 
-Using the same gene-bounds the production GA actually used (extracted directly from the trained `island_evolver.json` to guarantee an apples-to-apples comparison; 20 genes spanning pipeline-level controls and Martingale strategy hyperparameters), we sampled N = 80 random genomes uniformly from the parameter space and evaluated each on the production composite fitness over a 6-month real-engine backtest window (2022-01-01 → 2022-07-01). The same fitness formula, backtest configuration (exchange = OANDA, symbol = EUR-USD, type = cfd, starting_balance = 10 000, route timeframe 30m, cost-model on, no fee), and Martingale strategy class as the production training run were used. Joint-feasibility constraints (TP > 1.5 × hedge distance; deepest-ticket exposure ≤ 20% of equity) were enforced identically to the GA. Pipeline-only genes (6 of 20) were excluded from the strategy hyperparameter dict, mirroring `_apply_genome` in the IslandPilot pipeline.
+Using the same gene-bounds the production GA actually used (extracted directly from the trained `island_evolver.json` to guarantee an apples-to-apples comparison; 20 genes spanning pipeline-level controls and Martingale strategy hyperparameters), we sampled N = 80 random genomes uniformly from the parameter space and evaluated each on the production composite fitness over a 6-month real-engine backtest window (2022-01-01 → 2022-07-01). The same fitness formula, backtest configuration (exchange = OANDA, symbol = EUR-USD, type = cfd, starting_balance = 10 000, route timeframe 30m, cost-model on, no fee), and Martingale strategy class as the production training run were used. Joint-feasibility constraints (TP > 1.5 × hedge distance; deepest-ticket exposure ≤ 20% of equity) were enforced identically to the GA. Pipeline-only genes (6 of 20) were excluded from the strategy hyperparameter dict, mirroring `_apply_genome` in the IslandPilot pipeline. *Timeframe note:* the random-control was evaluated at 30m route timeframe rather than the 5m production timeframe; the d=5.38 dominance is far above any plausible timeframe-induced shift, so this does not affect the directional conclusion.
 
 | Metric                                | Random (N = 80)   | Trained GA (63 islands, last gen) |
 |---------------------------------------|-------------------|-----------------------------------|

@@ -2,9 +2,9 @@
 
 ### 5.1 Data and Execution Environment
 
-The evaluation uses EUR-USD foreign exchange data at 1-minute resolution from OANDA Corporation (REST API v20), stored in a PostgreSQL database. The full dataset covers January 2, 2006 to December 30, 2025 (~10.4M 1-minute candles, mid-price; no survivorship adjustment as EUR-USD is a continuously traded major). For this evaluation, training data is aggregated to 5-minute candles. The 5m resolution balances signal granularity against computational cost: it yields ~105,000 candles per year (after weekend exclusion), supplying a richer regime-discovery sample than coarser timeframes, and matches the entry-to-resolution rhythm of the Martingale strategy under study (depth-3 sessions at 20-pip hedge spacing typically resolve in 30–90 minutes, intervals that 30m candles coarsen beyond the strategy's natural cycle).
+The evaluation uses EUR-USD foreign exchange data at 1-minute resolution from OANDA Corporation (REST API v20), stored in a PostgreSQL database. The full dataset covers January 1, 2020 to April 20, 2026 (~2.31M 1-minute candles, mid-price; no survivorship adjustment as EUR-USD is a continuously traded major). For this evaluation, training data is aggregated to 5-minute candles. The 5m resolution balances signal granularity against computational cost: it yields ~105,000 candles per year (after weekend exclusion), supplying a richer regime-discovery sample than coarser timeframes, and matches the entry-to-resolution rhythm of the Martingale strategy under study (depth-3 sessions at 20-pip hedge spacing typically resolve in 30–90 minutes, intervals that 30m candles coarsen beyond the strategy's natural cycle).
 
-Training data spans January 1, 2022 to December 31, 2024 (1,106,233 one-minute candles, resampled to 221,246 5-minute candles, yielding 220,608 clean feature rows after warmup and gap removal). Out-of-sample testing covers January 1, 2025 to April 19, 2026 (15.5 months), representing the strictly unseen period after training concluded.
+Training data spans January 1, 2022 to December 31, 2024 (1,106,233 one-minute candles, resampled to 221,246 5-minute candles, yielding 220,608 clean feature rows after warmup and gap removal). Out-of-sample testing covers January 2, 2025 to April 19, 2026 (15.5 months), representing the strictly unseen period after training concluded.
 
 All backtests run through the full qengine trading engine with CFD order execution, real per-candle OANDA bid-ask spread (§5.5), 30:1 margin, no commission beyond spread, and disabled swap/rollover (for reproducibility). Starting balance is $10,000. Evolved parameters therefore implicitly account for spread impact rather than relying on a simplified simulator (see §7.4 for the empirical sim-to-prod evidence).
 
@@ -25,7 +25,7 @@ The pipeline iteration scope and gene enumerations are documented in §3.4.1 (Ta
 | Training | 2022-01-01 to 2024-12-31 | 36 months | Island evolution; regime discovery and GA optimisation |
 | In-sample check (H1) | 2024-01-01 to 2024-06-30 | 6 months | Sanity check: H1 training data performance |
 | In-sample check (H2) | 2024-07-01 to 2024-12-31 | 6 months | Sanity check: H2 training data performance |
-| Out-of-sample (primary) | 2025-01-01 to 2026-04-19 | 15.5 months | Main evaluation, never seen during training |
+| Out-of-sample (primary) | 2025-01-02 to 2026-04-19 | 15.5 months | Main evaluation, never seen during training |
 
 The pipeline (feature selection, regime discovery, island evolution) is trained exclusively on the 2022–2024 period. All 2025–2026 results are strictly out-of-sample: no re-fitting of the regime tree or island populations is performed on evaluation data. The training cutoff is enforced at the code level: `train.py` hard-rejects any `--train-end` date on or after 2025-01-01.
 

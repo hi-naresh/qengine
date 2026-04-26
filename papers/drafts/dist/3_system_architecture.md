@@ -119,8 +119,8 @@ The pipeline is reported in two iterations distinguished by genome scope. **Iter
 | Take Profit | 3 | unchanged from Iteration 1 |
 | Entry Signal | 24 | adds `signal_mode`, `direction_bias`, `entry_on_crossover`, EMA/RSI/MACD/Supertrend/Stochastic/CCI/ADX/dual-indicator periods. Mode-conditional thresholds (`rsi_ob`, `rsi_os`, `stoch_ob`, `stoch_os`, `cci_ob`, `cci_os`, `bb_period`, `bb_std`) and `model_lookback` excluded — they take effect only when their parent signal is active. |
 | Filters | 0 | full 13-gene group excluded from evolution; see "Bound safety overrides" below |
-| Risk Management | 6 | `max_daily_loss_pct`, `max_weekly_loss_pct`, `max_consec_busts`, `max_exposure_pct`, `cooldown_mode`, `cooldown_value` (subset of declared 12; rest excluded as mode-conditional) |
-| Position Management | 3 | `breakeven_mode`, `breakeven_levels`, `equity_curve_filter` |
+| Risk Management | 12 | `max_daily_loss_pct`, `max_weekly_loss_pct`, `max_consec_busts`, `max_exposure_pct`, `cooldown_mode`, `cooldown_value`, `abort_mode`, `abort_level`, `abort_time_bars`, `abort_pnl_pct`, `equity_curve_filter`, `equity_ema_period` |
+| Position Management | 2 | `breakeven_mode`, `breakeven_levels` |
 | **Strategy-level total** | **52** | (per genome) |
 | Pipeline-level (Table 1) | 5 | unchanged |
 | **Genome total (Iteration 2)** | **57** | legacy `base_size_pct` retired |
@@ -135,7 +135,7 @@ The AdaptiveSizer computes the position size for each trade as a product of thre
 
 $$\text{qty} = \text{base\_size} \times f_{\text{conf}}(\text{confidence}) \times f_{\text{dd}}(\text{drawdown})$$
 
-where base_size is the evolved per-regime base position size (base_size_pct of current equity), and the two scaling factors are defined as:
+where base_size is the evolved per-regime base position size (`base_size_value` (pct of current equity, with `base_size_mode` selecting between `pct_equity` and `capital_aware` derivations from `max_bust_dd_pct`)), and the two scaling factors are defined as:
 
 **Confidence factor.** The confidence scaling function maps regime classification confidence to a size multiplier:
 
