@@ -171,6 +171,19 @@ The events the worker emits (`apply_genome`, `gate_fire`, `cycle_complete`, `tra
 
 Sequential mode (`n_workers == 1`) skips the worker-buffer dance: `record()` writes to the parent file directly, since the "worker" is the parent.
 
+#### Robustness rules
+
+The recorder must never crash training. Specifically:
+
+1. **Re-open without close** — `manifest.open()` called twice without an intervening `close()` flushes the current file, gzips it, then opens the new path. Emits a `_session_restart` header into the new file pointing at the prior path. (Should not happen in practice; documented for completeness.)
+2. **Double-close** — `manifest.close()` is idempotent; the second call is a no-op.
+3. **Serialization failure** — if `json.dumps(record)` raises (e.g. unhandled numpy type), the offending record is dropped, a single line is written to stderr, and a counter `_dropped_events` is incremented. A header check at audit time reports the dropped count.
+4. **Disk full / IO error** — same handling as serialization failure; manifest enters a degraded "dropping further events" mode rather than raising. Subsequent `record()` calls become no-ops.
+5. **Worker buffer cap** — each worker's buffer is capped at 100,000 events. Beyond the cap, additional `record()` calls in that worker are dropped with the same `_dropped_events` accounting. This bounds memory in the case of a buggy backtest loop.
+6. **Non-monotonic timestamps** — events are merged into the parent's manifest in worker-completion order, not creation order. `ts` may not be monotonically increasing. Audit checks must not assume order; use the `island, generation` fields on `genome_evaluated` and the implicit cycle counter on `cycle_complete` if ordering matters.
+7. **SIGTERM / KeyboardInterrupt** — register a signal handler at `manifest.open()` time that calls `close()` on receipt of SIGTERM or SIGINT. Without this, cloud preemption loses the tail of the run.
+8. **Malformed JSONL on read** — audit's `load_manifest()` skips malformed lines (logs the count) rather than refusing to read. A partially-truncated gzip file (training crashed before clean close) is decoded with `gzip.open(..., mode='rt', errors='replace')` and lines after the truncation are skipped.
+
 Event schema (full list in §5).
 
 ### 4.2 `preflight_checks.py`
@@ -256,6 +269,36 @@ class CheckResult:
 ```
 
 Each check is responsible for returning `skip` if its required source is not in `ctx.available_sources` (e.g. an `artifact`-only check returns `skip` during preflight if artifact wasn't written yet).
+
+#### Check error handling
+
+The runner wraps every check invocation:
+
+```python
+def _run_one_check(check_fn, ctx) -> CheckResult:
+    t0 = time.monotonic()
+    try:
+        with timeout(seconds=10):       # per-check hard cap
+            result = check_fn(ctx)
+    except TimeoutError:
+        result = CheckResult.fail(f"timed out after 10s",
+                                  evidence={"check_id": check_fn._meta.id})
+    except Exception as e:
+        result = CheckResult.fail(f"check raised {type(e).__name__}: {e}",
+                                  evidence={"traceback": traceback.format_exc()})
+    result.duration_ms = (time.monotonic() - t0) * 1000
+    # Stamp metadata from the @check decorator onto the result
+    result.id = check_fn._meta.id
+    result.category = check_fn._meta.category
+    result.severity = check_fn._meta.severity
+    result.sources_run = list(ctx.available_sources & set(check_fn._meta.source))
+    return result
+```
+
+This guarantees:
+- A buggy check function can never crash the runner — its failure surfaces as a `fail` result for that single check.
+- A check that hangs (e.g. accidental infinite loop on bad evidence) is killed at 10 seconds and marked failed.
+- All checks always run; the report always shows all 32 results.
 
 ### 4.3 `preflight.py` (rewrite)
 
