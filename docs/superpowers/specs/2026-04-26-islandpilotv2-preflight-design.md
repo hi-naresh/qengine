@@ -83,9 +83,9 @@ Path 1: Preflight (pre-training)              Path 2: Training (cloud)          
 ─────────────────────────────────             ─────────────────────────                  ─────────────────────────────
 $ python preflight.py                         $ python train.py --workers 60             $ python audit.py models/
 
-  ├─ Phase 1: Smoke (~30s)                      ├─ manifest.open(models/...)               ├─ load activation_manifest.jsonl.gz
-  │   gene bounds, genome variety,              ├─ regime tree fit                          ├─ load island_evolver.json
-  │   one synthetic backtest, one gen           │   → manifest.record('regime_fit', ...)    ├─ load regime_tree.pkl
+  ├─ Phase 1: Smoke (~10s, fail-fast)            ├─ manifest.open(models/...)               ├─ load activation_manifest.jsonl.gz
+  │   ALL @check(source=["unit"]) checks:       ├─ regime tree fit                          ├─ load island_evolver.json
+  │   E01,E02,E03,E07,E08,A04,R06,V03           │   → manifest.record('regime_fit', ...)    ├─ load regime_tree.pkl
   │                                             ├─ evolution loop                           │
   ├─ Phase 2: Comprehensive (~4.5 min)          │   → manifest.record('apply_genome',…)     ├─ run all @check(source ∈
   │   30d real EUR-USD 5m, max workers          │   → manifest.record('migration', …)       │       {artifact, manifest})
@@ -302,6 +302,8 @@ This guarantees:
 
 ### 4.3 `preflight.py` (rewrite)
 
+> **Pre-existing bug to fix during rewrite:** the current `pipelines/_shared/IslandPilotV2/preflight.py` was duplicated from V1 and still imports from `pipelines._shared.IslandPilot.*` paths (verified via grep at lines 35, 81, 101–103, 158, plus the docstring at line 11). The rewrite must change every `IslandPilot` to `IslandPilotV2` so V2 preflight tests V2 code, not V1.
+
 ```python
 def main():
     args = parse_args()
@@ -311,9 +313,16 @@ def main():
     captured_comprehensive: list[dict] = []
 
     # Phase 1 — Smoke (fail-fast, ~30s)
-    manifest.tap(captured_smoke.append)
-    smoke_results = run_smoke_phase()
-    manifest.untap()
+    # Smoke = the cohort of @check predicates with source=["unit"] only.
+    # No training, no data acquisition — they verify static properties:
+    # GENE_BOUNDS coverage, _SKIP_PARAMS shape, categorical resolver
+    # round-trip, multiprocessing pickling, hyperparameter spec round-trip,
+    # transition grace candles unit logic, manifest gzip round-trip.
+    # The four existing smoke checks (gene bounds present, genome variety,
+    # one synthetic backtest, one generation) are NOT re-implemented as
+    # smoke — checks (a) and (b) become E01/E03 unit-source predicates;
+    # checks (c) and (d) are subsumed by phase 2's bare-minimum real run.
+    smoke_results = run_unit_source_checks()
     if any(r.status == "fail" and r.severity == "critical"
            for r in smoke_results):
         write_report(smoke_results, tmp, exit_code=1)
