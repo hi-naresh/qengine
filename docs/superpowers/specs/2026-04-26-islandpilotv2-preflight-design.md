@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-26
 **Author:** Claude (brainstormed with user, sneha@botwot.io)
-**Goal:** Before committing to 12+ hour cloud training runs, prove the IslandPilotV2 pipeline is exercising every layer it claims to. After training, produce a structured log of what fired and what didn't.
+**Goal:** Before committing to a ~10+ hour cloud training run (Iteration 1 reference: 10h 33m on `c2-standard-60`, per CLOUD_TRAINING.md:31), prove the IslandPilotV2 pipeline is exercising every layer it claims to. After training, produce a structured log of what fired and what didn't.
 
 > **Scope guard:** This spec covers verification only. Strategy-logic improvements (regime taxonomy, transition matrix, per-regime tactics, abort probabilities) are explicitly out of scope and tracked for a follow-on spec. **IslandPilot V1 is not touched.** All changes land inside `pipelines/_shared/IslandPilotV2/`.
 
@@ -21,7 +21,7 @@ The current IslandPilotV2 preflight (`preflight.py`) is a 4-check smoke test on 
 7. Every island produces a deployable best-genome artifact.
 8. Validate-model OOS path round-trips cleanly.
 
-The cost of missing any of these before a 12-hour cloud run is the cloud spend plus the wall-clock. The cost of building a stronger preflight is ~5 minutes per check at run-time and ~1 day to write.
+The cost of missing any of these before a ~10-hour cloud run is the cloud spend plus the wall-clock. The cost of building a stronger preflight is ~5 minutes per run at preflight-time and ~1 day to write.
 
 A second gap: even when training completes successfully, there is no post-hoc record of which gates fired, which regimes received which genomes, which migrations were accepted, or which feasibility corrections were applied. This makes diagnosing "training ran but the model is bad" impossible without re-running training with debug prints.
 
@@ -35,7 +35,7 @@ A second gap: even when training completes successfully, there is no post-hoc re
 - **G2.** Post-training audit that, given a completed `models/` directory, produces a structured report of what fired, what did not, and what was applied per regime — answering "did training do what it should have done?" without re-running anything.
 - **G3.** Both surfaces share the same check predicates so they cannot drift apart.
 - **G4.** Adding a new check requires writing one decorated function and one meta-test. No registry edits, no orchestrator edits.
-- **G5.** Cloud training has near-zero overhead from the new manifest writer (target: < 1% wall-time, < 10 MB gzipped manifest on the reference 12-hour EUR-USD 5m run).
+- **G5.** Cloud training has near-zero overhead from the new manifest writer (target: < 1% wall-time, < 10 MB gzipped manifest on the reference 10h 33m EUR-USD 5m run with 12,600 evaluations).
 - **G6.** Training code remains runnable without the verification harness — `manifest.record(...)` calls degrade to no-ops if the manifest is not opened.
 
 ### Non-Goals
@@ -685,15 +685,18 @@ Audit reads this to know what config governed training. Without it, audit cannot
 
 Call `manifest.record(...)` only at points that meaningfully advance the pipeline. Do not call it inside per-candle loops (too noisy, blows up manifest size). Per-cycle / per-generation / per-decision is the right granularity.
 
-Estimated event volume on the reference 12-hour cloud run:
-- `apply_genome`: ~1 per cycle × ~10k cycles = 10k events
-- `cycle_complete`: 10k events
-- `gate_fire`: ~1k events
-- `transition`: ~5k events
-- `genome_evaluated`: 30 pop × 100 gen × 63 islands = ~189k events
-- Migration, feasibility, categorical: ~1k each
+Estimated event volume on the Iteration-1 reference cloud run (10h 33m, `c2-standard-60`, 10 pop × 20 gen × 63 islands = 12,600 evaluations, per CLOUD_TRAINING.md:26):
+- `genome_evaluated`: 12,600 events (one per backtest)
+- `apply_genome`: ~1–5 per backtest × 12,600 ≈ 30k events
+- `cycle_complete`: ~1–5 per backtest × 12,600 ≈ 30k events
+- `gate_fire`: ~10% of decisions = ~3k events
+- `transition`: ~2k events (regime switches across all evaluations)
+- `migration`: ≤ 63 × (20 // 5) = 252 events
+- `feasibility_correction, categorical_resolve`: ~1k each at init + sporadic during mutation
 
-Total: ~220k events. JSONL line ~200 bytes avg → ~44 MB raw. Gzipped: ~5–8 MB. Within the <10 MB target in G5.
+Total: ~95k events. JSONL line ~200 bytes avg → ~19 MB raw. Gzipped: ~2–4 MB. Comfortably within the <10 MB G5 target.
+
+For Iteration 2 (planned 30 pop × 100 gen × 63 islands ≈ 189k evals, per CLOUD_TRAINING.md), estimate would scale roughly linearly: ~1.4M events, ~280 MB raw, ~30–50 MB gzipped. **Exceeds G5 target by 3–5×.** When Iteration 2 lands, sample down per-event-type emission (e.g. emit only every 10th `genome_evaluated`) to stay within budget. Tracked as R-3.
 
 ### 9.4 Backwards compatibility
 
