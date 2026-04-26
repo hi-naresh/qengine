@@ -7563,3 +7563,7 @@ papers/drafts/dist/.review_summary.md
 papers/drafts/dist/.backlog.txt
 papers/drafts/dist/.groundtruth.md
 /pipelines/_shared/IslandPilot/models.zip
+/pipelines/_shared/IslandPilotV2/models.zip
+/pipelines/_shared/IslandPilotV2/models/*.pkl
+/pipelines/_shared/IslandPilotV2/models/*.json
+!/pipelines/_shared/IslandPilotV2/models/.gitkeep
