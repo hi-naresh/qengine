@@ -27,6 +27,7 @@ _SCHEMA_VERSION = 1
 # Parent-process state
 _path: Optional[Path] = None
 _fp = None  # text-mode file handle
+_open_pid: Optional[int] = None
 _tap: Optional[Callable[[dict], None]] = None
 _dropped_events: int = 0
 _records_since_flush: int = 0
@@ -41,7 +42,7 @@ _worker_buffer: Optional[list[dict]] = None
 def _reset_for_tests() -> None:
     """Reset all module-level state. Test-only helper."""
     global _path, _fp, _tap, _dropped_events, _records_since_flush, _worker_buffer
-    global _atexit_registered
+    global _atexit_registered, _open_pid
     if _fp is not None:
         try:
             _fp.close()
@@ -49,6 +50,7 @@ def _reset_for_tests() -> None:
             pass
     _path = None
     _fp = None
+    _open_pid = None
     _tap = None
     _dropped_events = 0
     _records_since_flush = 0
@@ -94,7 +96,7 @@ def _install_signal_handlers() -> None:
 def open(path: Path) -> None:  # noqa: A001
     """Open the manifest at `path` for append-only writes. Idempotent re-open
     flushes the prior file and starts a new one."""
-    global _path, _fp, _records_since_flush, _dropped_events, _atexit_registered
+    global _path, _fp, _records_since_flush, _dropped_events, _atexit_registered, _open_pid
     prior_path_str = str(_path) if _fp is not None else None
     if _fp is not None:
         close()
@@ -102,6 +104,7 @@ def open(path: Path) -> None:  # noqa: A001
     path.parent.mkdir(parents=True, exist_ok=True)
     _fp = path.open("a", encoding="utf-8")
     _path = path
+    _open_pid = os.getpid()
     _records_since_flush = 0
     _dropped_events = 0
     header = {
@@ -179,8 +182,12 @@ def untap() -> None:
 
 
 def close() -> None:
-    """Flush + gzip the manifest file. Idempotent."""
-    global _fp, _path
+    """Flush + gzip the manifest file. Idempotent. No-op when called from a
+    process other than the one that opened the manifest (e.g. forked workers
+    inheriting the atexit handler must not gzip the parent's file)."""
+    global _fp, _path, _open_pid
+    if _open_pid is not None and _open_pid != os.getpid():
+        return
     if _fp is None:
         return
     try:
@@ -205,6 +212,7 @@ def close() -> None:
         except Exception as e:
             sys.stderr.write(f"manifest: gzip failed ({e}); leaving uncompressed\n")
     _path = None
+    _open_pid = None
 
 
 # Worker API

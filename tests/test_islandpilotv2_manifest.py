@@ -199,3 +199,38 @@ def test_load_manifest_refuses_wrong_schema(tmp_path):
         f.write('{"event": "_header", "schema_version": 99}\n')
     with pytest.raises(ValueError, match="schema_version"):
         manifest.load_manifest(p)
+
+
+def _worker_that_calls_close(_unused):
+    """Worker that explicitly invokes close() — simulating an atexit handler firing.
+    Must NOT gzip or delete the parent's file."""
+    # The fork inherits _fp, _path, _open_pid, atexit registrations.
+    # Verify that close() is a no-op in this worker.
+    manifest.close()
+    return manifest._open_pid  # parent's pid, untouched
+
+
+def test_close_is_noop_in_forked_worker(tmp_path):
+    """Forked workers inherit the atexit handler. They MUST NOT close+gzip+unlink
+    the parent's manifest file when their process exits or close() is called."""
+    p = tmp_path / "parent.jsonl"
+    manifest.open(p)
+    parent_pid = manifest._open_pid
+    assert parent_pid is not None
+
+    ctx = mp.get_context("fork")
+    with ctx.Pool(processes=1) as pool:
+        result = pool.map(_worker_that_calls_close, [0])
+    # Worker reported parent's pid (proves _open_pid is inherited)
+    assert result[0] == parent_pid
+
+    # Parent's manifest file must still exist (not gzipped, not unlinked yet)
+    assert p.exists(), "parent's manifest file was deleted by worker close()"
+
+    # Parent finishes its session normally
+    manifest.record("apply_genome", regime="r1", genes_applied={"k": 1})
+    manifest.close()
+    assert (tmp_path / "parent.jsonl.gz").exists()
+    with gzip.open(tmp_path / "parent.jsonl.gz", "rt") as f:
+        events = [json.loads(l) for l in f if l.strip()]
+    assert any(e["event"] == "apply_genome" for e in events)
