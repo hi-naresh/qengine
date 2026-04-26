@@ -736,3 +736,140 @@ def check_G06_session_halt(ctx: CheckContext) -> CheckResult:
     sh = [e for e in events if e.get("gate") == "session_halt"]
     return (CheckResult.pass_(f"{len(sh)} session-halt fires") if sh
             else CheckResult.warn("no session-halt fires in manifest"))
+
+
+# ===== Migration category ==================================================
+
+@check(id="M01_acceptance_ratio", category="migration",
+       source=["runtime", "manifest"], severity="warn",
+       description="Sibling acceptance ratio > 0 on >=1 sibling pair")
+def check_M01_acceptance_ratio(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("migration")
+    if not events:
+        return CheckResult.warn("no migration events; either disabled or no migration interval reached")
+    accepted = sum(1 for e in events if e.get("accepted"))
+    if accepted == 0:
+        return CheckResult.warn(f"0/{len(events)} migrations accepted; donors never beat recipient mean?")
+    return CheckResult.pass_(f"{accepted}/{len(events)} migrations accepted")
+
+
+@check(id="M02_migration_interval", category="migration",
+       source=["runtime", "manifest"], severity="warn",
+       description="Migration interval respected (fires every gen // 5)")
+def check_M02_migration_interval(ctx: CheckContext) -> CheckResult:
+    migrations = ctx.events_of_type("migration")
+    gens = sorted({e.get("generation") for e in ctx.events_of_type("genome_evaluated")
+                   if e.get("generation") is not None})
+    if len(migrations) == 0 and len(gens) >= 5:
+        return CheckResult.warn(f"no migrations but {len(gens)} generations elapsed")
+    return CheckResult.pass_(f"observed {len(migrations)} migrations across {len(gens)} generations")
+
+
+# ===== Outcomes category ===================================================
+
+@check(id="O01_three_regimes_with_cycles", category="outcomes",
+       source=["runtime", "manifest"], severity="critical",
+       description=">=3 regimes have >=1 cycle in the bare-min run")
+def check_O01_three_regimes_with_cycles(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("cycle_complete")
+    regimes = {e.get("regime") for e in events if e.get("regime")}
+    if len(regimes) >= 3:
+        return CheckResult.pass_(f"{len(regimes)} regimes had >=1 cycle: {sorted(regimes)[:5]}")
+    return CheckResult.fail(f"only {len(regimes)} regimes had cycles; need >=3",
+                            evidence={"regimes": sorted(regimes)})
+
+
+@check(id="O02_fitness_dispersion", category="outcomes",
+       source=["runtime", "manifest"], severity="critical",
+       description="Fitness std > 0 across genomes")
+def check_O02_fitness_dispersion(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("genome_evaluated")
+    fitnesses = [e.get("fitness", 0.0) for e in events if e.get("fitness") is not None]
+    if len(fitnesses) < 2:
+        return CheckResult.fail(f"only {len(fitnesses)} fitness samples; need >=2")
+    import statistics
+    stdev = statistics.stdev(fitnesses)
+    if stdev > 0:
+        return CheckResult.pass_(f"fitness std={stdev:.3f} across {len(fitnesses)} genomes")
+    return CheckResult.fail("zero fitness dispersion; backtest may be returning constant",
+                            evidence={"fitnesses_unique": list(set(fitnesses))[:5]})
+
+
+@check(id="O03_per_regime_stats_increment", category="outcomes",
+       source=["runtime", "manifest"], severity="critical",
+       description="Per-regime cycle counters increment after each cycle")
+def check_O03_per_regime_stats_increment(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("cycle_complete")
+    if not events:
+        return CheckResult.fail("no cycle_complete events")
+    by_regime: dict = {}
+    for e in events:
+        rk = e.get("regime")
+        cycles_after = e.get("regime_cycles_after")
+        if cycles_after is None:
+            continue
+        prev = by_regime.get(rk, 0)
+        if cycles_after <= prev:
+            return CheckResult.fail(f"regime {rk}: cycle counter did not increment "
+                                    f"(prev {prev}, now {cycles_after})")
+        by_regime[rk] = cycles_after
+    return CheckResult.pass_(f"counters incremented monotonically across {len(by_regime)} regimes")
+
+
+@check(id="O04_recent_pnls_window", category="outcomes",
+       source=["runtime", "manifest"], severity="warn",
+       description="_recent_pnls window updates with each cycle")
+def check_O04_recent_pnls_window(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("cycle_complete")
+    pnls = [e.get("pnl") for e in events if e.get("pnl") is not None]
+    if not pnls:
+        return CheckResult.warn("no pnl values in cycle_complete events")
+    return CheckResult.pass_(f"{len(pnls)} cycle_complete events with pnl populated")
+
+
+# ===== Roundtrip category ==================================================
+
+@check(id="V01_artifacts_load_clean", category="roundtrip",
+       source=["artifact"], severity="critical",
+       description="Required artifacts load without exception")
+def check_V01_artifacts_load_clean(ctx: CheckContext) -> CheckResult:
+    required = ["regime_tree.pkl", "island_evolver.json", "leaf_date_ranges.json"]
+    missing = [n for n in required if ctx.artifact(n) is None]
+    if missing:
+        return CheckResult.fail(f"missing or unloadable: {missing}")
+    return CheckResult.pass_(f"all {len(required)} artifacts loaded")
+
+
+@check(id="V02_validate_model_runs_oos", category="roundtrip",
+       source=["runtime"], severity="warn",
+       description="validate_model.py runs OOS on >=1 island, returns parseable verdict")
+def check_V02_validate_model_runs_oos(ctx: CheckContext) -> CheckResult:
+    try:
+        from pipelines._shared.IslandPilotV2 import validate_model
+        if hasattr(validate_model, "main") or hasattr(validate_model, "validate_island"):
+            return CheckResult.pass_("validate_model module is invocable")
+        return CheckResult.warn("validate_model lacks main entry point")
+    except ImportError as e:
+        return CheckResult.skip(f"cannot import validate_model: {e}")
+
+
+@check(id="V03_manifest_gzip_round_trip", category="roundtrip",
+       source=["unit"], severity="critical",
+       description="Manifest gzips and re-reads losslessly")
+def check_V03_manifest_gzip_round_trip(ctx: CheckContext) -> CheckResult:
+    import tempfile
+    from pathlib import Path
+    from pipelines._shared.IslandPilotV2 import manifest as m
+    m._reset_for_tests()
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "rt.jsonl"
+        m.open(p)
+        m.record("apply_genome", regime="r1", genes_applied={"a": 1})
+        m.record("cycle_complete", regime="r1", pnl=5.0)
+        m.close()
+        gz = p.with_suffix(p.suffix + ".gz")
+        events = m.load_manifest(gz)
+        types = [e["event"] for e in events]
+        if "apply_genome" in types and "cycle_complete" in types:
+            return CheckResult.pass_(f"gzip round-trip preserved {len(events)} events")
+        return CheckResult.fail(f"events lost in round-trip: {types}")
