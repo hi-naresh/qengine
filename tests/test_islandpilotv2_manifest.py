@@ -234,3 +234,12 @@ def test_close_is_noop_in_forked_worker(tmp_path):
     with gzip.open(tmp_path / "parent.jsonl.gz", "rt") as f:
         events = [json.loads(l) for l in f if l.strip()]
     assert any(e["event"] == "apply_genome" for e in events)
+
+
+def test_train_output_dir_kwarg_signature():
+    """train() must accept output_dir kwarg."""
+    import inspect
+    from pipelines._shared.IslandPilotV2 import train as tm
+    sig = inspect.signature(tm.train)
+    assert "output_dir" in sig.parameters
+    assert sig.parameters["output_dir"].default is None

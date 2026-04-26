@@ -1030,6 +1030,7 @@ def train(
     verbose: bool = True,
     n_workers: int = 1,
     candles_file: Optional[str] = None,
+    output_dir: Optional[Path] = None,
 ) -> dict:
     """Full IslandPilot training pipeline.
 
@@ -1046,6 +1047,11 @@ def train(
 
     # Enforce pre-2025 cutoff
     train_end = _enforce_cutoff(train_end)
+
+    # Resolve output dir: preflight passes its tmpdir; cloud training leaves
+    # output_dir=None and uses the package-level _MODELS_DIR default.
+    models_dir = Path(output_dir) if output_dir is not None else _MODELS_DIR
+    models_dir.mkdir(parents=True, exist_ok=True)
 
     tf_minutes = int(jh.timeframe_to_one_minutes(timeframe))
 
@@ -1187,9 +1193,9 @@ def train(
     # Under --dry-run, write to a side location so we don't clobber the
     # currently-shipped models (which are paired with a matching evolver).
     if dry_run:
-        tree_path = str(_MODELS_DIR / 'regime_tree.dryrun.pkl')
+        tree_path = str(models_dir / 'regime_tree.dryrun.pkl')
     else:
-        tree_path = str(_MODELS_DIR / 'regime_tree.pkl')
+        tree_path = str(models_dir / 'regime_tree.pkl')
     tree.save(tree_path)
     print(f'[train] RegimeTree saved → {tree_path}')
 
@@ -1236,12 +1242,12 @@ def train(
         t_total_start=t_total_start,
     )
 
-    evolver_path = str(_MODELS_DIR / 'island_evolver.json')
+    evolver_path = str(models_dir / 'island_evolver.json')
     evolver.save(evolver_path)
     print(f'[train] IslandEvolver saved → {evolver_path}')
 
     # Also save the per-leaf date ranges for auditability
-    leaf_ranges_path = str(_MODELS_DIR / 'leaf_date_ranges.json')
+    leaf_ranges_path = str(models_dir / 'leaf_date_ranges.json')
     with open(leaf_ranges_path, 'w') as f:
         json.dump({
             lid: {'start': s, 'end': e, 'had_window': bool(hw)}
@@ -1256,7 +1262,7 @@ def train(
     _tlog(f'[train]   Started:     {_t0_dt.strftime("%Y-%m-%d %H:%M:%S")} UTC')
     _tlog(f'[train]   Total time:  {elapsed_total/3600:.2f}h ({elapsed_total:.0f}s)')
     _tlog(f'[train]   Generations: {generations}  Islands: {len(evolver.populations)}  Pop: {pop_size}')
-    _tlog(f'[train]   Models dir:  {_MODELS_DIR}')
+    _tlog(f'[train]   Models dir:  {models_dir}')
     _tlog('[train] ══════════════════════════════════════════════════════════')
 
     return {
