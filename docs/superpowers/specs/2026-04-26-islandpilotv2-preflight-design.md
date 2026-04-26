@@ -31,7 +31,7 @@ A second gap: even when training completes successfully, there is no post-hoc re
 
 ### Goals
 
-- **G1.** Pre-training preflight that runs ~32 layer checks against the pipeline on bare-minimum real data, in **under 5 minutes** on an M-series laptop with all cores.
+- **G1.** Pre-training preflight that runs 34 layer checks against the pipeline on bare-minimum real data, in **under 5 minutes** on an M-series laptop with all cores.
 - **G2.** Post-training audit that, given a completed `models/` directory, produces a structured report of what fired, what did not, and what was applied per regime — answering "did training do what it should have done?" without re-running anything.
 - **G3.** Both surfaces share the same check predicates so they cannot drift apart.
 - **G4.** Adding a new check requires writing one decorated function and one meta-test. No registry edits, no orchestrator edits.
@@ -56,7 +56,7 @@ A second gap: even when training completes successfully, there is no post-hoc re
 ```
 pipelines/_shared/IslandPilotV2/
 ├── manifest.py              [NEW]      ~80 LOC   global event recorder
-├── preflight_checks.py      [NEW]      ~1000 LOC ~32 @check functions
+├── preflight_checks.py      [NEW]      ~1000 LOC ~34 @check functions
 ├── preflight.py             [REWRITE]  ~250 LOC  smoke (30s) + comprehensive (≤4.5 min)
 ├── audit.py                 [NEW]      ~150 LOC  post-training auditor
 ├── train.py                 [PATCH]    +12 lines manifest.record() + worker-result unpacking
@@ -298,7 +298,7 @@ def _run_one_check(check_fn, ctx) -> CheckResult:
 This guarantees:
 - A buggy check function can never crash the runner — its failure surfaces as a `fail` result for that single check.
 - A check that hangs (e.g. accidental infinite loop on bad evidence) is killed at 10 seconds and marked failed.
-- All checks always run; the report always shows all 32 results.
+- All checks always run; the report always shows all 34 results.
 
 ### 4.3 `preflight.py` (rewrite)
 
@@ -445,7 +445,7 @@ Most additions are single lines: `manifest.record("event_name", key=value, ...)`
 
 ## 6. Check Catalog
 
-The 32 checks fall into 7 categories. Full predicates are written in `preflight_checks.py`; this section is the index.
+The 34 checks fall into 7 categories. Full predicates are written in `preflight_checks.py`; this section is the index.
 
 ### Regime (R01–R06)
 
@@ -458,7 +458,7 @@ The 32 checks fall into 7 categories. Full predicates are written in `preflight_
 | R05 | Hysteresis margin prevents whipsaw (≥1 boundary classification did not switch) | runtime, manifest | warn |
 | R06 | Transition grace candles delay re-classification correctly | unit | warn |
 
-### Evolver (E01–E08)
+### Evolver (E01–E09)
 
 | ID | Description | Source | Severity |
 |---|---|---|---|
@@ -516,9 +516,9 @@ The 32 checks fall into 7 categories. Full predicates are written in `preflight_
 | V02 | `validate_model.py` runs OOS on ≥1 island, returns parseable verdict | runtime | warn |
 | V03 | Manifest gzips and re-reads losslessly | unit | critical |
 
-**Total: 32 checks.**
+**Total: 34 checks.**
 
-Severity counts: 19 critical, 12 warn, 1 info.
+Severity counts: 21 critical, 12 warn, 1 info.
 
 ---
 
@@ -666,7 +666,7 @@ Each manifest file's first line is a header record:
 
 Audit refuses to run if `schema_version` does not match its own (currently 1). This prevents silently misinterpreting old manifests when the schema evolves.
 
-### 9.6 Training config snapshot
+### 9.3 Training config snapshot
 
 Training writes `models/training_config.json` at the start of `train()`:
 ```json
@@ -685,7 +685,7 @@ Audit reads this to know what config — and what set of evolvable groups/genes 
 
 E05's artifact-source check uses `tunable_groups_snapshot` from this file as the ground truth for "what was intended at training time", not the live `_TUNABLE_GROUPS` from current source. Same for E01.
 
-### 9.3 `manifest.record()` call discipline
+### 9.4 `manifest.record()` call discipline
 
 Call `manifest.record(...)` only at points that meaningfully advance the pipeline. Do not call it inside per-candle loops (too noisy, blows up manifest size). Per-cycle / per-generation / per-decision is the right granularity.
 
@@ -702,16 +702,16 @@ Total: ~95k events. JSONL line ~200 bytes avg → ~19 MB raw. Gzipped: ~2–4 MB
 
 For Iteration 2 (planned 30 pop × 100 gen × 63 islands ≈ 189k evals, per CLOUD_TRAINING.md), estimate would scale roughly linearly: ~1.4M events, ~280 MB raw, ~30–50 MB gzipped. **Exceeds G5 target by 3–5×.** When Iteration 2 lands, sample down per-event-type emission (e.g. emit only every 10th `genome_evaluated`) to stay within budget. Tracked as R-3.
 
-### 9.4 Backwards compatibility
+### 9.5 Backwards compatibility
 
 `manifest.record()` is no-op when manifest is not opened. Existing entry points (`train.py`, validate_model.py, anything calling `IslandPilotPipeline` from a strategy) continue to work without opening a manifest. No surprise behavior.
 
 Old `models/` directories (from cloud runs before this change) lack `activation_manifest.jsonl.gz`. Audit runs only artifact-source checks against them, returns `skip` with reason `"no manifest"` for manifest-source checks. Audit verdict is `degraded` rather than `broken` if all artifact checks pass.
 
-### 9.5 Preflight-mode flag in `train()`
+### 9.6 Preflight-mode flag in `train()`
 
 The new `preflight_mode: bool = False` kwarg on `train.train()`:
-- When `True`: applies the threshold overrides in §5.1 *before* config is finalized.
+- When `True`: applies the threshold overrides documented in §5.1 *before* config is finalized.
 - When `False`: zero behavioral change. Existing call sites need no edit.
 
 Adds one line near the top of `train()`: `if preflight_mode: cfg = apply_preflight_overrides(cfg)`.
@@ -722,7 +722,7 @@ Adds one line near the top of `train()`: `if preflight_mode: cfg = apply_preflig
 
 A successful implementation of this spec satisfies:
 
-- **AC1.** All 32 checks implemented; each has at least one passing and one failing meta-test (informational E09 needs only a passing test since it never fails).
+- **AC1.** All 34 checks implemented; each has at least one passing and one failing meta-test (informational E09 needs only a passing test since it never fails).
 - **AC2.** `python preflight.py` exits within 5 minutes on M-series laptop (`time` ≤ 300s) when the pipeline is healthy.
 - **AC3.** `python preflight.py` exits 1 with a clear message identifying the cause if any of the following are deliberately broken (one at a time):
   - Move a currently-evolved General/TP/Grid param into `_SKIP_PARAMS` so its group goes silent → E05 fails.
