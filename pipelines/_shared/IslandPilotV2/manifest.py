@@ -31,6 +31,7 @@ _dropped_events: int = 0
 _records_since_flush: int = 0
 _FLUSH_EVERY: int = 100
 _signal_prev: dict = {}  # signum -> previous handler
+_atexit_registered: bool = False
 
 # Worker-process state
 _worker_buffer: Optional[list[dict]] = None
@@ -39,6 +40,7 @@ _worker_buffer: Optional[list[dict]] = None
 def _reset_for_tests() -> None:
     """Reset all module-level state. Test-only helper."""
     global _path, _fp, _tap, _dropped_events, _records_since_flush, _worker_buffer
+    global _atexit_registered
     if _fp is not None:
         try:
             _fp.close()
@@ -50,6 +52,7 @@ def _reset_for_tests() -> None:
     _dropped_events = 0
     _records_since_flush = 0
     _worker_buffer = None
+    _atexit_registered = False
 
 
 def _git_commit() -> str:
@@ -90,7 +93,7 @@ def _install_signal_handlers() -> None:
 def open(path: Path) -> None:  # noqa: A001
     """Open the manifest at `path` for append-only writes. Idempotent re-open
     flushes the prior file and starts a new one."""
-    global _path, _fp, _records_since_flush
+    global _path, _fp, _records_since_flush, _dropped_events, _atexit_registered
     prior_path_str = str(_path) if _fp is not None else None
     if _fp is not None:
         close()
@@ -99,6 +102,7 @@ def open(path: Path) -> None:  # noqa: A001
     _fp = path.open("a", encoding="utf-8")
     _path = path
     _records_since_flush = 0
+    _dropped_events = 0
     header = {
         "event": "_header",
         "ts": _now_iso(),
@@ -108,7 +112,9 @@ def open(path: Path) -> None:  # noqa: A001
     _fp.write(json.dumps(header) + "\n")
     _fp.flush()
     _install_signal_handlers()
-    atexit.register(close)
+    if not _atexit_registered:
+        atexit.register(close)
+        _atexit_registered = True
     if prior_path_str is not None:
         record("_session_restart", prior_path=prior_path_str)
 
@@ -200,14 +206,45 @@ def close() -> None:
     _path = None
 
 
-# Worker API stubs — fully implemented in Task 2.
+# Worker API
 def start_worker_buffer() -> None:
-    raise NotImplementedError("Implemented in Task 2")
+    """Begin per-process buffering. record() will append to a list rather than
+    write to disk. Call drain_worker_buffer() at end to retrieve events."""
+    global _worker_buffer
+    _worker_buffer = []
 
 
 def drain_worker_buffer() -> list[dict]:
-    raise NotImplementedError("Implemented in Task 2")
+    """Return accumulated worker events and reset the buffer to inactive."""
+    global _worker_buffer
+    if _worker_buffer is None:
+        return []
+    out = _worker_buffer
+    _worker_buffer = None
+    return out
 
 
 def merge_worker_events(events: list[dict]) -> None:
-    raise NotImplementedError("Implemented in Task 2")
+    """Re-emit worker events into the parent's manifest. Each event already
+    has its `ts` and `event` fields; we just write through."""
+    global _records_since_flush
+    if _fp is None:
+        return
+    for rec in events:
+        try:
+            line = json.dumps(rec)
+        except (TypeError, ValueError):
+            continue
+        try:
+            _fp.write(line + "\n")
+            _records_since_flush += 1
+        except OSError:
+            return
+        if _tap is not None:
+            try:
+                _tap(rec)
+            except Exception:
+                pass
+    if _records_since_flush >= _FLUSH_EVERY:
+        _fp.flush()
+        _records_since_flush = 0
