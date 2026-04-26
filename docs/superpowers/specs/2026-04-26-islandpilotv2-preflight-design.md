@@ -675,11 +675,15 @@ Training writes `models/training_config.json` at the start of `train()`:
   "qengine_commit": "abc1234",
   "started_at": "2026-04-26T17:42:13Z",
   "args": {"exchange": "OANDA", "symbol": "EUR-USD", "timeframe": "5m", ...},
-  "resolved_config": { ... merged DEFAULT_CONFIG with any preflight_mode overrides ... }
+  "resolved_config": { ... merged DEFAULT_CONFIG with any preflight_mode overrides ... },
+  "tunable_groups_snapshot": ["General", "Grid / Hedge", "Take Profit", "Entry Signal", "Risk Management", "Position Management"],
+  "evolved_gene_names": ["max_levels", "sizing_factor", "hedge_value", "tp_value", "..."]
 }
 ```
 
-Audit reads this to know what config governed training. Without it, audit cannot tell whether `preflight_mode` was active, what gate thresholds were in effect, etc. Add ~3 lines to `train.py` to write this file.
+Audit reads this to know what config — and what set of evolvable groups/genes — governed training. Without `tunable_groups_snapshot` and `evolved_gene_names`, audit cannot distinguish "Iteration 1" cloud artifacts (3 groups, 20 genes) from "Iteration 2" artifacts (~6 evolvable groups, ~50 genes), and would falsely fail E05 on Iteration-1 artifacts by expecting current-source groups. Add ~5 lines to `train.py` to write this file.
+
+E05's artifact-source check uses `tunable_groups_snapshot` from this file as the ground truth for "what was intended at training time", not the live `_TUNABLE_GROUPS` from current source. Same for E01.
 
 ### 9.3 `manifest.record()` call discipline
 
@@ -727,7 +731,7 @@ A successful implementation of this spec satisfies:
   - Force `_apply_genome` to short-circuit → A01 fails.
 - **AC4.** `python audit.py models/` exits 0 with a structured report on a freshly cloud-trained `models/` directory.
 - **AC5.** Cloud training run wall-time increases by <1% after manifest.record() patches.
-- **AC6.** Manifest from a 12-hour reference run is ≤10 MB gzipped.
+- **AC6.** Manifest from an Iteration-1-scale reference run (10p × 20g × 63i = 12,600 evals, ~10h 33m) is ≤10 MB gzipped. Iteration-2-scale runs (planned ~189k evals) will exceed this without the per-event-type sampling mitigation in R-3.
 - **AC7.** Adding a new check requires editing exactly two files (`preflight_checks.py` + `test_preflight_checks.py`); no orchestrator edits.
 - **AC8.** `python preflight.py --self-test` exits 0 within 5 seconds.
 
