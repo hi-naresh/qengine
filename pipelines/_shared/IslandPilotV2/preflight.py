@@ -42,12 +42,24 @@ def _ensure_minislice_cached() -> str:
         return str(_CACHE_FILE)
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     print(f"[preflight] cache miss; exporting 30-day slice from Postgres...")
+    # The cache fetch needs Postgres. database.open_connection() short-circuits
+    # when QENGINE_TRAINING_MODE is set, so we temporarily clear it here.
+    _saved_mode = os.environ.pop("QENGINE_TRAINING_MODE", None)
     try:
         import numpy as np
+        from datetime import datetime, timezone
+        from qengine.services.db import database
         from qengine.research.candles import get_candles
+        if database.is_closed():
+            database.open_connection()
+        start_ts_ms = int(datetime.strptime(_PREFLIGHT_SLICE_START, "%Y-%m-%d")
+                          .replace(tzinfo=timezone.utc).timestamp() * 1000)
+        end_ts_ms = int(datetime.strptime(_PREFLIGHT_SLICE_END, "%Y-%m-%d")
+                        .replace(tzinfo=timezone.utc).timestamp() * 1000) + 86_400_000
         warmup, candles = get_candles(
             exchange="OANDA", symbol="EUR-USD", timeframe="5m",
-            start_date=_PREFLIGHT_SLICE_START, finish_date=_PREFLIGHT_SLICE_END,
+            start_date_timestamp=start_ts_ms,
+            finish_date_timestamp=end_ts_ms,
         )
         if candles.size == 0:
             raise RuntimeError("get_candles returned empty array")
@@ -60,6 +72,9 @@ def _ensure_minislice_cached() -> str:
               f"  Fix: ensure local Postgres is running with OANDA EUR-USD 5m data.",
               file=sys.stderr)
         sys.exit(2)
+    finally:
+        if _saved_mode is not None:
+            os.environ["QENGINE_TRAINING_MODE"] = _saved_mode
     return str(_CACHE_FILE)
 
 

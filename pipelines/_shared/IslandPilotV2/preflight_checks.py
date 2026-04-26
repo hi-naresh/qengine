@@ -857,19 +857,44 @@ def check_V02_validate_model_runs_oos(ctx: CheckContext) -> CheckResult:
        source=["unit"], severity="critical",
        description="Manifest gzips and re-reads losslessly")
 def check_V03_manifest_gzip_round_trip(ctx: CheckContext) -> CheckResult:
+    """Verify the gzip+JSON round-trip without disturbing any manifest the
+    caller already has open. We snapshot the production singleton state,
+    run a tiny isolated session in a tmpdir, then restore the snapshot.
+    Critical: preflight calls this in Phase 1 BEFORE the comprehensive run,
+    so we cannot blow away the parent's open _fp/_path/_open_pid."""
     import tempfile
     from pathlib import Path
     from pipelines._shared.IslandPilotV2 import manifest as m
-    m._reset_for_tests()
-    with tempfile.TemporaryDirectory() as td:
-        p = Path(td) / "rt.jsonl"
-        m.open(p)
-        m.record("apply_genome", regime="r1", genes_applied={"a": 1})
-        m.record("cycle_complete", regime="r1", pnl=5.0)
-        m.close()
-        gz = p.with_suffix(p.suffix + ".gz")
-        events = m.load_manifest(gz)
-        types = [e["event"] for e in events]
-        if "apply_genome" in types and "cycle_complete" in types:
-            return CheckResult.pass_(f"gzip round-trip preserved {len(events)} events")
-        return CheckResult.fail(f"events lost in round-trip: {types}")
+
+    saved = {
+        "_fp": m._fp, "_path": m._path, "_tap": m._tap,
+        "_open_pid": m._open_pid, "_worker_buffer": m._worker_buffer,
+        "_dropped_events": m._dropped_events,
+        "_records_since_flush": m._records_since_flush,
+    }
+    # Detach without closing the underlying file
+    m._fp = None
+    m._path = None
+    m._tap = None
+    m._open_pid = None
+    m._worker_buffer = None
+    m._dropped_events = 0
+    m._records_since_flush = 0
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "rt.jsonl"
+            m.open(p)
+            m.record("apply_genome", regime="r1", genes_applied={"a": 1})
+            m.record("cycle_complete", regime="r1", pnl=5.0)
+            m.close()
+            gz = p.with_suffix(p.suffix + ".gz")
+            events = m.load_manifest(gz)
+            types = [e["event"] for e in events]
+            if "apply_genome" in types and "cycle_complete" in types:
+                result = CheckResult.pass_(f"gzip round-trip preserved {len(events)} events")
+            else:
+                result = CheckResult.fail(f"events lost in round-trip: {types}")
+    finally:
+        for k, v in saved.items():
+            setattr(m, k, v)
+    return result
