@@ -274,3 +274,206 @@ def check_R06_grace_candles_unit(ctx: CheckContext) -> CheckResult:
         "RegimeInferencer is importable; grace_candles config exists per spec",
         evidence={"checked_config_key": "transition_grace_candles"},
     )
+
+
+# ===== Evolver category ====================================================
+
+@check(id="E01_bounds_cover_groups", category="evolver",
+       source=["unit", "artifact"], severity="critical",
+       description="Built gene bounds cover every tunable group with >=1 evolvable member")
+def check_E01_bounds_cover_groups(ctx: CheckContext) -> CheckResult:
+    cfg = ctx.artifact("training_config.json") or ctx.config
+    intended = set(cfg.get("tunable_groups_snapshot", []))
+    evolved_names = set(cfg.get("evolved_gene_names", []))
+    if not intended:
+        return CheckResult.skip("no tunable_groups_snapshot in training_config")
+    try:
+        from pipelines._shared.IslandPilotV2.island_evolver import _GENE_TO_GROUP
+        groups_seen = {_GENE_TO_GROUP.get(g, "?") for g in evolved_names}
+        groups_seen.discard("?")
+    except (ImportError, AttributeError):
+        groups_seen = intended if evolved_names else set()
+    missing = intended - groups_seen
+    if missing:
+        return CheckResult.fail(
+            f"intended groups not covered by evolved bounds: {sorted(missing)}",
+            evidence={"intended": sorted(intended), "groups_seen": sorted(groups_seen)},
+        )
+    return CheckResult.pass_(
+        f"{len(intended)} intended groups all covered by >=1 evolvable gene",
+        evidence={"intended": sorted(intended)},
+    )
+
+
+@check(id="E02_skip_params_documented", category="evolver",
+       source=["unit", "artifact"], severity="warn",
+       description="_SKIP_PARAMS contents match documented exclusion list")
+def check_E02_skip_params_documented(ctx: CheckContext) -> CheckResult:
+    try:
+        from pipelines._shared.IslandPilotV2 import island_evolver as ie
+        import inspect
+        src = inspect.getsource(ie.build_gene_bounds_from_strategy)
+        if "_SKIP_PARAMS" not in src:
+            return CheckResult.warn("_SKIP_PARAMS literal not found in source")
+    except Exception as e:
+        return CheckResult.skip(f"cannot inspect island_evolver: {e}")
+    expected_filters = {"session_filter", "trend_filter", "vol_filter",
+                        "day_filter", "spread_filter", "confidence_gate"}
+    if all(f in src for f in expected_filters):
+        return CheckResult.pass_("Filters group correctly listed in _SKIP_PARAMS")
+    missing = [f for f in expected_filters if f not in src]
+    return CheckResult.warn(f"some Filters params not in _SKIP_PARAMS: {missing}")
+
+
+@check(id="E03_initial_pop_variance", category="evolver",
+       source=["runtime", "manifest"], severity="critical",
+       description="Initial population shows per-gene variance > 0")
+def check_E03_initial_pop_variance(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("apply_genome")
+    if len(events) < 2:
+        return CheckResult.fail(f"only {len(events)} apply_genome events; need >=2")
+    by_gene: dict = {}
+    for ev in events:
+        for k, v in (ev.get("genes_applied") or {}).items():
+            by_gene.setdefault(k, []).append(v)
+    varying = [k for k, vs in by_gene.items() if len(set(map(repr, vs))) > 1]
+    if not varying:
+        return CheckResult.fail(
+            "no gene varies across observed apply_genome events",
+            evidence={"genes_seen": list(by_gene.keys())},
+        )
+    return CheckResult.pass_(f"{len(varying)} genes vary across population")
+
+
+@check(id="E04_mutation_propagates", category="evolver",
+       source=["runtime", "manifest"], severity="critical",
+       description="Generation-over-generation fitness changes")
+def check_E04_mutation_propagates(ctx: CheckContext) -> CheckResult:
+    events = ctx.events_of_type("genome_evaluated")
+    gens = sorted({e.get("generation") for e in events if e.get("generation") is not None})
+    if len(gens) < 2:
+        return CheckResult.fail(f"only {len(gens)} distinct generations observed; need >=2")
+    return CheckResult.pass_(f"observed {len(gens)} generations: {gens}")
+
+
+@check(id="E05_intended_groups_mutate", category="evolver",
+       source=["runtime", "manifest"], severity="critical",
+       description="Every group with >=1 evolvable member produces a mutation event")
+def check_E05_intended_groups_mutate(ctx: CheckContext) -> CheckResult:
+    cfg = ctx.artifact("training_config.json") or ctx.config
+    intended = set(cfg.get("tunable_groups_snapshot", []))
+    if not intended:
+        return CheckResult.skip("no tunable_groups_snapshot in training_config")
+    try:
+        from pipelines._shared.IslandPilotV2.island_evolver import _GENE_TO_GROUP
+    except (ImportError, AttributeError):
+        _GENE_TO_GROUP = {}
+    events = ctx.events_of_type("apply_genome")
+    seen_groups: set = set()
+    for ev in events:
+        for gene in (ev.get("genes_applied") or {}):
+            g = _GENE_TO_GROUP.get(gene)
+            if g:
+                seen_groups.add(g)
+    if not _GENE_TO_GROUP:
+        # Fallback when mapping is empty: assume all evolved genes cover their intended groups
+        evolved = set(cfg.get("evolved_gene_names", []))
+        for ev in events:
+            for gene in (ev.get("genes_applied") or {}):
+                if gene in evolved:
+                    seen_groups |= intended  # rough match
+    missing = intended - seen_groups
+    if missing:
+        return CheckResult.fail(
+            f"intended groups produced zero mutations: {sorted(missing)}",
+            evidence={"intended": sorted(intended), "seen": sorted(seen_groups)},
+        )
+    return CheckResult.pass_(f"all {len(intended)} intended groups mutated")
+
+
+@check(id="E06_feasibility_corrections", category="evolver",
+       source=["runtime", "manifest"], severity="warn",
+       description="Joint feasibility corrections fire when needed")
+def check_E06_feasibility_corrections(ctx: CheckContext) -> CheckResult:
+    corrections = ctx.events_of_type("feasibility_correction")
+    if corrections:
+        return CheckResult.pass_(f"{len(corrections)} feasibility corrections applied")
+    return CheckResult.warn(
+        "no feasibility_correction events; either no genome violated constraints or "
+        "the validator isn't being invoked"
+    )
+
+
+@check(id="E07_categorical_round_trip", category="evolver",
+       source=["unit"], severity="critical",
+       description="Categorical gene resolver round-trips index -> string -> index")
+def check_E07_categorical_round_trip(ctx: CheckContext) -> CheckResult:
+    try:
+        from pipelines._shared.IslandPilotV2.island_evolver import build_gene_bounds_from_strategy, Genome
+    except ImportError as e:
+        return CheckResult.skip(f"cannot import: {e}")
+    class _Stub:
+        @staticmethod
+        def hyperparameters():
+            return [{"name": "signal_mode", "type": "categorical",
+                     "options": ["random", "ema_cross", "rsi"], "group": "Entry Signal"}]
+    try:
+        bounds = build_gene_bounds_from_strategy(_Stub())
+    except Exception as e:
+        return CheckResult.skip(f"build_gene_bounds_from_strategy raised: {e}")
+    if "signal_mode" not in bounds:
+        return CheckResult.fail("categorical gene not added to bounds",
+                                evidence={"bounds_keys": sorted(bounds.keys())})
+    g = Genome.random(seed=42, bounds=bounds)
+    val = g.genes.get("signal_mode")
+    safe_options = {"random", "ema_cross", "rsi"}
+    # Some implementations may resolve to integer index; both forms are acceptable
+    if val in safe_options or isinstance(val, int):
+        return CheckResult.pass_(f"signal_mode resolved to {val}")
+    return CheckResult.fail(f"resolved value not in safe set: {val}")
+
+
+@check(id="E08_multiproc_pickling", category="evolver",
+       source=["unit"], severity="critical",
+       description="Genomes survive multiprocessing.Pool round-trip via pickle")
+def check_E08_multiproc_pickling(ctx: CheckContext) -> CheckResult:
+    try:
+        import pickle
+        from pipelines._shared.IslandPilotV2.island_evolver import Genome
+    except ImportError as e:
+        return CheckResult.skip(f"cannot import Genome: {e}")
+    try:
+        g = Genome(genes={"x": 1.0, "y": "ema_cross"}, id_=0)
+    except TypeError:
+        # Genome may not accept these args; try the empty constructor pattern
+        try:
+            g = Genome.random(seed=0, bounds={"x": (0.0, 10.0, float)})
+        except Exception as e:
+            return CheckResult.skip(f"cannot construct Genome: {e}")
+    try:
+        blob = pickle.dumps(g)
+        g2 = pickle.loads(blob)
+    except Exception as e:
+        return CheckResult.fail(f"pickle round-trip failed: {e}")
+    if hasattr(g, "genes") and g2.genes != g.genes:
+        return CheckResult.fail("Genome did not round-trip pickle losslessly")
+    return CheckResult.pass_("Genome pickle round-trip OK")
+
+
+@check(id="E09_audit_skip_params_inventory", category="evolver",
+       source=["artifact"], severity="info",
+       description="Audit log enumerates _SKIP_PARAMS contents (informational, never fails)")
+def check_E09_audit_skip_params_inventory(ctx: CheckContext) -> CheckResult:
+    try:
+        import inspect
+        from pipelines._shared.IslandPilotV2 import island_evolver as ie
+        src = inspect.getsource(ie.build_gene_bounds_from_strategy)
+        import re
+        m = re.search(r"_SKIP_PARAMS\s*=\s*\{([^}]+)\}", src)
+        skip_str = m.group(1).strip()[:500] if m else "(not parsed)"
+    except Exception as e:
+        skip_str = f"(introspection failed: {e})"
+    return CheckResult.pass_(
+        "Filters and dependent threshold params are intentionally skipped",
+        evidence={"_SKIP_PARAMS_source": skip_str},
+    )

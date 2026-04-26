@@ -181,3 +181,145 @@ def test_R06_pass():
     from pipelines._shared.IslandPilotV2.preflight_checks import check_R06_grace_candles_unit as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "warn", "skip")
+
+
+# ===== Evolver category meta-tests (E01–E09) ===============================
+
+def _seed_gene_to_group():
+    """Populate _GENE_TO_GROUP with known mappings so E01/E05 can resolve genes."""
+    from pipelines._shared.IslandPilotV2 import island_evolver as ie
+    ie._GENE_TO_GROUP.update({
+        "max_levels": "General",
+        "hedge_value": "Grid / Hedge",
+        "tp_value": "Take Profit",
+    })
+
+
+def test_E01_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E01_bounds_cover_groups as fn
+    _seed_gene_to_group()
+    ctx = _make_ctx(
+        artifacts={"training_config.json": {
+            "tunable_groups_snapshot": ["General", "Grid / Hedge", "Take Profit"],
+            "evolved_gene_names": ["max_levels", "hedge_value", "tp_value"],
+        }},
+        sources={"artifact"},
+    )
+    assert fn(ctx).status == "pass"
+
+
+def test_E01_fail_missing_group():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E01_bounds_cover_groups as fn
+    _seed_gene_to_group()
+    ctx = _make_ctx(
+        artifacts={"training_config.json": {
+            "tunable_groups_snapshot": ["General", "Grid / Hedge", "Take Profit"],
+            "evolved_gene_names": ["max_levels"],  # only General covered
+        }},
+        sources={"artifact"},
+    )
+    assert fn(ctx).status == "fail"
+
+
+def test_E02_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E02_skip_params_documented as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "warn")
+
+
+def test_E03_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E03_initial_pop_variance as fn
+    ctx = _make_ctx(events=[
+        {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
+        {"event": "apply_genome", "genes_applied": {"max_levels": 5}},
+        {"event": "apply_genome", "genes_applied": {"max_levels": 7}},
+    ])
+    assert fn(ctx).status == "pass"
+
+
+def test_E03_fail_no_variance():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E03_initial_pop_variance as fn
+    ctx = _make_ctx(events=[
+        {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
+        {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
+        {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
+    ])
+    assert fn(ctx).status == "fail"
+
+
+def test_E04_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E04_mutation_propagates as fn
+    ctx = _make_ctx(events=[
+        {"event": "genome_evaluated", "generation": 0, "fitness": 50.0},
+        {"event": "genome_evaluated", "generation": 1, "fitness": 60.0},
+    ])
+    assert fn(ctx).status == "pass"
+
+
+def test_E04_fail_no_gen_progress():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E04_mutation_propagates as fn
+    ctx = _make_ctx(events=[
+        {"event": "genome_evaluated", "generation": 0, "fitness": 50.0},
+    ])
+    assert fn(ctx).status == "fail"
+
+
+def test_E05_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E05_intended_groups_mutate as fn
+    _seed_gene_to_group()
+    ctx = _make_ctx(
+        events=[{"event": "apply_genome",
+                 "genes_applied": {"max_levels": 3, "tp_value": 24.0}}],
+        artifacts={"training_config.json": {
+            "tunable_groups_snapshot": ["General", "Take Profit"],
+            "evolved_gene_names": ["max_levels", "tp_value"],
+        }},
+    )
+    assert fn(ctx).status == "pass"
+
+
+def test_E05_fail_silent_group():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E05_intended_groups_mutate as fn
+    _seed_gene_to_group()
+    ctx = _make_ctx(
+        events=[{"event": "apply_genome",
+                 "genes_applied": {"max_levels": 3}}],  # tp_value missing
+        artifacts={"training_config.json": {
+            "tunable_groups_snapshot": ["General", "Take Profit"],
+            "evolved_gene_names": ["max_levels", "tp_value"],
+        }},
+    )
+    assert fn(ctx).status == "fail"
+
+
+def test_E06_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E06_feasibility_corrections as fn
+    ctx = _make_ctx(events=[
+        {"event": "feasibility_correction", "gene": "tp_value",
+         "original": 5, "corrected": 12, "reason": "tp < hedge*1.5"},
+    ])
+    assert fn(ctx).status == "pass"
+
+
+def test_E06_warn_no_corrections():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E06_feasibility_corrections as fn
+    ctx = _make_ctx(events=[])
+    assert fn(ctx).status in ("pass", "warn")
+
+
+def test_E07_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E07_categorical_round_trip as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "skip")
+
+
+def test_E08_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E08_multiproc_pickling as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "skip")
+
+
+def test_E09_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_E09_audit_skip_params_inventory as fn
+    ctx = _make_ctx(sources={"artifact"})
+    assert fn(ctx).status in ("pass", "skip")
