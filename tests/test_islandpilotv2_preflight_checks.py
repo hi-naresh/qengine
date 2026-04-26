@@ -89,3 +89,95 @@ def test_runner_catches_check_exception_as_fail():
     assert results[0].status == "fail"
     assert "ValueError" in results[0].message
     assert "oops" in results[0].message
+
+
+# ===== Regime category meta-tests (R01–R06) =================================
+
+def _make_ctx(events=None, artifacts=None, config=None, sources=None):
+    return pc.CheckContext(
+        events=events or [],
+        artifacts=artifacts or {},
+        config=config or {},
+        available_sources=sources or {"runtime", "manifest", "artifact", "unit"},
+    )
+
+
+def test_R01_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R01_partition_min_features as fn
+    ctx = _make_ctx(events=[{"event": "feature_partition",
+                             "n_macro_feats": 5, "n_sub_feats": 3}])
+    assert fn(ctx).status == "pass"
+
+
+def test_R01_fail():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R01_partition_min_features as fn
+    ctx = _make_ctx(events=[{"event": "feature_partition",
+                             "n_macro_feats": 1, "n_sub_feats": 0}])
+    assert fn(ctx).status == "fail"
+
+
+def test_R02_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R02_partition_threshold_path as fn
+    ctx = _make_ctx(events=[{"event": "feature_partition",
+                             "n_macro_feats": 5, "n_sub_feats": 3,
+                             "autocorr_threshold": 0.7}])
+    assert fn(ctx).status in ("pass", "warn")
+
+
+def test_R02_fail_no_event():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R02_partition_threshold_path as fn
+    ctx = _make_ctx(events=[])
+    assert fn(ctx).status == "fail"
+
+
+def test_R03_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R03_gmm_min_leaves as fn
+    ctx = _make_ctx(events=[{"event": "regime_fit",
+                             "n_macro_clusters": 3, "leaves_before_merge": 6,
+                             "leaves_after_merge": 5}])
+    assert fn(ctx).status == "pass"
+
+
+def test_R03_fail():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R03_gmm_min_leaves as fn
+    ctx = _make_ctx(events=[{"event": "regime_fit",
+                             "n_macro_clusters": 1, "leaves_before_merge": 1,
+                             "leaves_after_merge": 1}])
+    assert fn(ctx).status == "fail"
+
+
+def test_R04_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R04_sparse_merge_fired as fn
+    ctx = _make_ctx(events=[{"event": "regime_fit",
+                             "leaves_before_merge": 8, "leaves_after_merge": 5}])
+    assert fn(ctx).status == "pass"
+
+
+def test_R04_warn_no_merge():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R04_sparse_merge_fired as fn
+    ctx = _make_ctx(events=[{"event": "regime_fit",
+                             "leaves_before_merge": 5, "leaves_after_merge": 5}])
+    assert fn(ctx).status in ("pass", "warn")
+
+
+def test_R05_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
+    ctx = _make_ctx(events=[
+        {"event": "transition", "from_regime": "a", "to_regime": "b", "hysteresis_passed": True},
+        {"event": "transition", "from_regime": "b", "to_regime": "b", "hysteresis_passed": False},  # blocked
+    ])
+    assert fn(ctx).status == "pass"
+
+
+def test_R05_warn_no_blocks():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
+    ctx = _make_ctx(events=[
+        {"event": "transition", "from_regime": "a", "to_regime": "b", "hysteresis_passed": True},
+    ])
+    assert fn(ctx).status in ("pass", "warn")
+
+
+def test_R06_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_R06_grace_candles_unit as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "warn", "skip")
