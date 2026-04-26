@@ -12,7 +12,7 @@
 
 The current IslandPilotV2 preflight (`preflight.py`) is a 4-check smoke test on synthetic GBM data. It runs in ~2 min and confirms the code does not crash. It does **not** confirm:
 
-1. All 7 tunable hyperparameter groups are actually being mutated (the Filters group is silently in `_SKIP` and produces no genes).
+1. Every tunable hyperparameter group that the design intends to evolve is actually being mutated, **and** every group that is intentionally excluded (e.g. the Filters group is in `_SKIP_PARAMS` because >99% of evolved filter combinations block all entries — see comment at `island_evolver.py:184–187`) is documented as such in the audit log so the exclusion is visible rather than silent.
 2. Every regime leaf gets HP variation across the population.
 3. Strategy actually reads the evolved HPs at decision time.
 4. Per-regime online-learning state (`_regime_wins/losses/cycles/busts`, `_recent_pnls`) updates after each cycle.
@@ -145,25 +145,35 @@ The check registry. Decorator:
 
 ```python
 @check(
-    id="E05_filters_group_mutates",
+    id="E05_intended_groups_mutate",
     category="evolver",
     source=["runtime", "manifest"],
     severity="critical",
-    description="Filters group must produce ≥1 mutation event."
+    description="Every group with ≥1 non-_SKIP_PARAMS member must produce mutation events."
 )
-def check_filters_group_mutates(ctx: CheckContext) -> CheckResult:
+def check_intended_groups_mutate(ctx: CheckContext) -> CheckResult:
+    """Filters is allowed to be silent: all 6 of its members live in _SKIP_PARAMS
+    by design (see island_evolver.py:184). What we forbid is a group that has
+    evolvable members yet produces no mutations — that signals a regression."""
+    bounds = ctx.invoke(build_gene_bounds_from_strategy, ctx.strategy_class)
     events = ctx.events_of_type("apply_genome")
-    filters_keys = {"session_filter", "trend_filter", "vol_filter",
-                    "day_filter", "spread_filter", "confidence_gate"}
-    seen: set = set()
+    intended_groups = {g for g in TUNABLE_GROUPS
+                       if any(name in bounds for name in group_members(g))}
+    seen_groups = set()
     for ev in events:
-        seen |= filters_keys & ev["genes_applied"].keys()
-    if not seen:
+        for gene in ev["genes_applied"]:
+            seen_groups.add(group_for_gene(gene))
+    missing = intended_groups - seen_groups
+    if missing:
         return CheckResult.fail(
-            "No Filters genes ever applied. _SKIP list likely dropped them.",
-            evidence={"filters_keys": sorted(filters_keys), "n_events": len(events)},
+            f"Intended groups produced zero mutations: {sorted(missing)}",
+            evidence={"intended": sorted(intended_groups),
+                      "seen": sorted(seen_groups)},
         )
-    return CheckResult.pass_(f"Filters genes applied: {sorted(seen)}")
+    return CheckResult.pass_(
+        f"All {len(intended_groups)} intended groups mutated.",
+        evidence={"intended": sorted(intended_groups)},
+    )
 ```
 
 The decorator registers the check into a module-level dict keyed by `id`. Categories are free strings; convention uses 7 (regime, evolver, application, gates, migration, outcomes, roundtrip).
@@ -310,7 +320,7 @@ Preflight first checks `~/.qengine_preflight_cache/eurusd_5m_30d.npy`. If missin
 
 | event_type | data fields |
 |---|---|
-| `regime_fit` | `n_macro, n_sub, n_leaves, leaves_after_merge, separation_cv` |
+| `regime_fit` | `n_macro_clusters, n_sub_per_macro (dict), leaves_before_merge, leaves_after_merge, separation_dict` (the dict returned by `_validate_regime_separation`, fields: `n_leaves, min_samples, max_samples, mean_samples, cv, threshold, valid, recommendation`) |
 | `feature_partition` | `n_macro_feats, n_sub_feats, autocorr_threshold, lag` |
 | `apply_genome` | `regime, genes_applied (dict), position_open` |
 | `migration` | `macro, donor_island, recipient_island, donor_fitness, recipient_mean, accepted` |
@@ -355,14 +365,15 @@ The ~31 checks fall into 7 categories. Full predicates are written in `preflight
 
 | ID | Description | Source | Severity |
 |---|---|---|---|
-| E01 | `GENE_BOUNDS` includes ≥1 gene from each of the 7 tunable groups | unit, artifact | critical |
-| E02 | Filters group has ≥1 gene present (E05 verifies it mutates at runtime) | unit, artifact | critical |
+| E01 | Built gene bounds cover every tunable group that has ≥1 evolvable member (post `_SKIP_PARAMS` filter) | unit, artifact | critical |
+| E02 | `_SKIP_PARAMS` content matches the documented exclusion list; new skips trigger info-level audit entry | unit, artifact | warn |
 | E03 | Initial population shows per-gene variance > 0 across the seed pool | runtime, manifest | critical |
 | E04 | Mutation produces offspring differing from parents on ≥1 gene per generation | runtime, manifest | critical |
-| E05 | Filters group genes are applied at runtime (not silently in `_SKIP`) | runtime, manifest | critical |
+| E05 | Every "intended" group (≥1 evolvable member) produces at least one mutation event at runtime | runtime, manifest | critical |
 | E06 | Joint feasibility corrections fire (TP ≥ hedge×1.5, max_ticket cap) | runtime, manifest | warn |
 | E07 | Categorical gene resolver round-trips (index → string → index) | unit | critical |
 | E08 | Multiprocessing pickling: genomes survive worker round-trip | unit | critical |
+| E09 | Audit log enumerates `_SKIP_PARAMS` content with the source-comment rationale (informational, never fails) | artifact | info |
 
 ### Application (A01–A04)
 
@@ -408,9 +419,9 @@ The ~31 checks fall into 7 categories. Full predicates are written in `preflight
 | V02 | `validate_model.py` runs OOS on ≥1 island, returns parseable verdict | runtime | warn |
 | V03 | Manifest gzips and re-reads losslessly | unit | critical |
 
-**Total: 31 checks.**
+**Total: 32 checks.**
 
-Severity counts: 19 critical, 12 warn.
+Severity counts: 19 critical, 12 warn, 1 info.
 
 ---
 
@@ -585,7 +596,7 @@ A successful implementation of this spec satisfies:
 - **AC1.** All 31 checks implemented; each has at least one passing and one failing meta-test.
 - **AC2.** `python preflight.py` exits within 5 minutes on M-series laptop (`time` ≤ 300s) when the pipeline is healthy.
 - **AC3.** `python preflight.py` exits 1 with a clear message identifying the cause if any of the following are deliberately broken (one at a time):
-  - Add a Filters param to `_SKIP` and remove it from gene bounds → E05 fails.
+  - Move a currently-evolved General/TP/Grid param into `_SKIP_PARAMS` so its group goes silent → E05 fails.
   - Set `min_leaf_samples` so high that no leaf survives merge → R03 fails.
   - Disable migration → M01 warns.
   - Force `_apply_genome` to short-circuit → A01 fails.
@@ -608,7 +619,7 @@ A successful implementation of this spec satisfies:
 
 ### Open Questions
 
-None at this time. All design decisions confirmed in brainstorming.
+- **OQ-1.** Should the Filters group ever be evolved? Currently every Filters param is in `_SKIP_PARAMS` (island_evolver.py:188–195) with the rationale "so >99% of genomes have some filter blocking all entries → zero sessions." User's brainstorming intent ("all our tunable groups… being tried in all kinds of regime") implies Filters should be tried; existing code disables them deliberately. **This spec preserves the current exclusion** and surfaces it as an audit-log info entry (E09). Whether to redesign Filters with smarter evolution (e.g. low-probability activation) is a strategy-design question that belongs to the follow-on robustness spec, not this verification spec.
 
 ---
 
