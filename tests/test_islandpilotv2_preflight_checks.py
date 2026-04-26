@@ -382,3 +382,48 @@ def test_A04_pass():
     from pipelines._shared.IslandPilotV2.preflight_checks import check_A04_hp_spec_round_trip as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "warn", "skip")
+
+
+def test_G01_pass_force_trigger():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_G01_online_gate as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "skip")
+
+
+def test_G02_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_G02_drift_gate as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "skip")
+
+
+def test_G03_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_G03_unknown_regime_gate as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "skip")
+
+
+def test_G04_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_G04_proven_fitness_gate as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status in ("pass", "skip")
+
+
+def test_G05_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_G05_abort_volatility as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status == "pass"
+
+
+def test_G06_pass():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_G06_session_halt as fn
+    ctx = _make_ctx(sources={"unit"})
+    assert fn(ctx).status == "pass"
+
+
+def test_G01_manifest_path():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_G01_online_gate as fn
+    ctx = _make_ctx(
+        events=[{"event": "gate_fire", "gate": "online", "blocked": True}],
+        sources={"manifest"},
+    )
+    assert fn(ctx).status == "pass"
