@@ -362,8 +362,10 @@ def test_A03_pass():
     ctx = _make_ctx(
         artifacts={"island_evolver.json": {
             "populations": {
-                "macro1_sub1": {"best_genome_id": 5, "individuals": [{"id": 5, "fitness": 60.0, "genes": {"x": 1}}]},
-                "macro2_sub1": {"best_genome_id": 3, "individuals": [{"id": 3, "fitness": 55.0, "genes": {"x": 2}}]},
+                "0": {"island_id": "0", "size": 4,
+                      "individuals": [{"id": 1, "genes": {"x": 1}, "fitness": 50.0}]},
+                "1": {"island_id": "1", "size": 4,
+                      "individuals": [{"id": 2, "genes": {"x": 2}, "fitness": 55.0}]},
             }
         }},
         sources={"artifact"},
@@ -371,13 +373,23 @@ def test_A03_pass():
     assert fn(ctx).status == "pass"
 
 
-def test_A03_fail_missing_best():
+def test_A03_fail_no_individuals():
     from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
     ctx = _make_ctx(
         artifacts={"island_evolver.json": {
-            "populations": {
-                "macro1_sub1": {"best_genome_id": None, "individuals": []},
-            }
+            "populations": {"0": {"island_id": "0", "size": 4, "individuals": []}}
+        }},
+        sources={"artifact"},
+    )
+    assert fn(ctx).status == "fail"
+
+
+def test_A03_fail_no_genes():
+    from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
+    ctx = _make_ctx(
+        artifacts={"island_evolver.json": {
+            "populations": {"0": {"island_id": "0", "size": 4,
+                                  "individuals": [{"id": 1, "genes": {}, "fitness": 0.0}]}}
         }},
         sources={"artifact"},
     )

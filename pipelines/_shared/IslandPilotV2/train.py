@@ -1189,13 +1189,25 @@ def train(
             _evolved_gene_names = sorted(_GENE_BOUNDS_BASE.keys())
         except Exception:
             _evolved_gene_names = []
-    # _TUNABLE_GROUPS is a function-local var inside build_gene_bounds_from_strategy;
-    # hardcode the same set here so the snapshot always reflects the intended
-    # evolvable surface. Keep this in sync with island_evolver.py.
-    _tunable_groups = sorted([
-        'General', 'Grid / Hedge', 'Take Profit',
-        'Entry Signal', 'Filters', 'Risk Management', 'Position Management',
-    ])
+    # Exclude groups whose every member is in _SKIP_PARAMS (e.g. Filters
+    # is intentionally all-skipped per spec OQ-1). The audit-side check E01
+    # only verifies coverage of groups that actually have evolvable members.
+    try:
+        from .island_evolver import _GENE_TO_GROUP
+        _evolvable_groups = sorted({
+            _GENE_TO_GROUP[g] for g in _evolved_gene_names
+            if g in _GENE_TO_GROUP
+        })
+    except Exception:
+        _evolvable_groups = []
+    # Fallback: if mapping was empty (e.g. strategy never loaded), keep the
+    # documented superset so E01 has *something* to compare against.
+    if not _evolvable_groups:
+        _evolvable_groups = sorted([
+            'General', 'Grid / Hedge', 'Take Profit',
+            'Entry Signal', 'Risk Management', 'Position Management',
+        ])
+    _tunable_groups = _evolvable_groups
     try:
         from .config import DEFAULT_CONFIG as _DEFAULT_CONFIG
         _resolved_config = _DEFAULT_CONFIG
