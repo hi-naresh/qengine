@@ -720,20 +720,34 @@ Adds one line near the top of `train()`: `if preflight_mode: cfg = apply_preflig
 
 ## 10. Acceptance Criteria
 
-A successful implementation of this spec satisfies:
+Each AC includes its **verification method** so the implementer can prove satisfaction without ambiguity.
 
 - **AC1.** All 34 checks implemented; each has at least one passing and one failing meta-test (informational E09 needs only a passing test since it never fails).
-- **AC2.** `python preflight.py` exits within 5 minutes on M-series laptop (`time` ≤ 300s) when the pipeline is healthy.
-- **AC3.** `python preflight.py` exits 1 with a clear message identifying the cause if any of the following are deliberately broken (one at a time):
-  - Move a currently-evolved General/TP/Grid param into `_SKIP_PARAMS` so its group goes silent → E05 fails.
-  - Set `min_leaf_samples` so high that no leaf survives merge → R03 fails.
-  - Disable migration → M01 warns.
-  - Force `_apply_genome` to short-circuit → A01 fails.
-- **AC4.** `python audit.py models/` exits 0 with a structured report on a freshly cloud-trained `models/` directory.
-- **AC5.** Cloud training run wall-time increases by <1% after manifest.record() patches.
-- **AC6.** Manifest from an Iteration-1-scale reference run (10p × 20g × 63i = 12,600 evals, ~10h 33m) is ≤10 MB gzipped. Iteration-2-scale runs (planned ~189k evals) will exceed this without the per-event-type sampling mitigation in R-3.
-- **AC7.** Adding a new check requires editing exactly two files (`preflight_checks.py` + `test_preflight_checks.py`); no orchestrator edits.
+  *Verification:* `pytest tests/test_islandpilotv2_preflight_checks.py -q` reports ≥ 67 tests passing (34 pass-cases + 33 fail-cases; E09 has no fail-case).
+
+- **AC2.** `python preflight.py` exits 0 within 5 minutes on a 10-core M-series laptop when the pipeline is healthy ("healthy" = a fresh checkout of `pipelines/_shared/IslandPilotV2/` with no manual breakage). On other hardware, scale the budget by `(10 / cpu_count())` minutes and the implementer documents the actual wall-time in their PR.
+  *Verification:* `time python preflight.py` on a 10-core M-series, with `echo $?` reporting 0 and elapsed time < 300s.
+
+- **AC3.** `python preflight.py` exits 1 and prints the failing check's `id` and `category` in the terminal report when any of the following are deliberately broken (one at a time):
+  - Move a currently-evolved General/Grid/TP param into `_SKIP_PARAMS` so its group goes silent → E05 fails.
+  - Set `min_leaf_samples` so high (e.g. 10,000) that no leaf survives merge → R03 fails.
+  - Comment out the body of `island_evolver.migrate_siblings()` → M01 warns.
+  - Add an early `return` at the top of `_apply_genome` → A01 fails.
+  *Verification:* a manual run of each break-and-restore in §8.3, captured as four short shell snippets in the PR description.
+
+- **AC4.** `python audit.py models/` exits 0 with a JSON report at `models/audit_report.json` on a `models/` directory containing `island_evolver.json`, `regime_tree.pkl`, `leaf_date_ranges.json`, `training_config.json`, and `activation_manifest.jsonl.gz` produced by a successful preflight run.
+  *Verification:* run preflight (which produces a complete `models/` set under `tmp/`), copy that to `models/`, run audit, parse the resulting JSON, assert verdict ∈ {ok, degraded}.
+
+- **AC5.** Sequential backtest overhead from `manifest.record()` calls is ≤ 1% measured wall-time on the preflight slice. Cloud-scale extrapolation of this proxy is sufficient; the spec does not require re-running cloud training to verify.
+  *Verification:* `pytest tests/test_islandpilotv2_manifest_overhead.py` (one new test) runs the preflight backtest twice — once with `manifest.open()`, once without — and asserts the open-case is ≤ 101% of the closed-case wall-time, averaged over 5 trials.
+
+- **AC6.** For Iteration-1-scale runs (10p × 20g × 63i = 12,600 evals), the projected gzipped manifest size from the preflight slice is ≤ 10 MB.
+  *Verification:* the same `pytest` test as AC5 also measures bytes-per-event during preflight and computes `bytes_per_event × estimated_iter1_event_count × gzip_ratio`. Asserts ≤ 10 MB. Gzip-ratio is measured by gzipping the preflight manifest itself.
+
+- **AC7.** Adding a new check requires editing exactly two files. *Verification:* a meta-test in `tests/test_islandpilotv2_check_addition.py` programmatically copies a synthetic check into `preflight_checks.py`, copies a synthetic test into the test file, runs `git diff --name-only`, asserts exactly two files appear. Reverts both edits.
+
 - **AC8.** `python preflight.py --self-test` exits 0 within 5 seconds.
+  *Verification:* `time python preflight.py --self-test` with `echo $?` reporting 0 and elapsed time < 5s.
 
 ---
 
