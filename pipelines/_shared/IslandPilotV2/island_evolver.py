@@ -230,6 +230,7 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
         # Use override bounds if available
         if name in _BOUND_OVERRIDES:
             bounds[name] = _BOUND_OVERRIDES[name]
+            _GENE_TO_GROUP[name] = group
             continue
 
         hp_type = spec.get('type')
@@ -253,7 +254,17 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
             if opts:
                 bounds[name] = (0, len(opts) - 1, int)
 
+        # Record gene→group mapping for any gene that ended up in bounds
+        if name in bounds:
+            _GENE_TO_GROUP[name] = group
+
     return bounds
+
+# Gene name → tunable group, populated lazily by build_gene_bounds_from_strategy
+# so that audit (E05 in preflight_checks) can look up which group a gene belongs to
+# without re-loading the strategy class.
+_GENE_TO_GROUP: Dict[str, str] = {}
+
 
 # Legacy — kept for backward compat with old genomes that have these keys
 SIZING_CURVE_MAP = {0: "geometric", 1: "sqrt", 2: "linear", 3: "fibonacci"}

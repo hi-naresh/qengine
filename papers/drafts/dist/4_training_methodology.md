@@ -48,6 +48,6 @@ Three correctness conditions in the qengine training-evaluation interface materi
 
 The Iteration 1 cloud training run covers the full 2022–2024 window at 5m resolution (221,246 5m bars from 1,106,233 1m candles; 220,608 clean feature rows after warmup and gap removal), evolving 20 generations × 10 individuals × 63 active islands (10 macro-clusters) = 12,600 real-engine evaluations with sibling migration every 4 generations. Hardware and wall-clock details are in §6.2. Regime separation CV was 0.679 (above the 0.15 threshold). Iteration 2's full-scale execution on the same window is targeted in §8.1 and requires further heavy computation deferred beyond the dissertation timeframe.
 
-Iteration 2 pre-flight validation (protocol in §5.6, results in §6.7) is reported separately and is not part of the Iteration 1 numbers above.
+Iteration 2 pre-flight validation (protocol in §5.6, results in §6.9.1) is reported separately and is not part of the Iteration 1 numbers above.
 
  - 
