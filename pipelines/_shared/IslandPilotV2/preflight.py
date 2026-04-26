@@ -29,19 +29,19 @@ if str(_REPO_ROOT) not in sys.path:
 from pipelines._shared.IslandPilotV2 import manifest, preflight_checks as pc
 
 
-_PREFLIGHT_SLICE_START = "2024-06-01"
+_PREFLIGHT_SLICE_START = "2024-04-01"
 _PREFLIGHT_SLICE_END = "2024-06-30"
 _CACHE_DIR = Path.home() / ".qengine_preflight_cache"
 _CACHE_FILE = _CACHE_DIR / f"eurusd_5m_{_PREFLIGHT_SLICE_START}_{_PREFLIGHT_SLICE_END}.npy"
 
 
 def _ensure_minislice_cached() -> str:
-    """Return path to a 30-day OANDA EUR-USD 5m candles file.
+    """Return path to a 90-day OANDA EUR-USD 5m candles file.
     Cached at ~/.qengine_preflight_cache/."""
     if _CACHE_FILE.exists():
         return str(_CACHE_FILE)
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"[preflight] cache miss; exporting 30-day slice from Postgres...")
+    print(f"[preflight] cache miss; exporting 90-day slice from Postgres...")
     # The cache fetch needs Postgres. database.open_connection() short-circuits
     # when QENGINE_TRAINING_MODE is set, so we temporarily clear it here.
     _saved_mode = os.environ.pop("QENGINE_TRAINING_MODE", None)

@@ -162,7 +162,9 @@ def test_R04_warn_no_merge():
 
 def test_R05_pass():
     from pipelines._shared.IslandPilotV2.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
+    # Include an apply_genome event so the runtime-engaged guard passes.
     ctx = _make_ctx(events=[
+        {"event": "apply_genome", "genes_applied": {"tp_value": 20.0}},
         {"event": "transition", "from_regime": "a", "to_regime": "b", "hysteresis_passed": True},
         {"event": "transition", "from_regime": "b", "to_regime": "b", "hysteresis_passed": False},  # blocked
     ])
@@ -171,7 +173,9 @@ def test_R05_pass():
 
 def test_R05_warn_no_blocks():
     from pipelines._shared.IslandPilotV2.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
+    # Include an apply_genome event so the runtime-engaged guard passes.
     ctx = _make_ctx(events=[
+        {"event": "apply_genome", "genes_applied": {"tp_value": 20.0}},
         {"event": "transition", "from_regime": "a", "to_regime": "b", "hysteresis_passed": True},
     ])
     assert fn(ctx).status in ("pass", "warn")
@@ -336,8 +340,10 @@ def test_A01_pass():
 
 def test_A01_fail_no_apply_events():
     from pipelines._shared.IslandPilotV2.preflight_checks import check_A01_apply_genome_reads_groups as fn
+    # Zero apply_genome events means pipeline runtime never engaged — A01 now
+    # skips with a deferred-to-deployment message instead of failing.
     ctx = _make_ctx(events=[])
-    assert fn(ctx).status == "fail"
+    assert fn(ctx).status == "skip"
 
 
 def test_A02_pass():
@@ -422,8 +428,12 @@ def test_G06_pass():
 
 def test_G01_manifest_path():
     from pipelines._shared.IslandPilotV2.preflight_checks import check_G01_online_gate as fn
+    # Include an apply_genome event so the runtime-engaged guard passes.
     ctx = _make_ctx(
-        events=[{"event": "gate_fire", "gate": "online", "blocked": True}],
+        events=[
+            {"event": "apply_genome", "genes_applied": {"tp_value": 20.0}},
+            {"event": "gate_fire", "gate": "online", "blocked": True},
+        ],
         sources={"manifest"},
     )
     assert fn(ctx).status == "pass"

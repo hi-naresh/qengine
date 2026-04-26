@@ -1131,13 +1131,64 @@ def train(
 
     # Snapshot what governs this run so audit can interpret artifacts later.
     # Written up-front (before heavy work) so even early-exit failures retain
-    # a record of what was attempted. Strategy-specific gene extensions are
-    # best-effort; the baseline GENE_BOUNDS captures the always-evolved genes.
+    # a record of what was attempted. Compute the FULL evolvable gene set
+    # (strategy-discovered + baseline) so the snapshot is self-describing
+    # for audit. We replicate the same lightweight stub-load that
+    # _evolve_islands uses, so this works pre-evolution.
     try:
-        from .island_evolver import GENE_BOUNDS as _GENE_BOUNDS_BASE
-        _evolved_gene_names = sorted(_GENE_BOUNDS_BASE.keys())
+        from .island_evolver import build_gene_bounds_from_strategy
+        import importlib.util as _ilu, importlib as _il, types as _types
+        _repo_root = _HERE.parents[2]
+        _strategy_file = None
+        for _c in [
+            _repo_root / 'strategies' / '_admin' / strategy_name / '__init__.py',
+            _repo_root / 'strategies' / strategy_name / '__init__.py',
+        ]:
+            if _c.exists():
+                _strategy_file = str(_c)
+                break
+
+        _full_bounds = None
+        if _strategy_file:
+            import os as _os
+            parent_dir = _os.path.dirname(_os.path.dirname(_strategy_file))
+            _inserted = parent_dir not in sys.path
+            if _inserted:
+                sys.path.insert(0, parent_dir)
+
+            _stub_mod = _types.ModuleType('qengine.strategies')
+            class _LiteStrategySnap: pass
+            _stub_mod.Strategy = _LiteStrategySnap
+            _stub_mod.cached = lambda f: f
+            _orig_strategies = sys.modules.get('qengine.strategies')
+            sys.modules['qengine.strategies'] = _stub_mod
+            try:
+                mod = _il.import_module(strategy_name)
+                strategy_cls = getattr(mod, strategy_name, None)
+                if strategy_cls is not None:
+                    dummy = strategy_cls.__new__(strategy_cls)
+                    _full_bounds = build_gene_bounds_from_strategy(dummy)
+            except Exception:
+                pass
+            finally:
+                if _orig_strategies is None:
+                    sys.modules.pop('qengine.strategies', None)
+                else:
+                    sys.modules['qengine.strategies'] = _orig_strategies
+                if _inserted and parent_dir in sys.path:
+                    sys.path.remove(parent_dir)
+
+        if _full_bounds:
+            _evolved_gene_names = sorted(_full_bounds.keys())
+        else:
+            from .island_evolver import GENE_BOUNDS as _GENE_BOUNDS_BASE
+            _evolved_gene_names = sorted(_GENE_BOUNDS_BASE.keys())
     except Exception:
-        _evolved_gene_names = []
+        try:
+            from .island_evolver import GENE_BOUNDS as _GENE_BOUNDS_BASE
+            _evolved_gene_names = sorted(_GENE_BOUNDS_BASE.keys())
+        except Exception:
+            _evolved_gene_names = []
     # _TUNABLE_GROUPS is a function-local var inside build_gene_bounds_from_strategy;
     # hardcode the same set here so the snapshot always reflects the intended
     # evolvable surface. Keep this in sync with island_evolver.py.
