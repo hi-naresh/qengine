@@ -39,6 +39,11 @@ def simulator_fitness(spread_pips: float, n_levels: int, sf: float, win_rate: fl
     This is the surrogate Pivot 06 contrasts against. It deliberately omits
     cost realism so genomes evolved on it produce extreme HPs.
 
+    Note on `spread_pips`: accepted but intentionally NOT applied. The
+    surrogate's API mirrors a cost-aware engine's signature so call sites
+    can swap implementations, but the surrogate ignores cost — that omission
+    is precisely the methodology hazard Pivot 06 demonstrates.
+
     Returns: {'total_pnl': float, 'avg_win': float, 'avg_bust': float,
               'bust_rate': float, 'n_busts': int}
     """
