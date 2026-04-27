@@ -1,6 +1,6 @@
 ## Acknowledgments
 
-No external funding was received for this research.
+No external funding was received for this research. The qengine execution engine used for all reported backtests builds on the open-source Jesse trading framework; the author thanks the Jesse maintainers for the upstream foundation on which the CFD/forex extensions reported here were developed.
 
 ## Declaration of Interest
 
@@ -9,7 +9,7 @@ The author declares that there are no competing interests associated with this m
 ## Data Availability Statement
 
 The data used in this study consist of EUR-USD foreign exchange price data at 1-minute resolution, sourced from OANDA Corporation. It covers the period from January 1, 2020, to April 20, 2026, and can be accessed by anyone who creates a demo account and easily extracted via OANDA API. The author has complied with all relevant data usage agreements and ethical guidelines in the acquisition and use of this data for research purposes.
-The processed feature matrices and regime tree models are available on the github repository associated with this project and one can easily reproduce the results by running the pipeline on the platform built for this research.
+The processed feature matrices, the trained regime tree, the evolved island populations, the IslandPilot pipeline source, and the qengine execution engine used for all backtests are publicly available at **https://github.com/hi-naresh/qengine/tree/dev**. The repository documents the steps required to reproduce the Section 6 results from raw OANDA candles through trained model to out-of-sample evaluation, so reviewers and independent researchers can re-run every reported experiment under identical engine, cost-model, and data conditions.
 
 ## Disclaimer
 
