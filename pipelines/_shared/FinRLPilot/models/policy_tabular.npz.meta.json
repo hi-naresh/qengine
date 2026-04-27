@@ -1,0 +1,1 @@
+{"backend": "tabular", "n_actions": 4, "n_bins": 3, "feature_subset": 4, "state_dim": 10, "mode": "train", "alpha": 0.1, "gamma": 0.99, "epsilon": 0.05, "total_updates": 1, "action_counts": {}}

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from qengine.framework.components.feature_selector import (
+from pipelines._shared.components.feature_selector import (
     FeaturePool,
     compute_feature_matrix,
     select_features,

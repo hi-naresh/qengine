@@ -1,8 +1,9 @@
 from typing import List, Dict, Optional, Tuple, Any, TypedDict
-import ray
 from multiprocessing import cpu_count
 import numpy as np
 import random
+
+ray = None  # lazy-loaded when monte carlo actually runs
 import os
 from datetime import datetime
 import qengine.helpers as jh
@@ -89,7 +90,6 @@ class MonteCarloTradesReturn(TypedDict):
     total_requested: int
 
 
-@ray.remote
 def _ray_run_scenario_monte_carlo(
     original_trades: list,
     original_equity_curve: list,
@@ -145,6 +145,13 @@ def monte_carlo_trades(
     else:
         available_cores = cpu_count()
         cpu_cores = max(MIN_CPU_CORES, min(cpu_cores, available_cores))
+
+    global ray, _ray_run_scenario_monte_carlo
+    if ray is None:
+        import ray as _ray
+        ray = _ray
+        # Apply @ray.remote decorator now that ray is loaded
+        _ray_run_scenario_monte_carlo = ray.remote(_ray_run_scenario_monte_carlo)
 
     ray_started_here = False
     if not ray.is_initialized():

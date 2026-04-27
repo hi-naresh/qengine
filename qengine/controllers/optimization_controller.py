@@ -11,7 +11,10 @@ from qengine import helpers as jh
 from qengine.models.OptimizationSession import get_optimization_sessions as get_sessions, update_optimization_session_state, update_optimization_session_status, delete_optimization_session, reset_optimization_session, update_optimization_session_notes, purge_optimization_sessions, get_running_optimization_session_id
 from qengine.services.transformers import get_optimization_session, get_optimization_session_for_load_more
 from qengine.models.OptimizationSession import get_optimization_session_by_id as get_optimization_session_by_id_from_db
-from qengine.modes.optimize_mode import run as run_optimization
+def run_optimization(*args, **kwargs):
+    """Lazy import: ray/optuna only loaded when optimization actually starts."""
+    from qengine.modes.optimize_mode import run as _run
+    return _run(*args, **kwargs)
 
 
 router = APIRouter(prefix="/optimization", tags=["Optimization"])

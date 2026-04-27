@@ -24,6 +24,9 @@ class Database:
             self.db = None
 
     def open_connection(self) -> None:
+        import os
+        if os.getenv('QENGINE_TRAINING_MODE'):
+            return
         if not jh.is_qengine_project() or jh.is_unit_testing():
             return
 

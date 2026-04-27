@@ -104,11 +104,6 @@ export const api = {
   validateStrategy: (code) => request('POST', '/llm/validate', { code }),
   configureLLM: (data) => request('POST', '/llm/configure', data),
 
-  // Autopilot
-  startAutopilot: (data) => request('POST', '/autopilot', data),
-  cancelAutopilot: (id) => request('POST', '/autopilot/cancel', { id }),
-  getAutopilotState: (sessionId) => request('GET', `/autopilot/state/${sessionId}`),
-
   // Pipelines (framework)
   getRegisteredPipelines: () => request('GET', '/pipelines/registered'),
   getAllPipelines: () => request('GET', '/pipelines/all'),
@@ -166,6 +161,7 @@ export const api = {
   getExistingCandles: (data) => request('POST', '/candles/existing', data),
   deleteCandles: (exchange, symbol) => request('POST', '/candles/delete', { exchange, symbol }),
   deleteAllCandles: () => request('POST', '/candles/delete-all'),
+  previewCandles: (exchange, symbol, position = 'head', limit = 20) => request('POST', '/candles/preview', { exchange, symbol, position, limit }),
   downloadCandles: async (data) => {
     const res = await fetch('/candles/download', {
       method: 'POST',

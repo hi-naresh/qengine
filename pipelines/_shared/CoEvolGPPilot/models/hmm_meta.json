@@ -1,0 +1,19 @@
+{
+  "backend": "hmmlearn_gmmhmm",
+  "n_states": 3,
+  "n_mix": 2,
+  "feature_names": [
+    "rsi_14",
+    "day_of_week",
+    "hl_range_norm",
+    "rsi_28",
+    "close_position"
+  ],
+  "feature_indices": [
+    15,
+    21,
+    22,
+    16,
+    23
+  ]
+}

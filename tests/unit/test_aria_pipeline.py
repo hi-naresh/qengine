@@ -455,6 +455,130 @@ class TestL6MetaEvaluator:
             assert isinstance(entry[1], float)
 
 
+class TestStaleness:
+    """HP selection must re-trigger if no entry happens within stale_bars."""
+
+    def test_stale_hp_reselects(self):
+        """If no entry for hp_stale_bars candles, force new HP selection."""
+        aria = ARIAPipeline({
+            'brain_warmup': 5, 'hp_warmup_cycles': 2,
+            'gate_warmup_cycles': 2, 'hp_stale_bars': 20,
+        })
+        s = MockStrategy()
+
+        # Warmup
+        for _ in range(10):
+            aria.on_before(s)
+
+        # Complete 3 cycles to pass warmup
+        for c in range(3):
+            aria.on_before(s)
+            aria.gate_entry(s)
+            s.is_open = True
+            s.vars['cycle_active'] = True
+            aria.on_open_position(s)
+            s.vars['sessions'].append({
+                'number': c, 'direction': 'long', 'levels': 0,
+                'legs': 0, 'pnl': 5.0, 'reason': 'tp_hit', 'bars': 10,
+            })
+            s.is_open = False
+            s.vars['cycle_active'] = False
+            aria.on_cycle_end(5.0, s)
+
+        # Now HP is selected. Record the selection.
+        aria.on_before(s)
+        first_selection = dict(aria._hp_selection)
+        assert aria._hp_selected_this_cycle, "HP should be selected"
+
+        # Simulate 25 candles with NO entry (strategy never fires should_long)
+        for _ in range(25):
+            aria.on_before(s)
+
+        # After 20 bars (stale_bars), _hp_selected_this_cycle should reset
+        # and a NEW selection should happen
+        assert aria._hp_selected_this_cycle, "Should have re-selected after staleness"
+        # The selection may or may not differ (random), but the mechanism fired
+        assert aria._hp_selected_at_bar > 15, \
+            f"HP should have been re-selected, selected_at_bar={aria._hp_selected_at_bar}"
+
+    def test_stale_fallback_uses_best_known(self):
+        """After 2 consecutive stale selections, replay best observed config."""
+        aria = ARIAPipeline({
+            'brain_warmup': 5, 'hp_warmup_cycles': 2,
+            'gate_warmup_cycles': 2, 'hp_stale_bars': 15,
+        })
+        s = MockStrategy()
+
+        # Warmup + 3 cycles (Observer accumulates history)
+        for _ in range(10):
+            aria.on_before(s)
+        for c in range(3):
+            aria.on_before(s)
+            aria.gate_entry(s)
+            s.is_open = True
+            s.vars['cycle_active'] = True
+            aria.on_open_position(s)
+            s.vars['sessions'].append({
+                'number': c, 'direction': 'long', 'levels': 0,
+                'legs': 0, 'pnl': 5.0, 'reason': 'tp_hit', 'bars': 10,
+            })
+            s.is_open = False
+            s.vars['cycle_active'] = False
+            aria.on_cycle_end(5.0, s)
+
+        # Observer now has 3 sessions with hp_used snapshots
+        assert len(aria._observer.sessions) == 3
+
+        # First stale cycle: 20 bars with no entry
+        aria.on_before(s)  # selects HPs
+        for _ in range(20):
+            aria.on_before(s)
+        assert aria._stale_count >= 1, "First stale should be counted"
+
+        # Second stale cycle: another 20 bars
+        for _ in range(20):
+            aria.on_before(s)
+
+        # After 2nd stale, should use best_known_config from Observer
+        # The Observer has 3 profitable sessions — it should replay one of those
+        assert aria._hp_selected_this_cycle, "Should have set HP from best known"
+        assert aria._stale_count == 0, "Stale count should reset after fallback"
+
+
+    def test_best_known_config_picks_highest_efficiency(self):
+        """best_known_config should pick the config with best pnl/bars ratio."""
+        from pipelines._shared.ARIA.hp_engine import HPEngine
+
+        eng = HPEngine({'warmup_cycles': 2, 'max_arms': 10})
+
+        class S:
+            def hyperparameters(self):
+                return [
+                    {'name': 'preset', 'type': 'categorical', 'options': ['custom'], 'default': 'custom'},
+                    {'name': 'signal_mode', 'type': 'categorical', 'group': 'Entry Signal',
+                     'options': ['random', 'ema_cross', 'rsi'], 'default': 'random'},
+                    {'name': 'hedge_value', 'type': float, 'group': 'Grid / Hedge',
+                     'min': 1.0, 'max': 50.0, 'default': 10.0},
+                ]
+
+        eng.register_strategy(S())
+
+        # Mock observer sessions with different configs and outcomes
+        sessions = [
+            {'hp_used': {'signal_mode': 'random', 'hedge_value': 10.0}, 'pnl': 5.0,
+             'bars': 50, 'regime_id_at_entry': 0},
+            {'hp_used': {'signal_mode': 'ema_cross', 'hedge_value': 15.0}, 'pnl': 20.0,
+             'bars': 30, 'regime_id_at_entry': 0},  # best: 20/30 = 0.67
+            {'hp_used': {'signal_mode': 'rsi', 'hedge_value': 5.0}, 'pnl': -10.0,
+             'bars': 100, 'regime_id_at_entry': 0},
+        ]
+
+        best = eng.best_known_config(sessions, regime_id=0)
+        assert best.get('signal_mode') == 'ema_cross', \
+            f"Should pick ema_cross (best efficiency), got {best.get('signal_mode')}"
+        assert best.get('hedge_value') == 15.0
+
+
 class TestFullPipeline:
     """End-to-end tests verifying all layers work together."""
 
@@ -513,7 +637,9 @@ class TestFullPipeline:
 
     def test_gate_blocks_after_learning(self):
         """After enough cycles with losses, gate should block some entries."""
-        # Run with many losses to train gate
+        # Run with many losses to train gate.  Threshold ramps at 0.005/cycle,
+        # needs ~60+ consecutive losses before blocking (threshold ~0.275,
+        # sigmoid after 60 losses ~0.18).
         cfg = {
             'brain_warmup': 5, 'gate_warmup_cycles': 3,
             'hp_warmup_cycles': 3, 'meta_window': 10,
@@ -526,8 +652,8 @@ class TestFullPipeline:
         for _ in range(10):
             aria.on_before(s)
 
-        # Simulate 20 losing cycles to train gate
-        for c in range(20):
+        # Simulate 70 losing cycles to train gate
+        for c in range(70):
             aria.on_before(s)
             aria.gate_entry(s)
             s.is_open = True

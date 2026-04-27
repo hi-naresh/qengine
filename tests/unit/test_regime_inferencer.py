@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from qengine.framework.components.regime_inferencer import RegimeInferencer
+from pipelines._shared.components.regime_inferencer import RegimeInferencer
 
 
 def _make_mock_tree(regime_sequence):

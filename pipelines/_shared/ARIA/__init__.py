@@ -136,6 +136,9 @@ class ARIAPipeline(Pipeline):
         self._preset_forced = False
         self._last_cycle_end_bar: int = 0
         self._last_observed_level: int = 0
+        self._hp_selected_at_bar: int = 0  # candle when last HP selection happened
+        self._hp_stale_bars: int = cfg.get('hp_stale_bars', 500)  # re-select if no entry after this many bars
+        self._stale_count: int = 0  # consecutive stale selections (no entry)
 
     # ── Observation (every candle) ──
 
@@ -156,6 +159,42 @@ class ARIAPipeline(Pipeline):
                 self._hp_engine.register_strategy(strategy)
                 self._hp_registered = True
 
+        # Staleness check: if HPs were selected but no entry happened
+        # for hp_stale_bars candles, the current config is dead.
+        # Penalise the stale arms (they produced no entries) and force
+        # re-selection. After 2 consecutive stale selections, fall back
+        # to a safe high-frequency default config.
+        if (self._hp_selected_this_cycle
+                and self._candle_count - self._hp_selected_at_bar > self._hp_stale_bars):
+            # Penalise stale arms — treat as a loss (no entry = failed config)
+            if self._hp_engine_enabled:
+                self._hp_engine.update(profitable=False, duration_bars=self._hp_stale_bars)
+            self._stale_count = getattr(self, '_stale_count', 0) + 1
+            self._hp_selected_this_cycle = False  # allow re-selection
+
+            # After 2 consecutive stale selections, use INTELLIGENCE:
+            # find the best-performing config from Observer history and
+            # replay it.  Falls back to high-frequency defaults only if
+            # no history exists.
+            if self._stale_count >= 2:
+                regime_id = self._market_state.get('regime_id', 0)
+                best = self._hp_engine.best_known_config(
+                    self._observer.sessions, regime_id=regime_id
+                )
+                if best:
+                    self._hp_engine.inject_hp(strategy, best)
+                    self._hp_selection = best
+                elif hasattr(strategy, 'hp'):
+                    # No history at all — force minimal high-frequency config
+                    strategy.hp['signal_mode'] = 'random'
+                    strategy.hp['session_filter'] = 'any'
+                    strategy.hp['day_filter'] = 'any'
+                    strategy.hp['entry_on_crossover'] = 'no'
+                    strategy.hp['direction_bias'] = 'both'
+                self._stale_count = 0
+                self._hp_selected_this_cycle = True  # prevent bandit from overwriting
+                self._hp_selected_at_bar = self._candle_count
+
         # L3: select HPs ONCE between cycles (not every candle).
         # Only after candle warmup so brain has market context.
         sv = getattr(strategy, 'vars', {})
@@ -167,8 +206,12 @@ class ARIAPipeline(Pipeline):
             regime_id = self._market_state.get('regime_id', 0)
             self._hp_selection = self._hp_engine.select(regime_id)
             if self._hp_selection:
+                self._hp_selection = self._hp_engine.reactive_adjustments(
+                    self._hp_selection, self._observer.sessions
+                )
                 self._hp_engine.inject_hp(strategy, self._hp_selection)
             self._hp_selected_this_cycle = True
+            self._hp_selected_at_bar = self._candle_count
 
         # Update shadow tracker — monitor pending counterfactual sessions
         self._shadow.update(strategy)
@@ -283,6 +326,7 @@ class ARIAPipeline(Pipeline):
         """L5: Observer captures entry snapshot with gate confidence."""
         self._cycle_active = True
         self._last_observed_level = 0
+        self._stale_count = 0  # entry succeeded, reset staleness
 
         sv = getattr(strategy, 'vars', {})
         start_bar = int(sv.get('session_start_bar', getattr(strategy, 'index', 0)))
@@ -383,9 +427,9 @@ class ARIAPipeline(Pipeline):
             self._gate.update(self._market_state, strategy, profitable,
                               stress_features=stress_features)
 
-        # L3: HPEngine bandit posterior update
+        # L3: HPEngine bandit posterior update (with duration penalty)
         if self._hp_engine_enabled:
-            self._hp_engine.update(profitable)
+            self._hp_engine.update(profitable, duration_bars=duration)
 
         # L6: MetaEvaluator — compute ARIA score and check for degradation
         if self._meta_enabled:

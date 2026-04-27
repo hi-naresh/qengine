@@ -20,7 +20,7 @@ async def init_redis():
 async_redis = None
 sync_redis = None
 if jh.is_qengine_project():
-    if not jh.is_notebook():
+    if not jh.is_notebook() and not os.getenv('QENGINE_TRAINING_MODE'):
         async_redis = asyncio.run(init_redis())
         sync_redis = sync_redis_lib.Redis(
             host=ENV_VALUES['REDIS_HOST'], port=ENV_VALUES['REDIS_PORT'], db=int(ENV_VALUES.get('REDIS_DB') or 0),

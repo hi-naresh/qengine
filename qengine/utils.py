@@ -3,11 +3,9 @@ from decimal import Decimal
 from typing import Union
 
 import numpy as np
-import pandas as pd
 
 import qengine.helpers as jh
 from qengine.enums import timeframes
-import statsmodels.api as sm
 
 import jesse_rust
 
@@ -124,7 +122,8 @@ def limit_stop_loss(entry_price: float, stop_price: float, trade_type: str, max_
 def numpy_candles_to_dataframe(candles: np.ndarray, name_date: str = "date", name_open: str = "open",
                                name_high: str = "high",
                                name_low: str = "low", name_close: str = "close",
-                               name_volume: str = "volume") -> pd.DataFrame:
+                               name_volume: str = "volume"):
+    import pandas as pd  # lazy: only used here, saves 300ms on startup
     columns = [name_date, name_open, name_close, name_high, name_low, name_volume]
     df = pd.DataFrame(data=candles, index=pd.to_datetime(candles[:, 0], unit="ms"), columns=columns)
     df[name_date] = pd.to_datetime(df.index, unit="ms")
@@ -323,11 +322,11 @@ def combinations_without_repeat(a: np.ndarray, n: int = 2) -> np.ndarray:
 
 
 def calculate_alpha_beta(returns1: np.ndarray, returns2: np.ndarray) -> tuple:
-    # Add a constant to the independent variable (returns2)
-    X = sm.add_constant(returns2)  # Independent variable
-    model = sm.OLS(returns1, X).fit()  # Fit the model
-    alpha = model.params[0]  # Intercept (alpha)
-    beta = model.params[1]  # Slope (beta)
+    import statsmodels.api as sm  # lazy: only used here, saves 800ms on startup
+    X = sm.add_constant(returns2)
+    model = sm.OLS(returns1, X).fit()
+    alpha = model.params[0]
+    beta = model.params[1]
     return alpha, beta
 
 

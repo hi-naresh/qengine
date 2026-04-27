@@ -1,6 +1,6 @@
 # QEngine
 
-A multi-asset algorithmic trading platform for forex, commodities, and more (coming soon). 
+A multi-asset algorithmic Quant Engine for forex, commodities, and more (coming soon). 
 
 ---
 
@@ -11,6 +11,7 @@ QEngine is a Python-based algorithmic trading engine with a modern web dashboard
 ### Key Features
 
 - **Strategy Framework**: Write strategies in Python with 175+ built-in technical indicators
+- **Pipelines**: Build multi-stage intelligent research workflows for data processing, backtesting, and analysis allowing you to easily chain together complex layers of AI/ML/DL/Agents to create powerful trading systems.
 - **Backtesting Engine**: Minute-by-minute event-driven simulation with realistic forex modeling (spreads, swaps, leverage, market hours)
 - **Hyperparameter Optimization**: Distributed search using Optuna + Ray across multiple CPU cores
 - **Monte Carlo Simulation**: Stress-test strategies with trade shuffling and candle perturbation
@@ -140,6 +141,55 @@ class SimpleRSI(Strategy):
 Save as `strategies/SimpleRSI/__init__.py`, then backtest from the dashboard.
 
 See [STRATEGY.md](./docs/STRATEGY.md) for the complete guide.
+
+---
+
+## Write a Pipeline 
+
+Pipelines are multi-stage workflows that let you chain together complex research tasks. For example, you could create a pipeline that:
+1. Writes a strategy using an LLM
+2. Backtests the strategy
+3. Plan the layers of a multi-agent system to improve the strategy
+4. Define each layer (it can be a custom data processor, an AI agent, or a machine learning model)
+5. Run the pipeline and analyze pipeline intelligence results
+
+## Use QEngine in Your Own Project
+
+You don't need to clone or fork this repo to build strategies. Install `qengine` as a dependency and keep your own code in a small project repo containing only `strategies/`, `pipelines/`, and `storage/`.
+
+The fastest way is to start from the [**qengine-project-template**](https://github.com/your-org/qengine-project-template):
+
+```bash
+git clone https://github.com/your-org/qengine-project-template.git my-project
+cd my-project
+
+cp .env.example .env        # add DB / Redis / broker credentials
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt   # installs qengine
+
+qengine run                  # http://localhost:9000
+```
+
+### Minimum project layout
+
+QEngine looks for `strategies/` and `storage/` in the **current working directory** when you run `qengine run`. Anything else is optional:
+
+```
+my-project/
+├── .env
+├── requirements.txt        # contains: qengine
+├── strategies/
+│   └── MyStrategy/
+│       └── __init__.py     # subclass of qengine.strategies.Strategy
+├── pipelines/              # optional — multi-stage research workflows
+│   └── MyPipeline/
+│       └── __init__.py
+└── storage/                # logs, checkpoints, results (gitignored)
+```
+
+Upgrade with `pip install -U qengine` whenever a new release ships — your strategies and pipelines are unaffected because they live in your repo, not the engine.
 
 ---
 

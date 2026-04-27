@@ -169,7 +169,7 @@ const allTradingItems = [
   { to: '/backtest', label: 'Backtest', icon: BacktestIcon, feature: 'backtest' },
   { to: '/optimization', label: 'Optimize', icon: OptimizeIcon, feature: 'optimization' },
   { to: '/monte-carlo', label: 'Monte Carlo', icon: MonteCarloIcon, feature: 'monte_carlo' },
-  { to: '/autopilot', label: 'Autopilot', icon: AutopilotIcon, feature: 'backtest' },
+  { to: '/autopilot', label: 'Pipelines', icon: AutopilotIcon, feature: 'backtest' },
   { to: '/live', label: 'Live Trade', icon: LiveIcon, feature: 'live' },
   { to: '/import', label: 'Import Data', icon: ImportIcon, feature: 'import_data' },
 ]

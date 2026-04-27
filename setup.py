@@ -12,7 +12,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 setup(
     name='qengine',
     version=VERSION,
-    author="Naresh",
+    author="Naresh Jhawar",
     packages=find_packages(),
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,

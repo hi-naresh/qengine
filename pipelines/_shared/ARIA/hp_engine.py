@@ -49,21 +49,35 @@ _N_BINS = 3                         # discretization bins (default ± 1 step)
 # no signal, crash-prone, or require external model).  The bandit must
 # never explore these.
 _EXCLUDED_OPTIONS = {
-    'signal_mode': {'model', 'none'},          # model needs external ML; none enters every bar
+    'signal_mode': {
+        'model',              # needs external ML
+        'none',               # enters every bar — no signal at all
+        'ema_rsi',            # compound: EMA cross + RSI OB/OS — too restrictive
+        'ema_macd',           # compound: EMA + MACD — too restrictive
+        'triple',             # compound: EMA + RSI + MACD — extremely restrictive
+        'indicator',          # generic: depends on ind_name/ind_rule, often restricts entries
+        'dual_indicator',     # compound: two indicators — very restrictive
+    },
     'day_filter': {'skip_mon_fri'},            # removes 40% of trading days
     'sizing_curve': {'fixed', 'anti_martingale'},  # fixed ignores sizing_factor; anti is inverse
     'sizing_custom_sequence': {'1_2_4_8_16', '1_3_6_12_24'},  # insanely aggressive sequences
     'abort_mode': {'none'},                    # RiskShield handles abort; strategy must have one too
     'hedge_mode': {'fibonacci_levels'},        # fibonacci spacing creates stuck cycles
+    'tp_mode': {'trailing', 'bucket_pct', 'risk_reward'},  # trailing chases forever; bucket_pct/risk_reward produce unreachable TPs with spread
+    'vol_filter': {'atr_range', 'natr_min'},   # volatility filters stack with signals → too few entries
+    'confidence_gate': {'enabled'},            # additional gate on top of ARIA gate → too few entries
+    'equity_curve_filter': {'above_ema'},      # can block entries during drawdowns when recovery is needed
 }
 
 # Safety bounds: min/max overrides applied AFTER bandit selection to
 # prevent configurations that blow up the account.
 _SAFETY_BOUNDS = {
-    'max_levels': (2, 10),          # never 0 (no hedging) or >10 (guaranteed bust)
+    'max_levels': (2, 6),           # L0-L2 profitable, L3+ catastrophic — cap at 6
     'base_size_value': (0.1, 3.0),  # 0.1% to 3% equity max
     'max_daily_loss_pct': (0, 5.0), # cap daily loss
     'max_exposure_pct': (0, 80),    # never above 80% margin
+    'tp_value': (1.0, 30.0),       # TP must be reachable — 30 pips max for FX scalping
+    'hedge_value': (3.0, 30.0),    # hedge distance 3-30 pips — not too tight, not too wide
 }
 
 # All HP groups are injected on strategy.hp between cycles.
@@ -77,21 +91,45 @@ _ALL_GROUPS = {'General', 'Entry Signal', 'Grid / Hedge', 'Take Profit',
 # BanditState
 # ---------------------------------------------------------------------------
 
+_DEFAULT_SEED = 42
+_RNG = np.random.Generator(np.random.PCG64(seed=_DEFAULT_SEED))
+
+
+def reset_rng(seed: int = _DEFAULT_SEED) -> None:
+    """Reset module RNG to ensure deterministic backtests."""
+    global _RNG
+    _RNG = np.random.Generator(np.random.PCG64(seed=seed))
+
+
 @dataclass
 class BanditState:
     """Per-group, per-regime Thompson Sampling bandit state.
 
     Each arm is a dict mapping parameter names to values.  Alpha and beta
     arrays hold the Beta distribution parameters (one pair per arm).
+
+    Initial exploration: every arm is tried once (round-robin) before
+    Thompson Sampling takes over.  This prevents the default arm from
+    dominating before alternatives are evaluated.
     """
 
     arms: list                  # list of {param_name: value, ...} dicts
     alpha: np.ndarray           # shape (n_arms,), Beta alpha per arm
     beta: np.ndarray            # shape (n_arms,), Beta beta per arm
+    visit_count: np.ndarray = field(default=None)  # shape (n_arms,)
+
+    def __post_init__(self):
+        if self.visit_count is None:
+            self.visit_count = np.zeros(len(self.arms), dtype=np.int32)
 
     def sample_best(self) -> int:
-        """Thompson Sampling: draw from each arm's Beta, return index of max."""
-        samples = np.random.beta(self.alpha, self.beta)
+        """Select an arm: round-robin until all tried, then Thompson Sampling."""
+        # Phase 1: round-robin — try each arm once
+        unvisited = np.where(self.visit_count == 0)[0]
+        if len(unvisited) > 0:
+            return int(unvisited[_RNG.integers(len(unvisited))])
+        # Phase 2: Thompson Sampling
+        samples = _RNG.beta(self.alpha, self.beta)
         return int(np.argmax(samples))
 
 
@@ -201,7 +239,25 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
     arms = [default_arm]
     seen = {_arm_key(default_arm, param_names)}
 
-    # Phase 1: single-param variations (change ONE param at a time)
+    # Phase 1: ONE arm per param — guarantees every param is explored.
+    # Pick the MOST DIFFERENT non-default value for each param.
+    for i, hp in enumerate(group_hps):
+        non_defaults = [v for v in param_vals[i] if v != default_arm[hp['name']]]
+        if not non_defaults:
+            continue
+        # Pick the value furthest from default (for categoricals: first non-default)
+        if isinstance(non_defaults[0], (int, float)):
+            best = max(non_defaults, key=lambda v: abs(v - (default_arm[hp['name']] or 0)))
+        else:
+            best = non_defaults[0]
+        arm = dict(default_arm)
+        arm[hp['name']] = best
+        key = _arm_key(arm, param_names)
+        if key not in seen and len(arms) < max_arms:
+            seen.add(key)
+            arms.append(arm)
+
+    # Phase 2: remaining single-param variations (other values)
     for i, hp in enumerate(group_hps):
         for val in param_vals[i]:
             if val == default_arm[hp['name']]:
@@ -213,18 +269,17 @@ def _build_arms(group_hps: list, max_arms: int, n_bins: int) -> list:
                 seen.add(key)
                 arms.append(arm)
 
-    # Phase 2: multi-param combos (random local perturbations)
+    # Phase 3: multi-param combos (random local perturbations)
     attempts = 0
     while len(arms) < max_arms and attempts < max_arms * 5:
         attempts += 1
         arm = dict(default_arm)
-        # Perturb 1-3 params randomly
-        n_perturb = min(len(group_hps), np.random.randint(1, 4))
-        indices = np.random.choice(len(group_hps), n_perturb, replace=False)
+        n_perturb = min(len(group_hps), _RNG.integers(1, 4))
+        indices = _RNG.choice(len(group_hps), n_perturb, replace=False)
         for idx in indices:
             vals = param_vals[idx]
             if vals:
-                arm[param_names[idx]] = vals[np.random.randint(len(vals))]
+                arm[param_names[idx]] = vals[_RNG.integers(len(vals))]
         key = _arm_key(arm, param_names)
         if key not in seen:
             seen.add(key)
@@ -286,6 +341,8 @@ class HPEngine:
         self._warmup: int = config.get('warmup_cycles', 20)
         self._max_arms: int = config.get('max_arms', 30)
         self._k_max: int = config.get('k_max', 5)
+
+        reset_rng(config.get('seed', _DEFAULT_SEED))
 
         self._n_cycles: int = 0
         self._hp_schema: Optional[list] = None
@@ -428,20 +485,32 @@ class HPEngine:
     # Bandit update
     # ------------------------------------------------------------------
 
-    def update(self, profitable: bool) -> None:
+    def update(self, profitable: bool, duration_bars: int = 0) -> None:
         """Update bandit posteriors after cycle end.
 
         Parameters
         ----------
         profitable : bool
             True if the cycle was profitable (PnL > 0).
+        duration_bars : int
+            How many bars the cycle lasted.  Long cycles (>500 bars)
+            get a penalty even if profitable, because a martingale
+            needs high cycle throughput.
         """
         self._n_cycles += 1  # count completed cycles, not select() calls
 
         if not self._selected_arms:
             return
 
+        # Base reward: 1.0 for profit, 0.0 for loss
         reward = 1.0 if profitable else 0.0
+
+        # Duration penalty: long cycles reduce reward even if profitable.
+        # A 500-bar cycle gets ~0.5 penalty, 1000-bar gets ~0.75.
+        if duration_bars > 200:
+            duration_penalty = min(0.8, (duration_bars - 200) / 1000.0)
+            reward = max(0.0, reward - duration_penalty)
+
         regime_id = self._last_regime_id
 
         for group_name, arm_idx in self._selected_arms.items():
@@ -451,9 +520,81 @@ class HPEngine:
                 continue
             bandit.alpha[arm_idx] += reward
             bandit.beta[arm_idx] += (1.0 - reward)
+            bandit.visit_count[arm_idx] += 1
 
         # Clear selection for next cycle
         self._selected_arms = {}
+
+    # ------------------------------------------------------------------
+    # Intelligent fallback — best known config from history
+    # ------------------------------------------------------------------
+
+    def best_known_config(self, observer_sessions: list,
+                          regime_id: int = None) -> dict:
+        """Find the best-performing HP config from Observer history.
+
+        Ranks past cycles by *efficiency* = pnl / max(duration_bars, 1).
+        High PnL in short duration = best.  Filters to the current
+        regime if specified and enough data exists.
+
+        Parameters
+        ----------
+        observer_sessions : list of dict
+            Enriched sessions from Observer, each with ``hp_used``,
+            ``pnl``, ``bars``, ``regime_id_at_entry``.
+        regime_id : int, optional
+            Current regime — prefer configs from matching regime.
+
+        Returns
+        -------
+        dict — the HP config dict from the best session, or ``{}`` if
+        no usable history.
+        """
+        if not observer_sessions:
+            return {}
+
+        # Score each session: efficiency = pnl / max(bars, 1)
+        # Negative PnL or long duration = low score
+        scored = []
+        for sess in observer_sessions:
+            hp_used = sess.get('hp_used')
+            if not hp_used:
+                continue
+            pnl = sess.get('pnl', 0)
+            bars = max(sess.get('bars', 1), 1)
+            regime = sess.get('regime_id_at_entry', 0)
+            efficiency = pnl / bars
+            scored.append((efficiency, regime, hp_used))
+
+        if not scored:
+            return {}
+
+        # Filter to current regime if we have enough matching sessions
+        if regime_id is not None:
+            regime_matches = [(eff, r, hp) for eff, r, hp in scored if r == regime_id]
+            if len(regime_matches) >= 3:
+                scored = regime_matches
+
+        # Pick the best by efficiency
+        scored.sort(key=lambda x: x[0], reverse=True)
+        best_hp = scored[0][2]
+
+        # Filter through safety bounds and return
+        safe_config = {}
+        for name, value in best_hp.items():
+            if name in self._hp_lookup:
+                safe_config[name] = value
+            # Also include params the bandit doesn't manage (like preset)
+            # but skip them — only return bandit-managed params
+
+        # Apply safety bounds
+        for param_name, (safe_lo, safe_hi) in _SAFETY_BOUNDS.items():
+            if param_name in safe_config:
+                v = safe_config[param_name]
+                if isinstance(v, (int, float)):
+                    safe_config[param_name] = type(v)(max(safe_lo, min(safe_hi, v)))
+
+        return safe_config
 
     # ------------------------------------------------------------------
     # HP injection
@@ -482,6 +623,67 @@ class HPEngine:
             # Only set if param exists in strategy.hp
             if name in strategy.hp:
                 strategy.hp[name] = value
+
+    # ------------------------------------------------------------------
+    # Reactive adjustments
+    # ------------------------------------------------------------------
+
+    def reactive_adjustments(self, hp_config: dict, observer_sessions: list) -> dict:
+        """Post-selection adjustments based on recent cycle outcomes.
+
+        Tightens max_levels and widens hedge after recent busts.
+        Loosens after sustained win streaks.
+
+        Parameters
+        ----------
+        hp_config : dict
+            HP config from ``select()`` (already safety-bounded).
+        observer_sessions : list of dict
+            Enriched sessions from Observer.
+
+        Returns
+        -------
+        dict — modified HP config.
+        """
+        if not hp_config or not observer_sessions:
+            return hp_config
+
+        config = dict(hp_config)  # don't mutate original
+        bust_reasons = {'max_level_bust', 'margin_bust', 'margin_call'}
+
+        last_5 = observer_sessions[-5:]
+        last_10 = observer_sessions[-10:]
+
+        busts_in_last_5 = [s for s in last_5 if s.get('reason') in bust_reasons]
+        busts_in_last_10 = [s for s in last_10 if s.get('reason') in bust_reasons]
+
+        # --- Rule 1: Bust cooldown — cap max_levels ---
+        if busts_in_last_5 and 'max_levels' in config:
+            # Last cycle was a bust → cap at 3
+            last_reason = observer_sessions[-1].get('reason')
+            if last_reason in bust_reasons:
+                config['max_levels'] = min(config['max_levels'], 3)
+            else:
+                config['max_levels'] = min(config['max_levels'], 4)
+
+        # --- Rule 2: Hedge widening after busts ---
+        if busts_in_last_5 and 'hedge_value' in config:
+            config['hedge_value'] = min(config['hedge_value'] * 1.5, 30.0)
+
+        # --- Rule 3: Win streak bonus ---
+        if len(last_10) >= 10 and all(s.get('reason') == 'tp_hit' for s in last_10):
+            if 'max_levels' in config:
+                # Relax cap up to 6 (don't exceed safety bound)
+                config['max_levels'] = min(config['max_levels'], 6)
+
+        # --- Rule 4: Sizing reduction after repeated busts ---
+        if len(busts_in_last_10) >= 2 and 'base_size_value' in config:
+            config['base_size_value'] = round(config['base_size_value'] * 0.7, 6)
+            # Enforce safety lower bound
+            lo = _SAFETY_BOUNDS.get('base_size_value', (0.1, 3.0))[0]
+            config['base_size_value'] = max(config['base_size_value'], lo)
+
+        return config
 
     # ------------------------------------------------------------------
     # Properties
@@ -520,6 +722,7 @@ class HPEngine:
                 bandits_ser[group_name][str(regime_id)] = {
                     'alpha': bandit.alpha.tolist(),
                     'beta': bandit.beta.tolist(),
+                    'visit_count': bandit.visit_count.tolist(),
                 }
 
         return {
@@ -562,10 +765,13 @@ class HPEngine:
                 n_arms = len(arms)
                 alpha = np.array(state['alpha'][:n_arms], dtype=np.float64)
                 beta_arr = np.array(state['beta'][:n_arms], dtype=np.float64)
+                vc = state.get('visit_count')
+                visit_count = np.array(vc[:n_arms], dtype=np.int32) if vc else np.zeros(n_arms, dtype=np.int32)
                 self._bandits[group_name][regime_id] = BanditState(
                     arms=arms,
                     alpha=alpha,
                     beta=beta_arr,
+                    visit_count=visit_count,
                 )
 
     # ------------------------------------------------------------------

@@ -1,0 +1,24 @@
+{
+  "iteration_1_buggy": {
+    "random": 100,
+    "ema_cross": 0,
+    "rsi": 0,
+    "macd": 0,
+    "supertrend": 0,
+    "stoch": 0,
+    "ema_rsi": 0,
+    "ema_macd": 0,
+    "triple": 0
+  },
+  "iteration_2_fixed": {
+    "random": 9,
+    "ema_cross": 10,
+    "rsi": 8,
+    "macd": 13,
+    "supertrend": 14,
+    "stoch": 6,
+    "ema_rsi": 17,
+    "ema_macd": 14,
+    "triple": 9
+  }
+}

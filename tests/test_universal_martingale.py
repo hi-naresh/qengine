@@ -10,7 +10,6 @@ Tests for Martingale strategy:
   - HP structure integrity
 """
 import pytest
-import math
 import numpy as np
 import sys
 import os
@@ -21,8 +20,8 @@ try:
     import qengine.helpers as jh
     from qengine.factories import candles_from_close_prices
     from qengine import research
-    from strategies._admin.Martingale import Martingale as UniversalMartingale, _FIB, _CUSTOM_SEQUENCES
-    from strategies._admin.Martingale.presets import PRESETS
+    from strategies._shared.Martingale import Martingale as UniversalMartingale, _FIB, _CUSTOM_SEQUENCES
+    from strategies._shared.Martingale import PRESETS
     AVAILABLE = True
 except Exception:
     AVAILABLE = False

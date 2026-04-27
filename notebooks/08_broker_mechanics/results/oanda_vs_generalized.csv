@@ -1,0 +1,28 @@
+broker,level,margin_pct,forced,lots
+OANDA (real),0,0.016500014850013366,False,45.0
+OANDA (real),1,0.04986680230436894,False,91.0
+OANDA (real),2,0.11660074158071644,False,182.0
+OANDA (real),3,0.2500700776225254,False,364.0
+OANDA (real),4,0.5166478924709432,False,727.0
+OANDA (real),5,1.05019348841635,False,1455.0
+OANDA (real),6,2.1170110967678997,False,2909.0
+OANDA (real),7,4.251018804512595,False,5818.0
+OANDA (real),8,8.520524791253196,False,11636.0
+"Idealized (no spread, equity-based)",0,0.03666666666666667,False,0.001
+"Idealized (no spread, equity-based)",1,0.07333333333333333,False,0.001
+"Idealized (no spread, equity-based)",2,0.14666666666666667,False,0.002
+"Idealized (no spread, equity-based)",3,0.29333333333333333,False,0.004
+"Idealized (no spread, equity-based)",4,0.5499999999999999,False,0.007
+"Idealized (no spread, equity-based)",5,1.0999999999999999,False,0.015
+"Idealized (no spread, equity-based)",6,2.1633333333333336,False,0.029
+"Idealized (no spread, equity-based)",7,4.29,False,0.058
+"Idealized (no spread, equity-based)",8,8.543333333333333,False,0.116
+High-leverage CFD (50:1),0,0.022000000000000002,False,0.001
+High-leverage CFD (50:1),1,0.044000000000000004,False,0.001
+High-leverage CFD (50:1),2,0.08800000000000001,False,0.002
+High-leverage CFD (50:1),3,0.17600000000000002,False,0.004
+High-leverage CFD (50:1),4,0.33,False,0.007
+High-leverage CFD (50:1),5,0.66,False,0.015
+High-leverage CFD (50:1),6,1.2980000000000003,False,0.029
+High-leverage CFD (50:1),7,2.5740000000000003,False,0.058
+High-leverage CFD (50:1),8,5.126000000000001,False,0.116

@@ -9,12 +9,13 @@ The model starts permissive (all entries allowed) and gradually tightens
 as it accumulates cycle outcomes.  During a configurable warmup period
 the gate always allows entry but still collects data and updates weights.
 
-Feature vector (20 dimensions):
+Feature vector (24 dimensions):
   - 4 continuous market features: danger, trend_strength, volatility, efficiency
   - 5 regime one-hot: regime_id encoded as k binary features (k_max=5)
   - 3 account features: equity drawdown %, consecutive busts, cycles since bust
   - 4 session one-hot: Asian / London / Overlap / New York
   - 3 R(t) stress features: normalised_rt, inter_cycle_gap_ratio, recent_stress_rate
+  - 4 structural features: recent_bust_rate, avg_level_recent, consecutive_losses, drawdown_pct
   - 1 bias term
 
 Update rule (SGD with L2 regularisation):
@@ -34,11 +35,11 @@ import numpy as np
 # Constants
 # ---------------------------------------------------------------------------
 
-_N_FEATURES = 20          # 4 market + 5 regime + 3 account + 4 session + 3 stress + 1 bias
+_N_FEATURES = 24          # 4 market + 5 regime + 3 account + 4 session + 3 stress + 4 structural + 1 bias
 _K_MAX_DEFAULT = 5        # max regime clusters (one-hot width)
 _SESSION_NAMES = ('asian', 'london', 'overlap', 'new_york')
-_MAX_THRESHOLD = 0.5      # ceiling for adaptive threshold
-_THRESHOLD_RAMP = 0.02    # threshold increment per cycle after warmup
+_MAX_THRESHOLD = 0.35     # ceiling for adaptive threshold — higher blocks too aggressively
+_THRESHOLD_RAMP = 0.005   # threshold increment per cycle after warmup (reaches 0.35 at ~75 cycles)
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +111,7 @@ def _build_features(
     peak_equity: float = 0.0,
     stress_features: Optional[dict] = None,
 ) -> np.ndarray:
-    """Construct the 20-dimensional feature vector for the classifier.
+    """Construct the 24-dimensional feature vector for the classifier.
 
     Parameters
     ----------
@@ -130,7 +131,7 @@ def _build_features(
     Returns
     -------
     np.ndarray
-        Shape ``(20,)`` feature vector with a bias term at the end.
+        Shape ``(24,)`` feature vector with a bias term at the end.
     """
     x = np.zeros(_N_FEATURES, dtype=np.float64)
 
@@ -190,8 +191,43 @@ def _build_features(
     x[17] = min(1.0, max(0.0, float(sf.get('inter_cycle_gap_ratio', 0.0))))
     x[18] = min(1.0, max(0.0, float(sf.get('recent_stress_rate', 0.0))))
 
-    # --- 1 bias [19] ---
-    x[19] = 1.0
+    # --- 4 structural features [19:23] ---
+    _BUST_REASONS = {'max_level_bust', 'margin_bust', 'margin_call', 'sl_hit'}
+
+    # recent_bust_rate: ratio of busts in last 20 cycles
+    recent_20 = sessions[-20:] if len(sessions) >= 20 else sessions
+    if recent_20:
+        bust_count = sum(1 for s in recent_20 if s.get('reason') in _BUST_REASONS)
+        x[19] = bust_count / len(recent_20)
+    else:
+        x[19] = 0.0
+
+    # avg_level_recent: average max level reached in last 10 cycles (normalised)
+    recent_10 = sessions[-10:] if len(sessions) >= 10 else sessions
+    if recent_10:
+        max_levels = _safe_float(sv.get('max_levels'), 12.0) or 12.0
+        avg_lvl = sum(_safe_float(s.get('levels'), 0.0) for s in recent_10) / len(recent_10)
+        x[20] = min(1.0, avg_lvl / max_levels)
+    else:
+        x[20] = 0.0
+
+    # consecutive_losses: count of consecutive losing cycles / 10 (capped at 1.0)
+    consec_losses = 0
+    for sess in reversed(sessions):
+        if _safe_float(sess.get('pnl'), 0.0) < 0:
+            consec_losses += 1
+        else:
+            break
+    x[21] = min(consec_losses / 10.0, 1.0)
+
+    # drawdown_pct: current equity drawdown from peak (0-1)
+    if peak_equity > 0:
+        x[22] = min(1.0, max(0.0, (peak_equity - equity) / peak_equity))
+    else:
+        x[22] = 0.0
+
+    # --- 1 bias [23] ---
+    x[23] = 1.0
 
     return x
 
@@ -386,12 +422,25 @@ class CycleGate:
         }
 
     def load_state_dict(self, d: dict) -> None:
-        """Restore gate state from a previously saved dict."""
+        """Restore gate state from a previously saved dict.
+
+        Handles backwards compatibility: old state dicts with 20 weights
+        are zero-padded to 24 (new structural features default to 0, bias
+        is moved from index 19 to index 23).
+        """
         weights = d.get('weights')
         if weights is not None:
             w = np.asarray(weights, dtype=np.float64)
             if w.shape == (_N_FEATURES,):
                 self._weights = w
+            elif w.shape == (20,):
+                # Migrate old 20-dim weights to 24-dim:
+                # old [0:19] = features, old [19] = bias
+                # new [0:19] = same features, [19:23] = structural (zero), [23] = bias
+                new_w = np.zeros(_N_FEATURES, dtype=np.float64)
+                new_w[:19] = w[:19]       # copy market/regime/account/session/stress
+                new_w[23] = w[19]         # move bias from old[19] to new[23]
+                self._weights = new_w
         self._n_cycles = int(d.get('n_cycles', 0))
         self._peak_equity = float(d.get('peak_equity', 0.0))
         self._warmup = int(d.get('warmup', self._warmup))

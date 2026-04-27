@@ -27,7 +27,10 @@ from qengine.models.MonteCarloSession import (
     get_running_monte_carlo_session_id
 )
 from qengine.services.transformers import get_monte_carlo_session, get_monte_carlo_session_for_load_more
-from qengine.modes.monte_carlo_mode import run as run_monte_carlo
+def run_monte_carlo(*args, **kwargs):
+    """Lazy import: ray only loaded when monte carlo actually starts."""
+    from qengine.modes.monte_carlo_mode import run as _run
+    return _run(*args, **kwargs)
 
 
 router = APIRouter(prefix="/monte-carlo", tags=["Monte Carlo"])

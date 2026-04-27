@@ -232,7 +232,7 @@ const allTradingItems = [
   { to: '/backtest', label: 'Backtest', icon: BacktestIcon, hint: 'Test on historical data', feature: 'backtest' },
   { to: '/optimization', label: 'Optimization', icon: OptimizeIcon, hint: 'Tune hyperparameters', feature: 'optimization' },
   { to: '/monte-carlo', label: 'Monte Carlo', icon: MonteCarloIcon, hint: 'Stress-test robustness', feature: 'monte_carlo' },
-  { to: '/autopilot', label: 'Autopilot', icon: AutopilotIcon, hint: 'Auto-tune with pipeline learning', feature: 'backtest' },
+  { to: '/autopilot', label: 'Pipelines', icon: AutopilotIcon, hint: 'Browse registered pipelines', feature: 'backtest' },
   { to: '/live', label: 'Live / Paper', icon: LiveIcon, hint: 'Trade live or simulate', feature: 'live' },
   { to: '/import', label: 'Import Data', icon: ImportIcon, hint: 'Download OHLCV candles', feature: 'import_data' },
 ]

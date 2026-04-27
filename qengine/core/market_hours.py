@@ -13,19 +13,25 @@ def _timestamp_to_utc(timestamp_ms: int) -> datetime:
     return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
 
 
+_dst_cache = {}  # year -> (dst_start_ts, dst_end_ts) in ms
+
+
 def _is_us_dst(dt: datetime) -> bool:
-    """Approximate US DST: second Sunday of March to first Sunday of November."""
+    """Approximate US DST: second Sunday of March to first Sunday of November.
+    Cached per year to avoid repeated date math."""
     year = dt.year
-    # March: second Sunday
-    march1 = datetime(year, 3, 1, tzinfo=timezone.utc)
-    march_second_sun = march1 + timedelta(days=(6 - march1.weekday()) % 7 + 7)
-    dst_start = march_second_sun.replace(hour=7)  # 2am ET = 7am UTC
+    if year not in _dst_cache:
+        march1 = datetime(year, 3, 1, tzinfo=timezone.utc)
+        march_second_sun = march1 + timedelta(days=(6 - march1.weekday()) % 7 + 7)
+        dst_start = march_second_sun.replace(hour=7)  # 2am ET = 7am UTC
 
-    # November: first Sunday
-    nov1 = datetime(year, 11, 1, tzinfo=timezone.utc)
-    nov_first_sun = nov1 + timedelta(days=(6 - nov1.weekday()) % 7)
-    dst_end = nov_first_sun.replace(hour=6)  # 2am ET = 6am UTC
+        nov1 = datetime(year, 11, 1, tzinfo=timezone.utc)
+        nov_first_sun = nov1 + timedelta(days=(6 - nov1.weekday()) % 7)
+        dst_end = nov_first_sun.replace(hour=6)  # 2am ET = 6am UTC
 
+        _dst_cache[year] = (dst_start, dst_end)
+
+    dst_start, dst_end = _dst_cache[year]
     return dst_start <= dt < dst_end
 
 
@@ -75,11 +81,29 @@ class MarketHours:
             return self._next_forex_close(dt)
         return None
 
+    _last_rollover_day = None  # track to fire only once per day
+
     def is_rollover_time(self, timestamp_ms: int) -> bool:
-        """Check if it's the daily rollover time (5pm NY / 17:00 ET)."""
+        """Check if this is the first candle at or after 5pm NY for today.
+
+        Fires once per day, even if the exact 21:00 UTC candle is missing
+        (OANDA skips the rollover minute). Checks if NY hour >= 17 and we
+        haven't already fired today.
+        """
         dt = _timestamp_to_utc(timestamp_ms)
         ny = _to_ny_time(dt)
-        return ny.hour == 17 and ny.minute == 0
+
+        if ny.hour < 17:
+            return False
+
+        # Use NY date as the key (rollover fires once per NY trading day)
+        ny_date = ny.date()
+        if self._last_rollover_day == ny_date:
+            return False  # already fired today
+
+        # First candle at or after 5pm NY today - fire rollover
+        self._last_rollover_day = ny_date
+        return True
 
     def minutes_to_close(self, symbol: str, timestamp_ms: int) -> Optional[int]:
         if not self.is_market_open(symbol, timestamp_ms):

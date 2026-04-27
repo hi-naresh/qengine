@@ -7,7 +7,7 @@ class CFDTicket:
     """An independent sub-position (ticket) within a CFD position.
     Like MT4/MT5 tickets — each has its own entry, qty, direction, and PnL."""
 
-    __slots__ = ('id', 'type', 'qty', 'entry_price', 'opened_at', 'exchange_trade_id', 'tp_price', 'sl_price')
+    __slots__ = ('id', 'type', 'qty', 'entry_price', 'opened_at', 'exchange_trade_id', 'tp_price', 'sl_price', 'swap_cost')
 
     def __init__(self, ticket_type: str, qty: float, entry_price: float, opened_at: int):
         self.id = jh.generate_unique_id()
@@ -18,6 +18,7 @@ class CFDTicket:
         self.exchange_trade_id = None  # OANDA trade ID for per-trade TP/SL management
         self.tp_price = None
         self.sl_price = None
+        self.swap_cost = 0.0  # Accumulated overnight swap charges for this ticket
 
     def pnl(self, price: float) -> float:
         diff = price - self.entry_price
@@ -301,19 +302,30 @@ class Position:
     def margin_used(self) -> float:
         if self.is_close:
             return 0
+        # Cache: only recompute when tickets change or price changes
+        cache_key = (len(self._tickets) if self._tickets else 0, round(self.current_price or 0, 5))
+        if hasattr(self, '_margin_cache_key') and self._margin_cache_key == cache_key:
+            return self._margin_cache_val
+
         from qengine.core.instruments import instrument_registry
         inst = instrument_registry.get(self.symbol)
         # In CFD mode, use gross exposure (sum of all tickets) for margin
         if self.is_cfd_mode and self._tickets:
             gross_notional = self.gross_exposure * (self.current_price or self.entry_price or 0)
             if inst and inst.margin_rate > 0:
-                return gross_notional * inst.margin_rate
-            return gross_notional / self.leverage if self.leverage else gross_notional
+                val = gross_notional * inst.margin_rate
+            else:
+                val = gross_notional / self.leverage if self.leverage else gross_notional
         # Standard mode
-        if inst and inst.margin_rate > 0:
+        elif inst and inst.margin_rate > 0:
             notional = abs(self.qty) * self.entry_price
-            return notional * inst.margin_rate
-        return self.total_cost
+            val = notional * inst.margin_rate
+        else:
+            val = self.total_cost
+
+        self._margin_cache_key = cache_key
+        self._margin_cache_val = val
+        return val
 
     @property
     def liquidation_price(self) -> Union[float, np.float64]:

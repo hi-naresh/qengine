@@ -56,10 +56,39 @@ def get_existing_candles() -> List[dict]:
             g['count'] += row['cnt']
             g['timeframes'].append(row['timeframe'])
 
+    # Count candles with spread data and market-open candles per exchange/symbol
+    spread_counts = {}
+    market_open_counts = {}
+    try:
+        from peewee import fn as fn2
+        spread_query = (
+            Candle
+            .select(Candle.exchange, Candle.symbol, fn2.COUNT(Candle.id).alias('cnt'))
+            .where(Candle.spread.is_null(False))
+            .group_by(Candle.exchange, Candle.symbol)
+            .tuples()
+        )
+        for ex, sym, cnt in spread_query:
+            spread_counts[(ex, sym)] = cnt
+
+        vol_query = (
+            Candle
+            .select(Candle.exchange, Candle.symbol, fn2.COUNT(Candle.id).alias('cnt'))
+            .where(Candle.volume > 0)
+            .group_by(Candle.exchange, Candle.symbol)
+            .tuples()
+        )
+        for ex, sym, cnt in vol_query:
+            market_open_counts[(ex, sym)] = cnt
+    except Exception:
+        pass
+
     results = []
     for (exchange, symbol), g in grouped.items():
         start_str = arrow.get(g['first_ts'] / 1000).format('YYYY-MM-DD')
         end_str = arrow.get(g['last_ts'] / 1000).format('YYYY-MM-DD')
+        sc = spread_counts.get((exchange, symbol), 0)
+        mc = market_open_counts.get((exchange, symbol), 0)
         results.append({
             'exchange': exchange,
             'symbol': symbol,
@@ -67,6 +96,8 @@ def get_existing_candles() -> List[dict]:
             'to': end_str,
             'count': g['count'],
             'timeframes': sorted(g['timeframes']),
+            'has_spread': sc > 0,
+            'spread_coverage': round(sc / mc * 100, 1) if mc > 0 else 0,
             # aliases for Backtest.vue compatibility
             'start_date': start_str,
             'end_date': end_str,

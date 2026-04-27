@@ -98,6 +98,17 @@ def run(
             'count': 0,
             'status': 'importing',
         })
+        sync_publish('import_log', {
+            'message': f'Starting import: {exchange} {symbol} from {start_date_str} (granularity: {granularity})',
+            'phase': 'init',
+        })
+        # Log spread capability
+        has_spread = exchange in ('OANDA',)  # brokers that provide bid/ask data
+        if has_spread:
+            sync_publish('import_log', {
+                'message': f'Fetching bid+ask candles for real spread data (no randomness needed)',
+                'phase': 'init',
+            })
 
     # Pre-fetch existing timestamp ranges in one query to avoid per-batch DB round-trips
     existing_timestamps = set()
@@ -149,6 +160,13 @@ def run(
                 temp_end_timestamp = arrow.utcnow().floor('minute').int_timestamp * 1000 - 60000
 
             # fetch from market
+            batch_date = jh.timestamp_to_time(temp_start_timestamp)[:10]
+            if running_via_dashboard and i % 10 == 0:
+                sync_publish('import_log', {
+                    'message': f'Fetching {batch_date} ... ({imported_minutes // 1440}d imported, {skipped_minutes // 1440}d skipped)',
+                    'phase': 'fetch',
+                })
+
             candles = driver.fetch(symbol, temp_start_timestamp, timeframe='1m')
 
             # check if candles have been returned and check those returned start with the right timestamp.
@@ -194,11 +212,10 @@ def run(
                         running_via_dashboard, show_progressbar)
                     return
 
-            # fill absent candles (if there's any)
-            candles = _fill_absent_candles(candles, temp_start_timestamp, temp_end_timestamp)
-
-            # store in the database (skip if no candles, e.g. market closed)
-            # ON CONFLICT IGNORE handles duplicates, so no pre-check needed
+            # Store only real candles from the exchange. No gap-filling needed:
+            # the engine's higher-TF candle generation groups by timestamp
+            # alignment (not array index), and market_hours skips strategy
+            # execution during closed periods.
             if candles:
                 store_candles_list(candles)
                 # Update in-memory set with newly stored timestamps
@@ -406,7 +423,8 @@ def _fill_absent_candles(temp_candles: List[Dict[str, Union[str, Any]]], start_t
                 'high': last_close,
                 'low': last_close,
                 'close': last_close,
-                'volume': 0
+                'volume': 0,
+                'spread': None,  # no spread data for filled/absent candles
             })
         else:
             started = True

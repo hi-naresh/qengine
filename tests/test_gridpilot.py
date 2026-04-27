@@ -144,7 +144,7 @@ class TestFeatureExtraction:
 class TestDangerScorer:
 
     def test_warmup_returns_neutral(self):
-        from qengine.framework.components.danger_scorer import DangerScorer
+        from pipelines._shared.components.danger_scorer import DangerScorer
         scorer = DangerScorer({'warmup': 10})
         features = {'5m_chop': 55, '5m_adx': 20}
         for _ in range(9):
@@ -152,7 +152,7 @@ class TestDangerScorer:
         assert score == 0.5, "Should return 0.5 during warmup"
 
     def test_after_warmup_scores_vary(self):
-        from qengine.framework.components.danger_scorer import DangerScorer
+        from pipelines._shared.components.danger_scorer import DangerScorer
         scorer = DangerScorer({'warmup': 10})
         rng = np.random.RandomState(42)
         scores = []
@@ -176,7 +176,7 @@ class TestDangerScorer:
         assert std > 0.01, f"Score std={std:.4f} — scores too clustered, gate won't work"
 
     def test_output_bounded_0_1(self):
-        from qengine.framework.components.danger_scorer import DangerScorer
+        from pipelines._shared.components.danger_scorer import DangerScorer
         scorer = DangerScorer({'warmup': 5})
         # Feed extreme values
         for _ in range(5):
@@ -187,7 +187,7 @@ class TestDangerScorer:
         assert 0 <= score_low <= 1
 
     def test_seeded_normalizer_skips_warmup(self):
-        from qengine.framework.components.danger_scorer import DangerScorer
+        from pipelines._shared.components.danger_scorer import DangerScorer
         params = {
             'means': {'5m_chop': 50, '5m_adx': 20},
             'stds': {'5m_chop': 10, '5m_adx': 7},
@@ -206,7 +206,7 @@ class TestDangerScorer:
 class TestEntryGate:
 
     def test_allows_everything_during_warmup(self):
-        from qengine.framework.components.entry_gate import EntryGate
+        from pipelines._shared.components.entry_gate import EntryGate
         gate = EntryGate({'percentile': 75, 'window': 500})
         # Less than 10 observations → threshold = inf → always allow
         for _ in range(9):
@@ -214,7 +214,7 @@ class TestEntryGate:
         assert gate.should_allow(0.99) is True
 
     def test_blocks_high_scores_after_warmup(self):
-        from qengine.framework.components.entry_gate import EntryGate
+        from pipelines._shared.components.entry_gate import EntryGate
         gate = EntryGate({'percentile': 75, 'window': 100})
         rng = np.random.RandomState(42)
         for _ in range(100):
@@ -223,7 +223,7 @@ class TestEntryGate:
         assert gate.should_allow(0.99) is False
 
     def test_allows_low_scores(self):
-        from qengine.framework.components.entry_gate import EntryGate
+        from pipelines._shared.components.entry_gate import EntryGate
         gate = EntryGate({'percentile': 75, 'window': 100})
         rng = np.random.RandomState(42)
         for _ in range(100):
@@ -232,7 +232,7 @@ class TestEntryGate:
         assert gate.should_allow(0.01) is True
 
     def test_sliding_window_evicts_old_scores(self):
-        from qengine.framework.components.entry_gate import EntryGate
+        from pipelines._shared.components.entry_gate import EntryGate
         gate = EntryGate({'percentile': 75, 'window': 20})
         # Fill with high scores
         for _ in range(20):
@@ -249,7 +249,7 @@ class TestEntryGate:
 
     def test_sorted_list_stays_consistent(self):
         """The incremental bisect-based sorted list should match a full sort."""
-        from qengine.framework.components.entry_gate import EntryGate
+        from pipelines._shared.components.entry_gate import EntryGate
         gate = EntryGate({'percentile': 75, 'window': 50})
         rng = np.random.RandomState(42)
         for _ in range(200):
@@ -259,7 +259,7 @@ class TestEntryGate:
         assert gate._sorted == actual_sorted, "Incremental sorted list diverged"
 
     def test_disabled_gate_always_allows(self):
-        from qengine.framework.components.entry_gate import EntryGate
+        from pipelines._shared.components.entry_gate import EntryGate
         gate = EntryGate({'enabled': False})
         for _ in range(100):
             gate.observe(0.9)
@@ -273,7 +273,7 @@ class TestEntryGate:
 class TestQAbort:
 
     def test_eval_mode_no_learning(self):
-        from qengine.framework.components.q_abort import QAbort
+        from pipelines._shared.components.q_abort import QAbort
         q = QAbort({'mode': 'eval', 'enabled': True})
         q.start_episode()
         action = q.decide(level=0, duration_bars=3, danger_entry=0.4, danger_now=0.5)
@@ -286,7 +286,7 @@ class TestQAbort:
 
     def test_pretrained_table_produces_aborts(self):
         """Pre-trained Q-table has 45 abort-preferred states. Verify at least one fires."""
-        from qengine.framework.components.q_abort import QAbort
+        from pipelines._shared.components.q_abort import QAbort
         import os
         models_dir = os.path.join(os.path.dirname(__file__), '..', 'pipelines', '_shared', 'GridPilot', 'models')
         q_path = os.path.join(models_dir, 'q_table.npy')
@@ -303,7 +303,7 @@ class TestQAbort:
         assert abort_states == 45, f"Expected 45 abort states, got {abort_states}"
 
     def test_train_mode_updates_qtable(self):
-        from qengine.framework.components.q_abort import QAbort
+        from pipelines._shared.components.q_abort import QAbort
         q = QAbort({'mode': 'train', 'epsilon': 0.0, 'alpha': 0.1})
         q.start_episode()
         q.decide(level=0, duration_bars=3, danger_entry=0.5, danger_now=0.5)
@@ -312,13 +312,13 @@ class TestQAbort:
         assert np.any(q.q_table != 0), "Train mode should update Q-table"
 
     def test_disabled_always_continues(self):
-        from qengine.framework.components.q_abort import QAbort
+        from pipelines._shared.components.q_abort import QAbort
         q = QAbort({'enabled': False})
         action = q.decide(level=5, duration_bars=100, danger_entry=0.9, danger_now=0.9)
         assert action == 'continue'
 
     def test_state_encoding_deterministic(self):
-        from qengine.framework.components.q_abort import _encode_state
+        from pipelines._shared.components.q_abort import _encode_state
         s1 = _encode_state(0, 3, 0.4, 0.6)
         s2 = _encode_state(0, 3, 0.4, 0.6)
         assert s1 == s2
@@ -327,7 +327,7 @@ class TestQAbort:
         assert s1 != s3
 
     def test_state_encoding_bounds(self):
-        from qengine.framework.components.q_abort import _encode_state, TOTAL_STATES
+        from pipelines._shared.components.q_abort import _encode_state, TOTAL_STATES
         # Edge cases
         for level in [0, 6, 12, 20]:  # 20 gets clamped to 12
             for dur in [0, 5, 50, 200]:
@@ -558,7 +558,7 @@ class TestPipelineStatsCap:
 class TestWelfordNormalizer:
 
     def test_seeded_produces_correct_zscore(self):
-        from qengine.framework.components.danger_scorer import WelfordNormalizer
+        from pipelines._shared.components.danger_scorer import WelfordNormalizer
         norm = WelfordNormalizer()
         norm.seed(mean=50.0, std=10.0, n=10000)
         # A value 1 std above mean should give z ≈ 1.0
@@ -569,7 +569,7 @@ class TestWelfordNormalizer:
         assert z == pytest.approx(0.0, abs=0.05)
 
     def test_online_converges(self):
-        from qengine.framework.components.danger_scorer import WelfordNormalizer
+        from pipelines._shared.components.danger_scorer import WelfordNormalizer
         norm = WelfordNormalizer()
         rng = np.random.RandomState(42)
         values = rng.normal(50, 10, 1000)

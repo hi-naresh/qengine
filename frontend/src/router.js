@@ -27,7 +27,7 @@ const routes = [
   { path: '/backtest', name: 'Backtest', component: Backtest, meta: { feature: 'backtest' } },
   { path: '/optimization', name: 'Optimization', component: Optimization, meta: { feature: 'optimization' } },
   { path: '/monte-carlo', name: 'Monte Carlo', component: MonteCarlo, meta: { feature: 'monte_carlo' } },
-  { path: '/autopilot', name: 'Autopilot', component: Autopilot, meta: { feature: 'backtest' } },
+  { path: '/autopilot', name: 'Pipelines', component: Autopilot, meta: { feature: 'backtest' } },
   { path: '/live', name: 'Live Trade', component: LiveTrade, meta: { feature: 'live' } },
   { path: '/import', name: 'Import Data', component: ImportData, meta: { feature: 'import_data' } },
   { path: '/llm', name: 'LLM Studio', component: LLMStudio, meta: { feature: 'llm_studio' } },

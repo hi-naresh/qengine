@@ -1,6 +1,10 @@
 from typing import List, Dict, Any
-import ray
 import qengine.helpers as jh
+
+def _get_ray():
+    """Get ray module (already imported by caller before common functions are used)."""
+    import ray
+    return ray
 import qengine.services.logger as logger
 
 # =============================================================================
@@ -88,7 +92,7 @@ def _process_scenario_results(
     MAX_STALL_SECONDS = 300  # Cancel remaining if no progress for 5 min
 
     while remaining_refs:
-        completed_refs, remaining_refs = ray.wait(remaining_refs, num_returns=1, timeout=RAY_WAIT_TIMEOUT)
+        completed_refs, remaining_refs = _get_ray().wait(remaining_refs, num_returns=1, timeout=RAY_WAIT_TIMEOUT)
 
         if not completed_refs:
             # No new completions — check for stall
@@ -99,7 +103,7 @@ def _process_scenario_results(
                 # Cancel remaining Ray tasks
                 for ref in remaining_refs:
                     try:
-                        ray.cancel(ref, force=True)
+                        _get_ray().cancel(ref, force=True)
                     except Exception:
                         pass
                 remaining_refs = []
@@ -109,7 +113,7 @@ def _process_scenario_results(
 
         for ref in completed_refs:
             try:
-                response = ray.get(ref)
+                response = _get_ray().get(ref)
                 if isinstance(response, dict) and 'result' in response:
                     if response['result'] is not None:
                         results.append(response['result'])
@@ -159,12 +163,12 @@ def _create_ray_shared_objects(
     hyperparameters: dict
 ) -> Dict[str, Any]:
     return {
-        'config': ray.put(config),
-        'routes': ray.put(routes),
-        'data_routes': ray.put(data_routes),
-        'candles': ray.put(candles),
-        'warmup_candles': ray.put(warmup_candles),
-        'hyperparameters': ray.put(hyperparameters)
+        'config': _get_ray().put(config),
+        'routes': _get_ray().put(routes),
+        'data_routes': _get_ray().put(data_routes),
+        'candles': _get_ray().put(candles),
+        'warmup_candles': _get_ray().put(warmup_candles),
+        'hyperparameters': _get_ray().put(hyperparameters)
     }
 
 

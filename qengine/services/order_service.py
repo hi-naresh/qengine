@@ -114,7 +114,9 @@ def execute_order(order: Order, silent: bool = False) -> None:
                 is_entry = (p is None or p.is_close or
                             (p.is_open and not order.reduce_only and p.qty * order.qty > 0))
             if is_entry:
-                spread = e.get_spread(order.symbol)
+                # Pass current 1m candle timestamp for real per-candle spread lookup
+                candle_ts = (store.app.time // 60000) * 60000 if hasattr(store.app, 'time') else None
+                spread = e.get_spread(order.symbol, timestamp_ms=candle_ts)
                 if spread > 0:
                     if order.side == 'buy':
                         order.price += spread
@@ -133,6 +135,7 @@ def execute_order(order: Order, silent: bool = False) -> None:
                     order.price += slippage
                 else:
                     order.price -= slippage
+                e._total_slippage_cost += slippage * abs(order.filled_qty or order.qty)
                 logger.info(
                     f'Applied slippage of {round(slippage, 6)} to {order.symbol} {order.side} order. '
                     f'Adjusted price: {order.price}'

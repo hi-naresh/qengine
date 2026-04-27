@@ -1,0 +1,77 @@
+{
+  "s0": {
+    "id": "e27ea4f9",
+    "genes": {
+      "gate_confidence_min": 0.035459464223339135,
+      "abort_aggressiveness": 0.2320518635308789,
+      "base_size_pct": 0.8667193423497386,
+      "hysteresis_margin": 0.11088863864874673,
+      "confidence_sensitivity": 1.1674499200300132,
+      "recovery_aggression": 0.6218499057748818,
+      "sizing_curve": "sqrt",
+      "sizing_factor": 1.6197192201705257,
+      "base_size_mode": 1,
+      "base_size_value": 0.7502965815377965,
+      "max_levels": 4,
+      "hedge_mode": 0,
+      "hedge_value": 35.67215822333468,
+      "hedge_atr_period": 28,
+      "hedge_expand": 0,
+      "hedge_expand_factor": 1.1022831790617516,
+      "tp_mode": 0,
+      "tp_value": 18.93796047741674,
+      "tp_atr_period": 5
+    },
+    "fitness": 59.1534312103682
+  },
+  "s1": {
+    "id": "16bad9c1",
+    "genes": {
+      "gate_confidence_min": 0.3639904654007932,
+      "abort_aggressiveness": 0.1607471867779967,
+      "base_size_pct": 1.8048021240724286,
+      "hysteresis_margin": 0.05491186124476419,
+      "confidence_sensitivity": 1.0960756012859934,
+      "recovery_aggression": 0.7373828592777745,
+      "sizing_curve": "linear",
+      "sizing_factor": 1.2986578604360923,
+      "base_size_mode": 1,
+      "base_size_value": 1.6601037611559126,
+      "max_levels": 2,
+      "hedge_mode": 1,
+      "hedge_value": 36.154889596754096,
+      "hedge_atr_period": 22,
+      "hedge_expand": 0,
+      "hedge_expand_factor": 1.5496948500894379,
+      "tp_mode": 0,
+      "tp_value": 35.40096056106069,
+      "tp_atr_period": 10
+    },
+    "fitness": 67.81437369836749
+  },
+  "s2": {
+    "id": "e33fd528",
+    "genes": {
+      "gate_confidence_min": 0.3101578460919821,
+      "abort_aggressiveness": 0.3253441625925462,
+      "base_size_pct": 2.8628343757501886,
+      "hysteresis_margin": 0.18082007851655327,
+      "confidence_sensitivity": 0.9054567548313236,
+      "recovery_aggression": 0.7819085919196925,
+      "sizing_curve": "fibonacci",
+      "sizing_factor": 1.2078951431509257,
+      "base_size_mode": 1,
+      "base_size_value": 1.6707493044828774,
+      "max_levels": 2,
+      "hedge_mode": 0,
+      "hedge_value": 26.132513646254242,
+      "hedge_atr_period": 9,
+      "hedge_expand": 0,
+      "hedge_expand_factor": 1.7991132436092034,
+      "tp_mode": 3,
+      "tp_value": 40,
+      "tp_atr_period": 7
+    },
+    "fitness": 179.89537417845924
+  }
+}

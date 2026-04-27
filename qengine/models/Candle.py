@@ -19,6 +19,9 @@ class Candle(peewee.Model):
     exchange = peewee.CharField()
     symbol = peewee.CharField()
     timeframe = peewee.CharField()
+    # Real spread from broker (ask - bid) at candle open, in price units.
+    # NULL = not available (legacy data or broker doesn't provide it).
+    spread = peewee.FloatField(null=True, default=None)
 
     # partial candles: 5 * 1m candle = 5m candle while 1m == partial candle
     is_partial = True

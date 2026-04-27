@@ -1,6 +1,7 @@
 from typing import List, Dict
 import copy
 from qengine.services import candle_service, exchange_service, order_service, position_service
+from qengine.services import report
 from qengine.services.validators import validate_routes
 from qengine.modes.backtest_mode import simulator
 from qengine.config import config as qe_config, reset_config, set_config
@@ -27,6 +28,7 @@ def backtest(
         candles_pipeline_class = None,
         candles_pipeline_kwargs: dict = None,
         pipeline_configs: list = None,
+        cost_model: bool = True,
 ) -> dict:
     """
     An isolated backtest() function which is perfect for using in research, and AI training
@@ -78,6 +80,7 @@ def backtest(
         candles_pipeline_class=candles_pipeline_class,
         candles_pipeline_kwargs=candles_pipeline_kwargs,
         pipeline_configs=pipeline_configs,
+        cost_model=cost_model,
     )
 
 
@@ -100,8 +103,14 @@ def _isolated_backtest(
         candles_pipeline_class = None,
         candles_pipeline_kwargs: dict = None,
         pipeline_configs: list = None,
+        cost_model: bool = True,
 ) -> dict:
     qe_config['app']['trading_mode'] = 'backtest'
+    qe_config['app']['cost_model'] = cost_model
+
+    # Reset cached mode check (may have changed between runs)
+    import qengine.helpers as _jh
+    _jh.reset_mode_cache()
 
     # inject (formatted) configuration values
     formatted = _format_config(config)
@@ -197,6 +206,7 @@ def _isolated_backtest(
     # Always include trades if available (needed for trade-shuffling Monte Carlo)
     if 'trades' in backtest_result:
         result['trades'] = backtest_result['trades']
+    result['sessions'] = report.hedge_sessions()
     if 'pipeline_stats' in backtest_result:
         result['pipeline_stats'] = backtest_result['pipeline_stats']
 

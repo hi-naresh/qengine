@@ -6,7 +6,7 @@ import tempfile
 import numpy as np
 import pytest
 
-from qengine.framework.components.island_evolver import (
+from pipelines._shared.components.island_evolver import (
     GENE_BOUNDS,
     Genome,
     IslandEvolver,

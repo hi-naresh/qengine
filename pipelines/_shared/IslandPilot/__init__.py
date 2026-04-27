@@ -12,11 +12,11 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from qengine.framework.base import Pipeline, OrderIntent
-from qengine.framework.components.feature_selector import FeaturePool
-from qengine.framework.components.regime_tree import RegimeTree
-from qengine.framework.components.island_evolver import IslandEvolver, Genome, SIZING_CURVE_MAP
-from qengine.framework.components.regime_inferencer import RegimeInferencer
-from qengine.framework.components.adaptive_sizer import AdaptiveSizer
+from .feature_selector import FeaturePool
+from .regime_tree import RegimeTree
+from .island_evolver import IslandEvolver, Genome, SIZING_CURVE_MAP
+from .regime_inferencer import RegimeInferencer
+from .adaptive_sizer import AdaptiveSizer
 
 from .config import DEFAULT_CONFIG, merge_config
 
@@ -42,14 +42,28 @@ def _load_pretrained() -> dict:
             try:
                 result['evolver'] = IslandEvolver.load(evolver_path)
             except (KeyError, Exception):
-                # Simple genomes format — build a minimal evolver from it
+                # Simple genomes format — build a minimal evolver from it.
+                # IMPORTANT: Genome.from_dict(bounds=None) uses the framework's
+                # default 6-gene bounds and drops all other keys. To preserve
+                # strategy execution genes (signal_mode, direction_bias,
+                # hedge_value, tp_value, sizing_*, max_levels, filters, halts),
+                # we bypass Genome.from_dict and store raw gene dicts directly.
                 import json
                 with open(evolver_path) as f:
                     genomes_data = json.load(f)
                 leaf_ids = list(genomes_data.keys())
                 evolver = IslandEvolver(leaf_ids=leaf_ids, config={})
                 for lid, gdata in genomes_data.items():
-                    genome = Genome.from_dict(gdata if 'genes' not in gdata else gdata['genes'])
+                    raw_genes = gdata.get('genes', gdata) if isinstance(gdata, dict) else {}
+                    # Drop non-gene metadata if caller embedded it at top level
+                    if 'genes' not in gdata:
+                        raw_genes = {k: v for k, v in raw_genes.items() if k not in ('id', 'fitness')}
+                    # Bypass Genome.from_dict entirely — just build a Genome
+                    # with the full raw dict as genes. The pipeline's
+                    # _apply_genome reads from genome['genes'] and tunes ANY
+                    # key that matches a strategy HP, not just the framework's
+                    # default 6-gene bounds.
+                    genome = Genome(genes=raw_genes)
                     genome.fitness = gdata.get('fitness', 0.0)
                     if lid in evolver.populations:
                         evolver.populations[lid].individuals[0] = genome
@@ -82,6 +96,7 @@ class IslandPilot(Pipeline):
         self._active_regime: Optional[int] = None
         self._active_confidence: float = 0.0
         self._active_genome: Optional[dict] = None
+        self._active_fitness: Optional[float] = None
         self._candle_count: int = 0
         self._feature_vector: Optional[np.ndarray] = None
         self._cycle_count: int = 0
@@ -91,6 +106,17 @@ class IslandPilot(Pipeline):
         self._cycle_hp_log: List[dict] = []
         self._last_recorded_session: Optional[int] = None
         self._sibling_groups: Dict[str, List[str]] = {}
+
+        # ── Online regime performance tracking (used by gate_entry) ──
+        self._regime_wins: Dict[str, float] = {}    # regime_id -> gross wins
+        self._regime_losses: Dict[str, float] = {}  # regime_id -> gross losses
+        self._regime_cycles: Dict[str, int] = {}    # regime_id -> cycle count
+        self._regime_busts: Dict[str, int] = {}     # regime_id -> bust count
+
+        # PHASE6: Recent PnLs for drift detection
+        self._recent_pnls: List[float] = []
+        self._last_block_reason: Optional[str] = None
+        self._drift_block_count: int = 0
 
         # Auto-load pre-trained models if available
         self._load_pretrained_models()
@@ -107,6 +133,18 @@ class IslandPilot(Pipeline):
         if candles is None or len(candles) < self.cfg['warmup']:
             return
 
+        # Only recompute features at the strategy's timeframe boundaries.
+        # Between 5m candles (on 1m ticks), the pipeline's regime classification
+        # and genome application don't change. This saves 80% of compute.
+        # Safe: no future data used, same result as computing every bar.
+        tf_minutes = getattr(strategy, '_timeframe_minutes', None)
+        if tf_minutes is None:
+            import qengine.helpers as _jh
+            tf_minutes = _jh.timeframe_to_one_minutes(getattr(strategy, 'timeframe', '5m'))
+            strategy._timeframe_minutes = tf_minutes
+        if tf_minutes > 1 and self._candle_count % tf_minutes != 0:
+            return
+
         # Only compute features on a FIXED tail window (not the whole array).
         # This keeps cost O(1) per candle regardless of backtest length.
         _WINDOW = 300
@@ -115,9 +153,15 @@ class IslandPilot(Pipeline):
         try:
             features = self.feature_pool.compute(tail)
             fv = features[-1]
-            # Skip if any NaN in the feature vector
-            if np.any(np.isnan(fv)):
+            # Replace NaN with 0 for features that persistently produce NaN
+            # (chop_14, er_50, er_100, hurst_100, stoch_k on some data sources).
+            # The regime tree was trained on data where these features were valid,
+            # so zeroing them is imperfect but better than blocking all entries.
+            # Only skip if MORE THAN HALF the features are NaN (data not ready).
+            n_nan = np.sum(np.isnan(fv))
+            if n_nan > len(fv) // 2:
                 return
+            fv = np.nan_to_num(fv, nan=0.0)
             self._feature_vector = fv
         except Exception:
             return
@@ -157,8 +201,39 @@ class IslandPilot(Pipeline):
                 except (KeyError, TypeError, Exception):
                     continue
 
+            # Fallback: if this regime has no genome, use the best genome
+            # from a sibling in the same macro-cluster. This handles the 8
+            # regimes that were too sparse for the evolver to populate.
+            if genome_dict is None and self.regime_tree is not None:
+                rid = self._active_regime
+                macro_id = None
+                for lid, (mid, _sid) in self.regime_tree._leaf_map.items():
+                    if lid == rid:
+                        macro_id = mid
+                        break
+                if macro_id is not None:
+                    best_fitness = -float('inf')
+                    for lid, (mid, _sid) in self.regime_tree._leaf_map.items():
+                        if mid == macro_id:
+                            for lkey in [str(lid), lid, int(lid)]:
+                                try:
+                                    gd = self.evolver.get_best_genome(lkey)
+                                    if gd:
+                                        f = gd.get('fitness', -float('inf'))
+                                        if f is not None and f > best_fitness:
+                                            best_fitness = f
+                                            genome_dict = gd
+                                        break
+                                except (KeyError, TypeError, Exception):
+                                    continue
+
             if genome_dict is not None:
-                self._active_genome = genome_dict.get('genes', genome_dict)
+                raw = genome_dict.get('genes', genome_dict)
+                # Strip legacy pipeline-only genes that aren't actually applied
+                # to the strategy — they only confuse the DNA display.
+                self._active_genome = {k: v for k, v in raw.items()
+                                       if k not in ('base_size_pct',)}
+                self._active_fitness = genome_dict.get('fitness') if isinstance(genome_dict, dict) else None
                 # Apply genome to strategy HP only between cycles (not mid-cycle).
                 # Changing HP mid-cycle breaks hedge direction and sizing chains.
                 position_open = False
@@ -171,33 +246,119 @@ class IslandPilot(Pipeline):
                     self._apply_genome(strategy, self._active_genome)
             else:
                 self._active_genome = None
+                self._active_fitness = None
         else:
             self._active_genome = None
+            self._active_fitness = None
 
     def gate_entry(self, strategy) -> bool:
-        """Block entry if no genome available, low confidence, or in grace period."""
+        """Block entry based on genome availability, confidence, and online
+        per-regime rolling performance.
+
+        PHASE6 EXPANSION (2026-04-21): Now uses online per-regime PF tracking.
+        A regime that has underperformed (rolling PF < min_regime_pf after
+        min_cycles_for_gate cycles) is blocked. This is the meta-learning /
+        risk-management layer the user asked for — losing regimes self-gate.
+        """
         # During warmup, block
         if self._candle_count < self.cfg['warmup']:
             self._gate_block_count += 1
+            self._last_block_reason = 'warmup'
             return False
 
         # No genome means the regime/evolver isn't ready
         if self._active_genome is None:
             self._gate_block_count += 1
+            self._last_block_reason = 'no_genome'
             return False
 
         # Low confidence
         min_conf = self.cfg['inference']['min_confidence']
         if self._active_confidence < min_conf:
             self._gate_block_count += 1
+            self._last_block_reason = 'low_confidence'
             return False
 
-        # Grace period after regime switch
-        if self.inferencer is not None and self.inferencer.in_grace_period:
+        # Unknown regime: the inferencer flags this when no leaf holds a
+        # meaningful probability concentration (best leaf prob < unknown_threshold,
+        # default 0.15). This signals the current market state is outside the
+        # training distribution — the "nearest" regime's genome was evolved for
+        # a different statistical environment and should not be used.
+        if self.inferencer is not None and not self.inferencer.is_known_regime:
             self._gate_block_count += 1
+            self._last_block_reason = 'unknown_regime'
             return False
+
+        # Proven-fitness gate: only trade regimes whose evolved genome scored
+        # above min_fitness during training. The fitness distribution across
+        # 56 regimes spans 50–60; median ~55. Default 56.0 blocks the bottom
+        # ~40%. Regimes that couldn't evolve a good genome are unlikely to
+        # produce profitable cycles OOS either.
+        safety_cfg = self.cfg.get('safety', {})
+        min_fitness = safety_cfg.get('min_genome_fitness')
+        if min_fitness is not None and safety_cfg.get('enabled', True):
+            if self._active_fitness is None or self._active_fitness < min_fitness:
+                self._gate_block_count += 1
+                self._last_block_reason = 'low_fitness'
+                return False
+
+        # Online per-regime PF gating (meta-learning).
+        # Block regimes that have accumulated N cycles with PF < threshold,
+        # or that have busted more than the configured max.
+        gate_cfg = self.cfg.get('online_gate', {})
+        if gate_cfg.get('enabled', True):
+            min_cycles = gate_cfg.get('min_cycles_for_gate', 5)
+            min_pf = gate_cfg.get('min_regime_pf', 1.0)
+            max_busts = gate_cfg.get('max_busts_per_regime', None)
+        else:
+            min_cycles = 999999  # effectively disable
+            min_pf = 0.0
+            max_busts = None
+        if self._active_regime is not None:
+            rk = str(self._active_regime)
+
+            # Hard bust cap — one bust at sqrt(2) sizing erases ~78 wins,
+            # so the default max=1 is realistic. Applied independent of PF gate.
+            if max_busts is not None:
+                busts = self._regime_busts.get(rk, 0)
+                if busts >= max_busts:
+                    self._gate_block_count += 1
+                    self._last_block_reason = 'regime_busted'
+                    return False
+
+            n = self._regime_cycles.get(rk, 0)
+            if n >= min_cycles:
+                wins = self._regime_wins.get(rk, 0.0)
+                losses = self._regime_losses.get(rk, 0.0)
+                pf = (wins / losses) if losses > 0 else (float('inf') if wins > 0 else 0.0)
+                if pf < min_pf:
+                    self._gate_block_count += 1
+                    self._last_block_reason = 'regime_pf_low'
+                    return False
+
+        # PHASE6: Drift detection — if overall recent-N PF drops well below
+        # overall lifetime PF, pause trading for cooldown period.
+        drift_cfg = self.cfg.get('drift', {})
+        if drift_cfg.get('enabled', True):
+            recent_n = drift_cfg.get('recent_n', 20)
+            drop_ratio = drift_cfg.get('drop_ratio', 0.5)  # recent PF < 50% of lifetime PF
+            if len(self._recent_pnls) >= recent_n and self._cycle_count >= recent_n * 2:
+                recent = self._recent_pnls[-recent_n:]
+                rec_wins = sum(p for p in recent if p > 0)
+                rec_losses = sum(abs(p) for p in recent if p < 0)
+                rec_pf = (rec_wins / rec_losses) if rec_losses > 0 else float('inf')
+                # Overall lifetime PF (using cumulative)
+                all_wins = sum(self._regime_wins.values())
+                all_losses = sum(self._regime_losses.values())
+                life_pf = (all_wins / all_losses) if all_losses > 0 else float('inf')
+                if life_pf > 0 and rec_pf < life_pf * drop_ratio:
+                    self._drift_block_count = getattr(self, '_drift_block_count', 0) + 1
+                    self._gate_block_count += 1
+                    self._last_block_reason = 'drift'
+                    return False
 
         self._gate_allow_count += 1
+        self._last_block_reason = None
         return True
 
     def adjust_size(self, strategy, qty: float, side: str) -> float:
@@ -271,19 +432,39 @@ class IslandPilot(Pipeline):
         return order_intent
 
     def suggest_exit(self, strategy) -> Optional[dict]:
-        """Abort if danger exceeds threshold derived from genome.
+        """Two exit conditions:
 
-        abort_aggressiveness=0 means never abort (conservative).
-        abort_aggressiveness=1 means abort at any danger (aggressive).
-        The threshold is inverted: threshold = 1 - aggressiveness.
-        So aggressiveness=0.8 → abort when danger > 0.2 (aggressive).
-        And aggressiveness=0.2 → abort when danger > 0.8 (conservative).
+        1. Session P&L halt: close immediately when unrealized loss exceeds
+           `safety.session_loss_pct_halt` of equity. Catches slow-bleed
+           cycles that volatility-based abort misses (danger proxy only
+           reacts to spikes, not gradual adverse drift).
+
+        2. Volatility abort: close when danger (20-bar vol / 0.01) exceeds
+           `1 - abort_aggressiveness`. Reacts to regime-change spikes.
         """
         if self._active_genome is None:
             return None
 
+        # 1. Session P&L halt (runs without genome — safety floor)
+        safety_cfg = self.cfg.get('safety', {}) if hasattr(self, 'cfg') else {}
+        halt_pct = safety_cfg.get('session_loss_pct_halt')
+        if halt_pct is not None and safety_cfg.get('enabled', True):
+            try:
+                balance = getattr(strategy, 'balance', None) or 10000.0
+                float_pnl = 0.0
+                if hasattr(strategy, 'position') and hasattr(strategy.position, 'pnl'):
+                    float_pnl = float(strategy.position.pnl or 0.0)
+                elif hasattr(strategy, '_session_pnl'):
+                    float_pnl = float(strategy._session_pnl() or 0.0)
+                # Trigger when loss exceeds halt_pct (e.g. 0.05 = 5% of equity)
+                if balance > 0 and float_pnl < -(halt_pct * balance):
+                    self._abort_count += 1
+                    return {'action': 'close_all'}
+            except Exception:
+                pass
+
+        # 2. Volatility-based abort (from genome)
         aggressiveness = self._active_genome.get('abort_aggressiveness', 0.5)
-        # Convert to threshold: higher aggressiveness = lower threshold = easier to abort
         threshold = 1.0 - aggressiveness
 
         danger = self._compute_danger(strategy)
@@ -328,6 +509,37 @@ class IslandPilot(Pipeline):
                 genome=self._active_genome,
             )
 
+        # ── Update online regime performance tracking ──
+        regime_key = str(self._active_regime) if self._active_regime is not None else None
+        if regime_key:
+            self._regime_cycles[regime_key] = self._regime_cycles.get(regime_key, 0) + 1
+            if pnl >= 0:
+                self._regime_wins[regime_key] = self._regime_wins.get(regime_key, 0) + pnl
+            else:
+                self._regime_losses[regime_key] = self._regime_losses.get(regime_key, 0) + abs(pnl)
+            # Loss-weighted bust classification. A "max level bust" tagged by
+            # the strategy with a trivial loss (e.g. -$0.11 when capital_aware
+            # auto-sized to 70 qty) shouldn't count the same as a real -$200
+            # bust. Require BOTH the strategy flag AND a minimum loss threshold
+            # (default: 0.05% of equity at cycle start). Still count pure
+            # dollar-catastrophic losses even if flag is missing (pnl < -50).
+            bust_cfg = self.cfg.get('safety', {})
+            min_bust_pct = bust_cfg.get('min_bust_loss_pct', 0.0005)  # 0.05% equity
+            strat_flag = False
+            start_bal = 10000.0
+            if strategy and hasattr(strategy, 'vars'):
+                strat_flag = strategy.vars.get('last_session_bust', False)
+                start_bal = strategy.vars.get('session_start_balance', start_bal) or 10000.0
+            loss_threshold = abs(start_bal) * min_bust_pct
+            meaningful_loss = pnl < -loss_threshold
+            if (strat_flag and meaningful_loss) or pnl < -50:
+                self._regime_busts[regime_key] = self._regime_busts.get(regime_key, 0) + 1
+
+        # PHASE6: Update rolling PnL window for drift detection
+        self._recent_pnls.append(float(pnl))
+        if len(self._recent_pnls) > 100:
+            self._recent_pnls = self._recent_pnls[-100:]
+
     # ------------------------------------------------------------------
     # Stats & persistence
     # ------------------------------------------------------------------
@@ -346,7 +558,47 @@ class IslandPilot(Pipeline):
             'block_rate': round(self._gate_block_count / total_gate, 4) if total_gate > 0 else 0,
             'aborts_triggered': self._abort_count,
             'has_genome': self._active_genome is not None,
+            'last_block_reason': self._last_block_reason,
+            'drift_blocks': self._drift_block_count,
         }
+
+        # PHASE6: Per-regime live performance (meta-learning visibility)
+        regime_pf = {}
+        for rk in self._regime_cycles:
+            w = self._regime_wins.get(rk, 0.0)
+            l = self._regime_losses.get(rk, 0.0)
+            if l > 0:
+                pf = w / l
+            elif w > 0:
+                pf = float('inf')
+            else:
+                pf = 0.0
+            regime_pf[rk] = {
+                'cycles': self._regime_cycles[rk],
+                'wins': round(w, 2),
+                'losses': round(l, 2),
+                'pf': round(pf, 3) if pf != float('inf') else 999.0,
+                'busts': self._regime_busts.get(rk, 0),
+                'blocked_by_gate': (self._regime_cycles[rk] >= self.cfg.get('online_gate', {}).get('min_cycles_for_gate', 5)
+                                    and pf < self.cfg.get('online_gate', {}).get('min_regime_pf', 1.0)),
+            }
+        stats['regime_performance'] = regime_pf
+
+        # PHASE6: Drift metrics
+        if len(self._recent_pnls) >= 10:
+            recent = self._recent_pnls[-20:] if len(self._recent_pnls) >= 20 else self._recent_pnls
+            rec_w = sum(p for p in recent if p > 0)
+            rec_l = sum(abs(p) for p in recent if p < 0)
+            rec_pf = (rec_w / rec_l) if rec_l > 0 else float('inf')
+            life_w = sum(self._regime_wins.values())
+            life_l = sum(self._regime_losses.values())
+            life_pf = (life_w / life_l) if life_l > 0 else float('inf')
+            stats['drift'] = {
+                'recent_pf': round(rec_pf, 3) if rec_pf != float('inf') else 999.0,
+                'lifetime_pf': round(life_pf, 3) if life_pf != float('inf') else 999.0,
+                'drop_ratio': round(rec_pf / life_pf, 3) if life_pf > 0 and life_pf != float('inf') else None,
+                'recent_n_window': len(recent),
+            }
 
         if self.regime_tree is not None:
             stats['n_leaves'] = self.regime_tree.n_leaves
@@ -675,26 +927,72 @@ class IslandPilot(Pipeline):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    # Mode-aware value bounds. When the GA picks a mode, tp_value / hedge_value
+    # mean different things: pips for fixed_pips, ATR multiple for atr_based,
+    # equity fraction for bucket_pct/percentage, RR ratio for risk_reward.
+    # These ranges are the sane per-mode interpretations. _coerce_mode_value
+    # scales legacy genomes (which evolved values under overlapping pip bounds)
+    # into the right range for the chosen mode.
+    _TP_RANGES = {
+        'fixed_pips':   (5.0, 120.0),     # pips
+        'atr_based':    (0.5, 5.0),       # ATR multiplier
+        'bucket_pct':   (0.003, 0.05),    # equity fraction (0.3% to 5%)
+        'risk_reward':  (1.0, 5.0),       # reward/risk ratio
+    }
+    _HEDGE_RANGES = {
+        'fixed_pips':   (5.0, 60.0),      # pips
+        'atr_based':    (0.5, 3.0),       # ATR multiplier
+        'percentage':   (0.0001, 0.005),  # fraction of price (0.01% to 0.5%)
+    }
+
+    @staticmethod
+    def _coerce_mode_value(val: float, ranges: dict, mode: str) -> float:
+        """Scale a genome-stored value into the legal range for the chosen mode.
+
+        Pre-trained genomes evolved `tp_value` / `hedge_value` under pip bounds
+        (8-40). When the mode is bucket_pct / percentage / risk_reward, the
+        raw value is outside the mode's legal range and must be rescaled:
+
+          - bucket_pct: raw 40 → 0.04 (÷1000)  (equity fraction)
+          - percentage: raw 30 → 0.003 (÷10000) (price fraction)
+          - atr_based:  raw 30 → 1.5 (÷20)     (ATR multiplier)
+          - risk_reward raw 30 → 1.5 (÷20)     (RR ratio)
+
+        After rescaling, clamp to the mode's legal range.
+        """
+        lo, hi = ranges.get(mode, (None, None))
+        if lo is None:
+            return val
+        v = float(val)
+        # If the value is far above the mode's upper bound, it was evolved
+        # under pip semantics — rescale using a mode-specific factor derived
+        # from the ratio of pip bound (~40) to the mode's upper bound.
+        if v > hi * 2:
+            scale = 40.0 / hi  # pip_bound / mode_upper_bound
+            v = v / scale
+        return max(lo, min(hi, v))
+
     def _apply_genome(self, strategy, genome: dict) -> None:
         """Apply evolved genome to strategy HP — discovered dynamically at runtime.
 
-        Instead of hardcoding strategy key names, the pipeline reads the strategy's
-        own hyperparameters() declaration to discover which params exist, their
-        valid ranges, and groups. Only 'General' and 'Grid / Hedge' group params
-        are overridden (entry signals, filters, risk management are left to user).
-
-        This works with ANY strategy that declares hyperparameters().
+        Reads strategy.hyperparameters() to discover tunable params and writes
+        matching genome values into strategy.hp. Mode categoricals (tp_mode,
+        hedge_mode, base_size_mode) are fully evolvable; mode-dependent values
+        are coerced into the right range for the chosen mode (see _coerce_mode_value).
         """
         if not hasattr(strategy, 'hp') or not hasattr(strategy, 'hyperparameters'):
             return
 
-        # Force 'custom' preset so pipeline has full control over all params.
-        # Named presets lock certain values — 'custom' unlocks everything.
-        if strategy.hp.get('preset') and strategy.hp['preset'] != 'custom':
-            strategy.hp['preset'] = 'custom'
-
-        # Build lookup from strategy's declared HP
-        if not hasattr(self, '_hp_spec'):
+        # Rebuild _hp_spec if stale. The strategy's hyperparameters() can vary
+        # based on `preset` / dependent keys, so we refresh if the previously
+        # captured spec is missing core sizing params.
+        needs_rebuild = (
+            not hasattr(self, '_hp_spec')
+            or not self._hp_spec
+            or 'sizing_curve' not in self._hp_spec
+            or 'base_size_value' not in self._hp_spec
+        )
+        if needs_rebuild:
             try:
                 hp_list = strategy.hyperparameters()
                 self._hp_spec = {h['name']: h for h in hp_list if isinstance(h, dict) and 'name' in h}
@@ -704,11 +1002,11 @@ class IslandPilot(Pipeline):
         if not self._hp_spec:
             return
 
-        # Groups the pipeline is allowed to tune
-        _TUNABLE_GROUPS = {'General', 'Grid / Hedge', 'Take Profit', 'Entry Signal'}
+        _TUNABLE_GROUPS = {
+            'General', 'Grid / Hedge', 'Take Profit',
+            'Entry Signal', 'Filters', 'Risk Management', 'Position Management',
+        }
 
-        # Validated options for categorical params that may have broken choices.
-        # Only allow signal modes that are known to work in the strategy.
         _SAFE_OPTIONS = {
             'signal_mode': {'random', 'ema_cross', 'rsi', 'macd', 'supertrend', 'stoch', 'ema_rsi', 'ema_macd', 'triple'},
             'hedge_mode': {'fixed_pips', 'atr_based', 'percentage'},
@@ -718,6 +1016,7 @@ class IslandPilot(Pipeline):
         }
 
         hp = strategy.hp
+        applied: Dict[str, Any] = {}
         for hp_name, spec in self._hp_spec.items():
             group = spec.get('group', '')
             if group not in _TUNABLE_GROUPS:
@@ -728,23 +1027,21 @@ class IslandPilot(Pipeline):
 
             val = genome[hp_name]
 
-            # Enforce declared bounds and convert types
             hp_type = spec.get('type')
             if hp_type == 'categorical':
                 options = spec.get('options', [])
-                # Filter to safe options if we have a safelist
                 safe = _SAFE_OPTIONS.get(hp_name)
                 if safe:
                     options = [o for o in options if o in safe]
                 if not options:
                     continue
-                # Genome may store int index (from GA) or string value
                 if isinstance(val, (int, float)):
                     idx = int(round(val))
                     idx = max(0, min(idx, len(options) - 1))
                     hp[hp_name] = options[idx]
                 elif val in options:
                     hp[hp_name] = val
+                applied[hp_name] = hp[hp_name]
             elif hp_type in (int, float) or hp_type in ('int', 'float'):
                 lo = spec.get('min', float('-inf'))
                 hi = spec.get('max', float('inf'))
@@ -752,6 +1049,89 @@ class IslandPilot(Pipeline):
                 if hp_type in (int, 'int'):
                     val = int(round(val))
                 hp[hp_name] = val
+                applied[hp_name] = val
+
+        # Post-apply mode-aware value coercion. After modes are set (tp_mode,
+        # hedge_mode), the numeric value keys mean different things in each
+        # mode. Rescale and clamp into the legal per-mode range so the
+        # strategy gets semantically correct values regardless of what range
+        # the genome was evolved in.
+        safety_cfg = self.cfg.get('safety', {}) if hasattr(self, 'cfg') else {}
+
+        if 'tp_mode' in hp and 'tp_value' in hp:
+            hp['tp_value'] = self._coerce_mode_value(
+                hp['tp_value'], self._TP_RANGES, hp['tp_mode']
+            )
+        if 'hedge_mode' in hp and 'hedge_value' in hp:
+            hp['hedge_value'] = self._coerce_mode_value(
+                hp['hedge_value'], self._HEDGE_RANGES, hp['hedge_mode']
+            )
+
+        # Enforce the TP > hedge recovery ratio IN fixed_pips mode only.
+        # For ATR/bucket/RR modes, the invariant is expressed differently
+        # (bucket_pct tp_value IS the equity gain target; no hedge comparison).
+        if hp.get('tp_mode') == 'fixed_pips' and hp.get('hedge_mode') == 'fixed_pips':
+            ratio_floor = safety_cfg.get('tp_hedge_ratio_floor', 1.5)
+            min_tp = float(hp.get('hedge_value', 10.0)) * ratio_floor
+            hp['tp_value'] = max(min_tp, min(120.0, float(hp['tp_value'])))
+
+        # base_size_value is always in % equity (when mode=pct_equity), so its
+        # range is consistent. Clamp to safe upper bound.
+        if 'base_size_value' in hp:
+            hp['base_size_value'] = max(0.05, min(5.0, float(hp['base_size_value'])))
+
+        # Narrow hedge_expand_factor. Legacy genomes evolved up to 2.0 which
+        # makes deepest hedges 32x wider than L0. Combined with capital_aware
+        # base, this auto-shrinks qty to absurdly small (e.g. 70 units) while
+        # still busting at max_levels — the worst of both worlds.
+        if 'hedge_expand_factor' in hp:
+            hp['hedge_expand_factor'] = max(1.0, min(1.3, float(hp['hedge_expand_factor'])))
+
+        # Clamp max_bust_dd_pct so capital_aware mode has a sane budget
+        if 'max_bust_dd_pct' in hp:
+            hp['max_bust_dd_pct'] = max(5.0, min(25.0, float(hp['max_bust_dd_pct'])))
+
+        # Joint risk constraint: base_size_value × sizing_factor^max_levels ≤ 20.
+        # This is what actually bounds bust loss — NOT an arbitrary level cap.
+        # GA can evolve max_levels=8 with a small base (recovery room) or
+        # max_levels=3 with a larger base (aggressive), as long as the deepest
+        # ticket stays ≤ 20% equity. Scale base DOWN if the combo exceeds it.
+        if safety_cfg.get('enabled', True) and 'base_size_value' in hp:
+            factor = float(hp.get('sizing_factor', 2.0))
+            levels = int(hp.get('max_levels', 3))
+            max_ticket_cap_pct = safety_cfg.get('max_ticket_cap_pct', 20.0)
+            cur_base = float(hp['base_size_value'])
+            max_ticket = cur_base * (factor ** max(0, levels - 1))
+            if max_ticket > max_ticket_cap_pct:
+                hp['base_size_value'] = max_ticket_cap_pct / (factor ** max(0, levels - 1))
+
+        # Optional hard cap on max_levels (off by default — joint risk
+        # constraint above is preferred). User can still opt-in via
+        # cfg['safety']['max_levels_cap'].
+        if safety_cfg.get('enabled', True):
+            levels_cap = safety_cfg.get('max_levels_cap')
+            if levels_cap is not None and 'max_levels' in hp:
+                hp['max_levels'] = min(int(hp['max_levels']), int(levels_cap))
+            # abort_aggressiveness floor (optional — None means trust genome)
+            floor = safety_cfg.get('abort_aggressiveness_floor')
+            if floor is not None and self._active_genome is not None:
+                cur = self._active_genome.get('abort_aggressiveness', 0.5)
+                if cur is None or cur < floor:
+                    self._active_genome['abort_aggressiveness'] = floor
+
+        # One-shot diagnostic so the user can verify genome landed on strategy HP
+        if not getattr(self, '_apply_debug_logged', False):
+            try:
+                import qengine.helpers as _jh
+                if not _jh.is_live():
+                    keys = ('sizing_curve', 'sizing_factor', 'base_size_mode',
+                            'base_size_value', 'max_levels',
+                            'hedge_mode', 'hedge_value', 'tp_mode', 'tp_value')
+                    snap = {k: hp.get(k) for k in keys if k in hp}
+                    print(f"[IslandPilot] first genome applied (R={self._active_regime}): {snap}")
+                    self._apply_debug_logged = True
+            except Exception:
+                self._apply_debug_logged = True
 
     def _compute_danger(self, strategy) -> float:
         """Simple volatility-based danger proxy in [0, 1]."""

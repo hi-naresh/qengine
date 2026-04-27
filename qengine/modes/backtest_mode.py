@@ -3,7 +3,19 @@ import re
 from typing import Dict, List, Tuple, Optional
 import numpy as np
 import qengine.helpers as jh
-import qengine.services.metrics as stats
+
+stats = None  # lazy-loaded: pandas-heavy metrics only needed after simulation ends
+
+
+def _stats():
+    """Lazy import metrics module (pandas-heavy, only needed after simulation)."""
+    global stats
+    if stats is None:
+        import qengine.services.metrics as _stats
+        stats = _stats
+    return stats
+
+
 from qengine import exceptions
 from qengine.config import config
 from qengine.enums import timeframes, order_types
@@ -159,6 +171,11 @@ def _execute_backtest(
 
     # load historical candles
     if candles is None:
+        if not jh.should_execute_silently():
+            sync_publish('backtest_phase', {
+                'phase': 'loading',
+                'message': f'Loading candles from {start_date} to {finish_date}...',
+            })
         try:
             warmup_candles, candles = load_candles(
                 jh.date_to_timestamp(start_date),
@@ -177,9 +194,9 @@ def _execute_backtest(
         })
         # candles info
         key = f"{config['app']['considering_candles'][0][0]}-{config['app']['considering_candles'][0][1]}"
-        sync_publish('candles_info', stats.candles_info(candles[key]['candles']))
+        sync_publish('candles_info', _stats().candles_info(candles[key]['candles']))
         # routes info
-        sync_publish('routes_info', stats.routes(router.routes))
+        sync_publish('routes_info', _stats().routes(router.routes))
 
     # run backtest simulation
     result = None
@@ -378,7 +395,10 @@ def _handle_sync_no_candles(e, start_date, exchange):
     symbol = match.group(1) if match else 'unknown'
 
     warmup_num = jh.get_config('env.data.warmup_candles_num', 210)
-    if warmup_num > 0 and 'warmup' not in error_str.lower():
+    # Only rewrite to the warmup message when the error is genuinely about missing
+    # warmup data before the start date — not for end-date issues like early market close.
+    is_end_date_error = 'missing recent candles' in error_str.lower()
+    if warmup_num > 0 and 'warmup' not in error_str.lower() and not is_end_date_error:
         message = (
             f'Not enough candle data for {symbol} on {exchange}. '
             f'Your start date ({start_date}) needs {warmup_num} warmup candles before it. '
@@ -531,10 +551,6 @@ def load_candles(start_date: int, finish_date: int) -> Tuple[dict, dict]:
                 f"Missing trading candles for {symbol} on {exchange}"
             )
 
-        # Check that the last trading candle covers the requested finish date.
-        if trading_candle_arr[-1][0] < (finish_date - 60_000):
-            _handle_missing_candles(exchange, symbol, start_date)
-
         # If warmup candles are insufficient (empty or too few), carve warmup from the
         # beginning of trading candles so the backtester can still run.
         warmup_is_empty = (
@@ -625,6 +641,12 @@ def _step_simulator(
 
     begin_time_track = time.time()
 
+    # Reset rollover tracker for fresh backtest (module-level singleton)
+    _market_hours._last_rollover_day = None
+
+    if not run_silently:
+        sync_publish('backtest_phase', {'phase': 'init', 'message': 'Initializing strategy and routes...'})
+
     key = f"{config['app']['considering_candles'][0][0]}-{config['app']['considering_candles'][0][1]}"
     first_candles_set = candles[key]['candles']
 
@@ -643,6 +665,18 @@ def _step_simulator(
     # Log backtest start
     route_info = ', '.join([f"{r.symbol} {r.timeframe} ({r.strategy_name})" for r in router.routes])
     store.logs.add(f'Backtest started: {route_info}', 'market')
+
+    if not run_silently:
+        days = length / 1440
+        pipeline_names = []
+        for r in router.routes:
+            if r.strategy and hasattr(r.strategy, '_pipelines') and r.strategy._pipelines:
+                pipeline_names = [p.name for p in r.strategy._pipelines.pipelines]
+        pipeline_info = f' | Pipelines: {", ".join(pipeline_names)}' if pipeline_names else ''
+        sync_publish('backtest_phase', {
+            'phase': 'simulating',
+            'message': f'Simulating {days:.0f} days ({length:,} candles){pipeline_info}',
+        })
 
     progressbar = Progressbar(length, step=420)
     last_update_time = None
@@ -663,7 +697,8 @@ def _step_simulator(
                         # CFD mode: charge swap per ticket (gross exposure), not net qty
                         if p.is_cfd_mode and p._tickets:
                             for ticket in p._tickets:
-                                e.charge_overnight_swap(r.symbol, ticket.qty, ticket.type)
+                                charged = e.charge_overnight_swap(r.symbol, ticket.qty, ticket.type)
+                                ticket.swap_cost += abs(charged)
                         else:
                             e.charge_overnight_swap(r.symbol, p.qty, p.type)
 
@@ -769,6 +804,10 @@ def _step_simulator(
         # print executed time for the backtest session
         finish_time_track = time.time()
         execution_duration = round(finish_time_track - begin_time_track, 2)
+        sync_publish('backtest_phase', {
+            'phase': 'finalizing',
+            'message': f'Simulation done in {execution_duration}s. Computing metrics...',
+        })
 
     for r in router.routes:
         r.strategy._terminate()
@@ -783,6 +822,12 @@ def _step_simulator(
     # Log backtest completion summary
     total_trades = len(store.closed_trades.trades) if store.closed_trades.trades else 0
     store.logs.add(f'Backtest completed: {total_trades} trades in {execution_duration}s', 'market')
+
+    if not run_silently:
+        sync_publish('backtest_phase', {
+            'phase': 'metrics',
+            'message': f'Computing performance metrics ({total_trades} trades)...',
+        })
 
     result = _generate_outputs(
         candles,
@@ -911,16 +956,24 @@ def get_candles_from_pipeline(candles_pipeline: Optional[BaseCandlesPipeline], c
     return candles_pipeline.get_candles(candles[i: i + candles_pipeline._batch_size], i, candles_step)
 
 
+def _fmt_duration(seconds: float) -> str:
+    """Format a holding duration (in seconds) as 'Xm' or 'X:XXh'."""
+    mins = int((seconds or 0) // 60)
+    if mins < 60:
+        return f"{mins}m"
+    h = mins // 60
+    m = mins % 60
+    return f"{h}:{m:02d}h"
+
+
 def _get_live_stats() -> dict:
     """Gather live execution stats for progress reporting."""
     stats = {}
     try:
-        total_pnl = 0.0
         total_floating = 0.0
         total_margin = 0.0
         equity = 0.0
         session_num = None
-        total_trades = 0
 
         for r in router.routes:
             e = store.exchanges.get_exchange(r.exchange)
@@ -939,15 +992,79 @@ def _get_live_stats() -> dict:
                 if sn is not None:
                     session_num = sn
 
-        # Count completed trades
+        # Count completed trades + realized PnL
         total_trades = store.closed_trades.count
+        realized_pnl = sum(t.pnl for t in store.closed_trades.trades)
 
         stats['equity'] = round(equity, 2)
-        stats['floating_pnl'] = round(total_floating, 2)
+        stats['unrealized_pnl'] = round(total_floating, 2)
+        stats['realized_pnl'] = round(realized_pnl, 2)
         stats['margin_used'] = round(total_margin, 2)
         stats['trades'] = total_trades
         if session_num is not None:
             stats['session'] = session_num
+
+        # Snapshot of currently open positions (per ticket in CFD mode)
+        open_positions = []
+        for r in router.routes:
+            pos = store.positions.get_position(r.exchange, r.symbol)
+            if not pos or not pos.is_open:
+                continue
+            current_price = pos.current_price or 0.0
+            if pos.is_cfd_mode and pos._tickets:
+                for ticket in pos._tickets:
+                    open_positions.append({
+                        'symbol': r.symbol,
+                        'type': ticket.type,
+                        'qty': round(ticket.qty, 5),
+                        'entry_price': round(ticket.entry_price, 5),
+                        'current_price': round(current_price, 5),
+                        'unrealized_pnl': round(ticket.pnl(current_price), 2),
+                        'opened_at': ticket.opened_at,
+                        'swap_cost': round(ticket.swap_cost, 4),
+                    })
+            else:
+                open_positions.append({
+                    'symbol': r.symbol,
+                    'type': pos.type,
+                    'qty': round(abs(pos.qty), 5),
+                    'entry_price': round(pos.entry_price or 0.0, 5),
+                    'current_price': round(current_price, 5),
+                    'unrealized_pnl': round(pos.pnl, 2),
+                    'opened_at': pos.opened_at,
+                    'swap_cost': 0.0,
+                })
+        stats['open_positions'] = open_positions
+
+        # Active pending orders
+        active_orders = []
+        for r in router.routes:
+            for o in store.orders.get_active_orders(r.exchange, r.symbol):
+                if o.is_active:
+                    active_orders.append({
+                        'symbol': o.symbol,
+                        'side': o.side,
+                        'type': o.type,
+                        'price': round(o.price or 0.0, 5),
+                        'qty': round(abs(o.qty), 5),
+                        'created_at': o.created_at,
+                        'submitted_via': o.submitted_via or '',
+                    })
+        stats['active_orders'] = active_orders
+
+        # Last 30 closed trades for the Closed tab
+        recent_closed = []
+        for t in store.closed_trades.trades[-30:]:
+            recent_closed.append({
+                'symbol': t.symbol,
+                'type': t.type,
+                'pnl': round(t.pnl, 2),
+                'duration': _fmt_duration(t.holding_period or 0),
+                'closed_at': t.closed_at,
+                'entry_price': round(t.entry_price or 0.0, 5),
+                'exit_price': round(t.exit_price or 0.0, 5),
+            })
+        stats['recent_closed'] = recent_closed
 
         # Pipeline live stats (danger score, gate/abort counts)
         # Access raw pipeline state directly (avoid expensive get_stats() analytics)
@@ -1289,6 +1406,47 @@ def _update_session_stats(had_margin_error: bool = False) -> None:
             s['margin_block_leg'] = level
 
 
+def _select_stop_out_ticket(tickets, current_price: float, order: str):
+    """Select which ticket to close during stop-out based on broker strategy.
+
+    Args:
+        tickets: list of open CFDTicket objects
+        current_price: current market price for PnL calculation
+        order: one of 'fifo', 'lifo', 'winner_first', 'loser_first', 'largest_margin'
+
+    Returns:
+        The ticket to close next.
+    """
+    if not tickets:
+        return None
+
+    if order == 'fifo':
+        # First in, first out - oldest ticket first
+        return min(tickets, key=lambda t: t.opened_at)
+
+    elif order == 'lifo':
+        # Last in, first out - newest ticket first
+        return max(tickets, key=lambda t: t.opened_at)
+
+    elif order == 'winner_first':
+        # Close most profitable ticket first (frees margin without increasing loss)
+        return max(tickets, key=lambda t: t.pnl(current_price) if hasattr(t, 'pnl') and callable(t.pnl) else (
+            (current_price - t.entry_price) * abs(t.qty) if t.type == 'long'
+            else (t.entry_price - current_price) * abs(t.qty)
+        ))
+
+    elif order == 'loser_first':
+        # Close most losing ticket first (stops bleeding on worst position)
+        return min(tickets, key=lambda t: t.pnl(current_price) if hasattr(t, 'pnl') and callable(t.pnl) else (
+            (current_price - t.entry_price) * abs(t.qty) if t.type == 'long'
+            else (t.entry_price - current_price) * abs(t.qty)
+        ))
+
+    else:
+        # largest_margin (default) - close ticket using most margin
+        return max(tickets, key=lambda t: abs(t.qty))
+
+
 def _check_for_margin_call(exchange: str, symbol: str) -> None:
     """
     Check if a forex/CFD position should be stopped out due to insufficient margin.
@@ -1324,31 +1482,114 @@ def _check_for_margin_call(exchange: str, symbol: str) -> None:
 
     margin_level = (equity / total_used_margin) * 100
 
-    # Stop-out at 50% margin level (industry standard)
+    # Stop-out at 50% margin level (industry standard).
+    # Real brokers close tickets PARTIALLY — the largest-margin ticket first —
+    # to free margin and bring the level back above stop-out. Repeat until
+    # margin level is restored or no tickets remain.
     stop_out_level = e._bt_cost_settings.get('stop_out_level', 50.0)
     if margin_level < stop_out_level:
-        closing_order_side = jh.closing_side(p.type)
-
-        logger.info(
-            f'MARGIN CALL: {symbol} force-closed. Margin level: {round(margin_level, 1)}% '
-            f'(equity: {round(equity, 2)}, used margin: {round(total_used_margin, 2)})'
-        )
-
-        order = Order({
-            'id': jh.generate_unique_id(),
-            'symbol': symbol,
-            'exchange': exchange,
-            'side': closing_order_side,
-            'type': order_types.MARKET,
-            'reduce_only': True,
-            'qty': jh.prepare_qty(p.qty, closing_order_side),
-            'price': p.current_price
-        })
-
-        store.orders.add_order(order)
         store.app.total_liquidations += 1
 
-        order_service.execute_order(order)
+        if p.is_cfd_mode and p._tickets:
+            # CFD mode: close tickets one at a time per stop_out_order strategy
+            # until margin level recovers above stop-out or no tickets left.
+            exit_price = p.current_price
+            stop_out_order = e._bt_cost_settings.get('stop_out_order', 'largest_margin')
+            closed_any = False
+
+            while p._tickets:
+                # Select ticket to close based on broker's stop-out order
+                ticket_to_close = _select_stop_out_ticket(p._tickets, exit_price, stop_out_order)
+
+                # Close it
+                close_result = p.close_ticket(ticket_to_close.id, exit_price)
+                if close_result is None:
+                    break
+                closed_any = True
+
+                pnl = close_result['pnl']
+                if p.exchange:
+                    p.exchange.add_realized_pnl(pnl)
+
+                from qengine.services import closed_trade_service
+                closed_trade_service.record_ticket_close(
+                    p, close_result['ticket'], exit_price, pnl,
+                    meta={'exit_reason': 'stop_out'}
+                )
+
+                logger.info(
+                    f'STOP-OUT ({stop_out_order}): closed ticket {ticket_to_close.id} '
+                    f'(qty={abs(ticket_to_close.qty):.0f}) to free margin. PnL: {pnl:.2f}'
+                )
+
+                # Recalculate margin level after closing
+                new_equity = e.wallet_balance
+                new_used_margin = 0
+                for key2, pos2 in store.positions.storage.items():
+                    if pos2.is_open:
+                        new_equity += pos2.pnl
+                        new_used_margin += pos2.margin_used
+
+                if new_used_margin <= 0:
+                    break  # No more margin used, safe
+                new_margin_level = (new_equity / new_used_margin) * 100
+                if new_margin_level >= stop_out_level:
+                    break  # Recovered above stop-out
+
+            # If all tickets were closed, notify strategy
+            if closed_any and not p._tickets:
+                route = None
+                for r in router.routes:
+                    if r.exchange == exchange and r.symbol == symbol:
+                        route = r
+                        break
+                if route and route.strategy:
+                    # Strategy needs to know the session ended via margin call
+                    if hasattr(route.strategy, '_end_cycle') and route.strategy.vars.get('cycle_active'):
+                        route.strategy._cancel_hedge_stop()
+                        route.strategy._end_cycle('margin_call')
+                # Reset the temp_trade so the next cycle doesn't inherit stale
+                # orders (buy_orders / sell_orders arrays) from the bust session.
+                # Without this, `open_trade()` in the next cycle returns the same
+                # ClosedTrade object populated from the liquidated session,
+                # which corrupts subsequent trades with NaN qty / entry_price.
+                from qengine.services import closed_trade_service as _cts
+                store.closed_trades._reset_current_trade(exchange, symbol)
+                # Also reset position entry state so next cycle doesn't carry
+                # over stale entry_price used by some bankruptcy/exit paths.
+                p.entry_price = None
+                p.exit_price = exit_price
+                p.closed_at = jh.now_to_timestamp()
+            elif closed_any and p._tickets:
+                # Partial close freed enough margin — strategy continues
+                # but notify it that some tickets were force-closed
+                route = None
+                for r in router.routes:
+                    if r.exchange == exchange and r.symbol == symbol:
+                        route = r
+                        break
+                if route and route.strategy and hasattr(route.strategy, 'on_stop_out_partial'):
+                    route.strategy.on_stop_out_partial()
+
+        else:
+            # Non-CFD (futures/spot): close entire position
+            logger.info(
+                f'MARGIN CALL: {symbol} force-closed. Margin level: {round(margin_level, 1)}% '
+                f'(equity: {round(equity, 2)}, used margin: {round(total_used_margin, 2)})'
+            )
+            closing_order_side = jh.closing_side(p.type)
+            order = Order({
+                'id': jh.generate_unique_id(),
+                'symbol': symbol,
+                'exchange': exchange,
+                'side': closing_order_side,
+                'type': order_types.MARKET,
+                'reduce_only': True,
+                'qty': jh.prepare_qty(p.qty, closing_order_side),
+                'price': p.current_price
+            })
+            store.orders.add_order(order)
+            order_service.execute_order(order)
 
 
 def _check_for_liquidations(candle: np.ndarray, exchange: str, symbol: str) -> None:
@@ -1615,7 +1856,7 @@ def _generate_outputs(
 ):
     result = {}
     if generate_hyperparameters:
-        result["hyperparameters"] = stats.hyperparameters(router.routes)
+        result["hyperparameters"] = _stats().hyperparameters(router.routes)
     result["metrics"] = report.portfolio_metrics()
     result["trades"] = report.trades()
     # Include hedge session grouping if any trades have session metadata

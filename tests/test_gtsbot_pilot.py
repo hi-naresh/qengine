@@ -93,7 +93,7 @@ class TestTrendFilter:
         assert isinstance(result, bool)
 
     def test_allows_matching_trend(self):
-        p = GTSBotPilot({'warmup': 10, 'trend_filter': {'delta_atr_mult': 0.000001, 'confirm_bars': 1},
+        p = GTSBotPilot({'warmup': 10, 'trend_filter': {'delta_atr_mult': 0.000001, 'confirm_bars': 1, 'null_tolerance': 0},
                          'grid_manager': {'enabled': False}})
         candles = _make_candles(100, trend=0.001)
         strategy = _make_strategy(candles, should_long=True)
@@ -103,7 +103,7 @@ class TestTrendFilter:
         assert p.gate_entry(strategy) is True
 
     def test_blocks_opposing_trend(self):
-        p = GTSBotPilot({'warmup': 10, 'trend_filter': {'delta_atr_mult': 0.000001, 'confirm_bars': 1},
+        p = GTSBotPilot({'warmup': 10, 'trend_filter': {'delta_atr_mult': 0.000001, 'confirm_bars': 1, 'null_tolerance': 0},
                          'grid_manager': {'enabled': False}})
         candles = _make_candles(100, trend=0.001)
         strategy = _make_strategy(candles, should_short=True)
