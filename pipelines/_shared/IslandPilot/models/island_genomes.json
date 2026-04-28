@@ -1,0 +1,338 @@
+{
+  "0": {
+    "id": "17faa45f",
+    "genes": {
+      "gate_confidence_min": 0.34457415925611345,
+      "abort_aggressiveness": 0.13680401381189117,
+      "base_size_pct": 1.561162411153203,
+      "hysteresis_margin": 0.19119028989105646,
+      "confidence_sensitivity": 0.5213706749989426,
+      "recovery_aggression": 0.34671434476215324
+    },
+    "fitness": 24.262818342284735
+  },
+  "1": {
+    "id": "57b2da18",
+    "genes": {
+      "gate_confidence_min": 0.28611287949605113,
+      "abort_aggressiveness": 0.1259358651209408,
+      "base_size_pct": 0.9494603573711914,
+      "hysteresis_margin": 0.2336102168784746,
+      "confidence_sensitivity": 0.8734282227713357,
+      "recovery_aggression": 0.4038625200296279
+    },
+    "fitness": 24.288108439774902
+  },
+  "2": {
+    "id": "c6af497c",
+    "genes": {
+      "gate_confidence_min": 0.18346494351015047,
+      "abort_aggressiveness": 0.3884234914943685,
+      "base_size_pct": 2.0062840248883123,
+      "hysteresis_margin": 0.2884934440096727,
+      "confidence_sensitivity": 0.7566134904814608,
+      "recovery_aggression": 0.9066606894282117
+    },
+    "fitness": 24.66733242741673
+  },
+  "3": {
+    "id": "c8483417",
+    "genes": {
+      "gate_confidence_min": 0.2752336943457047,
+      "abort_aggressiveness": 0.11108216484524239,
+      "base_size_pct": 2.401375599661775,
+      "hysteresis_margin": 0.24752044683308244,
+      "confidence_sensitivity": 1.4036638890363664,
+      "recovery_aggression": 0.5765506118605298
+    },
+    "fitness": 24.27245063688093
+  },
+  "4": {
+    "id": "ff1ff290",
+    "genes": {
+      "gate_confidence_min": 0.07525208464209454,
+      "abort_aggressiveness": 0.1640337733733182,
+      "base_size_pct": 1.2047448407315215,
+      "hysteresis_margin": 0.05199943952863249,
+      "confidence_sensitivity": 1.0760386653976646,
+      "recovery_aggression": 0.37408410271828085
+    },
+    "fitness": 23.8395160810515
+  },
+  "5": {
+    "id": "f43a539b",
+    "genes": {
+      "gate_confidence_min": 0.44689611841507537,
+      "abort_aggressiveness": 0.2714620042477266,
+      "base_size_pct": 0.7037458292723532,
+      "hysteresis_margin": 0.1274785403750065,
+      "confidence_sensitivity": 1.5285327192683762,
+      "recovery_aggression": 0.7246601612090419
+    },
+    "fitness": 24.318701072138367
+  },
+  "6": {
+    "id": "f09f4bc0",
+    "genes": {
+      "gate_confidence_min": 0.08712861592179438,
+      "abort_aggressiveness": 0.37797399030031475,
+      "base_size_pct": 0.839122708708405,
+      "hysteresis_margin": 0.17528402128590875,
+      "confidence_sensitivity": 0.7884322171565536,
+      "recovery_aggression": 0.40201952617486303
+    },
+    "fitness": 24.25165232041601
+  },
+  "7": {
+    "id": "0bc9c3af",
+    "genes": {
+      "gate_confidence_min": 0.04184909969388112,
+      "abort_aggressiveness": 0.1665379859671345,
+      "base_size_pct": 2.923231796509261,
+      "hysteresis_margin": 0.28318499605019515,
+      "confidence_sensitivity": 0.9767514677178704,
+      "recovery_aggression": 0.8930627602934683
+    },
+    "fitness": 24.196625476269812
+  },
+  "8": {
+    "id": "72672064",
+    "genes": {
+      "gate_confidence_min": 0.07504314004703966,
+      "abort_aggressiveness": 0.10264870853398311,
+      "base_size_pct": 1.148514938768443,
+      "hysteresis_margin": 0.11975610647601774,
+      "confidence_sensitivity": 1.5392576689200228,
+      "recovery_aggression": 0.33240625247971284
+    },
+    "fitness": 23.924669014037967
+  },
+  "9": {
+    "id": "55fab1be",
+    "genes": {
+      "gate_confidence_min": 0.4697484206810081,
+      "abort_aggressiveness": 0.39237598471204,
+      "base_size_pct": 0.5,
+      "hysteresis_margin": 0.11727691487787525,
+      "confidence_sensitivity": 1.344544790386032,
+      "recovery_aggression": 0.7721421664439634
+    },
+    "fitness": 24.49501546264718
+  },
+  "10": {
+    "id": "c6a02445",
+    "genes": {
+      "gate_confidence_min": 0.393523851556947,
+      "abort_aggressiveness": 0.36232246779880994,
+      "base_size_pct": 2.9702988046433307,
+      "hysteresis_margin": 0.05118525817327886,
+      "confidence_sensitivity": 0.9088300237408717,
+      "recovery_aggression": 0.969729928060319
+    },
+    "fitness": null
+  },
+  "11": {
+    "id": "6c789edd",
+    "genes": {
+      "gate_confidence_min": 0.12257499869932992,
+      "abort_aggressiveness": 0.08921269653639322,
+      "base_size_pct": 1.8539810507305376,
+      "hysteresis_margin": 0.24661032788194992,
+      "confidence_sensitivity": 0.8434585444581089,
+      "recovery_aggression": 0.8992125817877311
+    },
+    "fitness": null
+  },
+  "12": {
+    "id": "7efa4e81",
+    "genes": {
+      "gate_confidence_min": 0.48038525351208305,
+      "abort_aggressiveness": 0.21650616876522905,
+      "base_size_pct": 0.6472782279161124,
+      "hysteresis_margin": 0.2610938195133283,
+      "confidence_sensitivity": 1.007606896758182,
+      "recovery_aggression": 0.5714016340410836
+    },
+    "fitness": null
+  },
+  "13": {
+    "id": "351ae2b3",
+    "genes": {
+      "gate_confidence_min": 0.3136365259277657,
+      "abort_aggressiveness": 0.3480722371036554,
+      "base_size_pct": 2.2224135018159465,
+      "hysteresis_margin": 0.22694005198545786,
+      "confidence_sensitivity": 1.7399421589274078,
+      "recovery_aggression": 0.7708387003054162
+    },
+    "fitness": null
+  },
+  "14": {
+    "id": "6b07548b",
+    "genes": {
+      "gate_confidence_min": 0.15313479314083323,
+      "abort_aggressiveness": 0.38327961745756506,
+      "base_size_pct": 1.9360058847262716,
+      "hysteresis_margin": 0.08141357597884992,
+      "confidence_sensitivity": 1.790158346410499,
+      "recovery_aggression": 0.3008523284341254
+    },
+    "fitness": null
+  },
+  "15": {
+    "id": "f03eae35",
+    "genes": {
+      "gate_confidence_min": 0.022333518226859805,
+      "abort_aggressiveness": 0.28517574456208117,
+      "base_size_pct": 1.5477846154957695,
+      "hysteresis_margin": 0.07824439378797617,
+      "confidence_sensitivity": 1.6055433773442003,
+      "recovery_aggression": 0.8789157485796407
+    },
+    "fitness": null
+  },
+  "16": {
+    "id": "c9e62e4a",
+    "genes": {
+      "gate_confidence_min": 0.3644595882711267,
+      "abort_aggressiveness": 0.24725050055713985,
+      "base_size_pct": 2.6497659769448454,
+      "hysteresis_margin": 0.2186449813429333,
+      "confidence_sensitivity": 0.7150135284224177,
+      "recovery_aggression": 0.8061488978677639
+    },
+    "fitness": null
+  },
+  "17": {
+    "id": "2d9b2f36",
+    "genes": {
+      "gate_confidence_min": 0.002804928501193349,
+      "abort_aggressiveness": 0.16424273812669488,
+      "base_size_pct": 0.5801867389481901,
+      "hysteresis_margin": 0.15838194391051008,
+      "confidence_sensitivity": 1.0027621564595735,
+      "recovery_aggression": 0.9722220430145135
+    },
+    "fitness": null
+  },
+  "18": {
+    "id": "67a93713",
+    "genes": {
+      "gate_confidence_min": 0.2733545773656045,
+      "abort_aggressiveness": 0.23599505592752462,
+      "base_size_pct": 2.0701892432741076,
+      "hysteresis_margin": 0.1486240196183049,
+      "confidence_sensitivity": 1.0589403910046595,
+      "recovery_aggression": 0.33531111362128974
+    },
+    "fitness": null
+  },
+  "19": {
+    "id": "8fb3ccc4",
+    "genes": {
+      "gate_confidence_min": 0.3142026630263007,
+      "abort_aggressiveness": 0.1731461614644645,
+      "base_size_pct": 2.6240973036879534,
+      "hysteresis_margin": 0.21164549889942397,
+      "confidence_sensitivity": 1.2241753634858081,
+      "recovery_aggression": 0.4518299334790836
+    },
+    "fitness": null
+  },
+  "20": {
+    "id": "4f7e63c2",
+    "genes": {
+      "gate_confidence_min": 0.10800970782792868,
+      "abort_aggressiveness": 0.38104388180268767,
+      "base_size_pct": 2.6806376380970756,
+      "hysteresis_margin": 0.22023661899139163,
+      "confidence_sensitivity": 0.6286453991123673,
+      "recovery_aggression": 0.44428228723533575
+    },
+    "fitness": null
+  },
+  "22": {
+    "id": "4ad4f066",
+    "genes": {
+      "gate_confidence_min": 0.4567397568133022,
+      "abort_aggressiveness": 0.05753107373188709,
+      "base_size_pct": 1.4179525012158618,
+      "hysteresis_margin": 0.18271676266633358,
+      "confidence_sensitivity": 0.9640667013978008,
+      "recovery_aggression": 0.851171635170074
+    },
+    "fitness": null
+  },
+  "23": {
+    "id": "e3fda1a0",
+    "genes": {
+      "gate_confidence_min": 0.11022640784903087,
+      "abort_aggressiveness": 0.3847679629027134,
+      "base_size_pct": 0.7548233461839975,
+      "hysteresis_margin": 0.2350541147277978,
+      "confidence_sensitivity": 1.3083081177335658,
+      "recovery_aggression": 0.9055892226616927
+    },
+    "fitness": null
+  },
+  "24": {
+    "id": "536f08f6",
+    "genes": {
+      "gate_confidence_min": 0.39384825671762125,
+      "abort_aggressiveness": 0.11841207515556151,
+      "base_size_pct": 2.29456128985833,
+      "hysteresis_margin": 0.1306173801734261,
+      "confidence_sensitivity": 0.5685887366580002,
+      "recovery_aggression": 0.8594805118558864
+    },
+    "fitness": null
+  },
+  "25": {
+    "id": "5a13120b",
+    "genes": {
+      "gate_confidence_min": 0.2700290668329416,
+      "abort_aggressiveness": 0.1979951714596897,
+      "base_size_pct": 1.7524380273606033,
+      "hysteresis_margin": 0.06609312483028708,
+      "confidence_sensitivity": 1.3071434509976592,
+      "recovery_aggression": 0.4594779615268941
+    },
+    "fitness": null
+  },
+  "26": {
+    "id": "97b15db8",
+    "genes": {
+      "gate_confidence_min": 0.14731699274371524,
+      "abort_aggressiveness": 0.2949452590490228,
+      "base_size_pct": 1.2284183296721223,
+      "hysteresis_margin": 0.23661744078533925,
+      "confidence_sensitivity": 0.867145580247338,
+      "recovery_aggression": 0.7712974598535628
+    },
+    "fitness": null
+  },
+  "27": {
+    "id": "b85e2f7e",
+    "genes": {
+      "gate_confidence_min": 0.09345277302019078,
+      "abort_aggressiveness": 0.28463321824858917,
+      "base_size_pct": 2.701607195693472,
+      "hysteresis_margin": 0.17419784552918188,
+      "confidence_sensitivity": 0.9864454538066494,
+      "recovery_aggression": 0.6244466345010218
+    },
+    "fitness": null
+  },
+  "28": {
+    "id": "cebba54c",
+    "genes": {
+      "gate_confidence_min": 0.32622810391831775,
+      "abort_aggressiveness": 0.24171289400082424,
+      "base_size_pct": 0.9004396671893062,
+      "hysteresis_margin": 0.17255911484736064,
+      "confidence_sensitivity": 1.2505619949940945,
+      "recovery_aggression": 0.6421228783569246
+    },
+    "fitness": null
+  }
+}
