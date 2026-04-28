@@ -117,6 +117,8 @@ def _load_strategy_hp_spec(strategy_name: str) -> Optional[dict]:
         if not _strat_file.exists():
             _strat_file = _repo / 'strategies' / strategy_name / '__init__.py'
         if not _strat_file.exists():
+            _strat_file = _repo / 'strategies' / '_shared' / strategy_name / '__init__.py'
+        if not _strat_file.exists():
             return None
         parent = str(_strat_file.parent.parent)
         inserted = parent not in sys.path
@@ -180,6 +182,7 @@ def _write_training_config_snapshot(
     resolved_config: dict,
     tunable_groups: list,
     evolved_gene_names: list,
+    gene_to_group: Optional[dict] = None,
 ) -> None:
     """Write a snapshot of what governed this training run. Used by audit."""
     import json
@@ -201,6 +204,7 @@ def _write_training_config_snapshot(
         "resolved_config": resolved_config,
         "tunable_groups_snapshot": list(tunable_groups),
         "evolved_gene_names": list(evolved_gene_names),
+        "gene_to_group": dict(gene_to_group or {}),
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(snap, indent=2))
@@ -655,6 +659,69 @@ def _get_leaf_date_range(
 # Island evolution
 # ---------------------------------------------------------------------------
 
+def _save_evolution_checkpoint(evolver, gen_done: int, total_gens: int, path: Path) -> None:
+    """Save mid-training checkpoint. Uses IslandEvolver.save() format with a
+    `_resume_meta` sidecar dict embedded at top level. Atomic via tmp+rename."""
+    import json as _json, datetime as _dt, os as _os
+    try:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        evolver.save(str(path))
+        with path.open() as f:
+            data = _json.load(f)
+        data["_resume_meta"] = {
+            "resume_from_gen": int(gen_done),
+            "total_gens": int(total_gens),
+            "saved_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+        }
+        tmp = str(path) + ".tmp"
+        with open(tmp, "w") as f:
+            _json.dump(data, f, indent=2)
+        _os.replace(tmp, str(path))
+    except Exception as e:
+        print(f'[train] WARN: checkpoint save failed ({type(e).__name__}: {e})')
+
+
+def _load_evolution_checkpoint(path: Path, expected_leaf_ids: list, expected_gene_names: set):
+    """Return (evolver, resume_from_gen) or None if no/invalid checkpoint."""
+    import json as _json
+    from .island_evolver import IslandEvolver as _IE
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        with path.open() as f:
+            data = _json.load(f)
+        meta = data.pop("_resume_meta", None)
+        if not meta:
+            print(f'[train] WARN: {path.name} lacks _resume_meta — ignoring.')
+            return None
+        # Sanity-check that the checkpoint matches the current run's shape
+        ckpt_leaves = set(str(x) for x in data.get("leaf_ids", []))
+        cur_leaves = set(str(x) for x in expected_leaf_ids)
+        if ckpt_leaves != cur_leaves:
+            print(f'[train] WARN: checkpoint leaves ({len(ckpt_leaves)}) differ from current '
+                  f'({len(cur_leaves)}) — discarding stale checkpoint.')
+            return None
+        ckpt_genes = set(data.get("gene_bounds", {}).keys())
+        if ckpt_genes != expected_gene_names:
+            extra = sorted(ckpt_genes - expected_gene_names)[:5]
+            missing = sorted(expected_gene_names - ckpt_genes)[:5]
+            print(f'[train] WARN: checkpoint gene set differs from current '
+                  f'(extra={extra}, missing={missing}) — discarding stale checkpoint.')
+            return None
+        # Re-write cleaned data to a tmp file so IslandEvolver.load() can parse it
+        tmp = path.parent / ".checkpoint_load_tmp.json"
+        with tmp.open("w") as f:
+            _json.dump(data, f)
+        evolver = _IE.load(str(tmp))
+        tmp.unlink()
+        return evolver, int(meta.get("resume_from_gen", 0))
+    except Exception as e:
+        print(f'[train] WARN: checkpoint load failed ({type(e).__name__}: {e}) — starting fresh.')
+        return None
+
+
 def _evolve_islands(tree,
                     candles_tf: np.ndarray,
                     candles_1m: np.ndarray,
@@ -665,7 +732,9 @@ def _evolve_islands(tree,
                     pop_size: int = 5, generations: int = 3,
                     min_window_bars: int = 100, min_window_days: int = 30,
                     verbose: bool = True, n_workers: int = 1,
-                    t_total_start: float = None):
+                    t_total_start: float = None,
+                    checkpoint_path: Optional[Path] = None,
+                    checkpoint_every: int = 1):
     """Evolve per-regime genomes with fitness isolated to each island's window.
 
     Each island's fitness function runs a backtest over the largest contiguous
@@ -695,10 +764,16 @@ def _evolve_islands(tree,
         for _c in [
             _repo_root / 'strategies' / '_admin' / strategy_name / '__init__.py',
             _repo_root / 'strategies' / strategy_name / '__init__.py',
+            _repo_root / 'strategies' / '_shared' / strategy_name / '__init__.py',
         ]:
             if _c.exists():
                 _strategy_file = str(_c)
                 break
+
+        if not _strategy_file:
+            print(f'[train] WARN: strategy {strategy_name!r} not found at any of '
+                  f'_admin/, strategies/, or strategies/_shared/ — '
+                  f'evolving baseline 5-gene bounds only (this WILL produce constant fitness)')
 
         if _strategy_file:
             # Add the strategy package directory to sys.path so importlib.import_module
@@ -723,8 +798,9 @@ def _evolve_islands(tree,
                 # import PRESETS`) can resolve correctly when called later.
                 mod = _il.import_module(strategy_name)
                 strategy_cls = getattr(mod, strategy_name, None)
-            except ImportError:
-                pass
+            except ImportError as _e:
+                print(f'[train] WARN: strategy file found at {_strategy_file} '
+                      f'but import failed: {_e}. Falling back to baseline GENE_BOUNDS.')
             finally:
                 # Restore qengine.strategies but leave strategy module in sys.modules
                 if _orig_strategies is None:
@@ -766,6 +842,25 @@ def _evolve_islands(tree,
         sibling_groups=sibling_groups,
         gene_bounds=gene_bounds,
     )
+
+    # If a checkpoint exists for this configuration, load it and resume.
+    # Validate that the checkpoint's leaves + gene set match the current run
+    # before adopting it (stale checkpoints from a different config are
+    # discarded with a warning, not silently mis-used).
+    start_gen = 0
+    if checkpoint_path is not None:
+        loaded = _load_evolution_checkpoint(
+            checkpoint_path,
+            expected_leaf_ids=leaf_ids,
+            expected_gene_names=set(gene_bounds.keys() if gene_bounds else []),
+        )
+        if loaded is not None:
+            evolver, start_gen = loaded
+            if start_gen >= generations:
+                print(f'[train] checkpoint shows training already completed ({start_gen}/{generations} gens). '
+                      f'Skipping evolution loop.')
+            else:
+                print(f'[train] Resuming from checkpoint at gen {start_gen + 1}/{generations}.')
 
     # --- Fitness isolation: compute per-leaf windows ---
     print(f'[train] Computing per-leaf activation windows (min {min_window_bars} bars)...')
@@ -830,7 +925,7 @@ def _evolve_islands(tree,
         import qengine.research.backtest as _bt_mod  # noqa: F401
         print('[train] Backtest module pre-imported for worker fork inheritance.')
 
-    for gen in range(generations):
+    for gen in range(start_gen, generations):
         t_gen_start = _time.time()
         _tlog(f'[train] Generation {gen + 1}/{generations}...')
 
@@ -904,6 +999,15 @@ def _evolve_islands(tree,
             _tlog(f'[train]   Mean best fitness: {np.mean(fitnesses):.3f} '
                   f'(min={min(fitnesses):.3f}, max={max(fitnesses):.3f}) '
                   f'[gen {elapsed:.0f}s / total {total_elapsed/60:.1f}min]')
+
+        # Checkpoint at end of each iteration so spot-preemption only loses
+        # at most `checkpoint_every` gens of work. Saves are atomic (tmp+rename)
+        # and guarded — a save failure logs but does not crash training.
+        if checkpoint_path is not None and ((gen + 1) % checkpoint_every == 0):
+            _save_evolution_checkpoint(evolver, gen + 1, generations, checkpoint_path)
+            if verbose:
+                print(f'[train]   Checkpoint saved → {checkpoint_path.name} '
+                      f'(resume from gen {gen + 2}/{generations})')
 
     return evolver, leaf_date_ranges
 
@@ -1143,10 +1247,16 @@ def train(
         for _c in [
             _repo_root / 'strategies' / '_admin' / strategy_name / '__init__.py',
             _repo_root / 'strategies' / strategy_name / '__init__.py',
+            _repo_root / 'strategies' / '_shared' / strategy_name / '__init__.py',
         ]:
             if _c.exists():
                 _strategy_file = str(_c)
                 break
+
+        if not _strategy_file:
+            print(f'[train] WARN: (snapshot) strategy {strategy_name!r} not found at any of '
+                  f'_admin/, strategies/, or strategies/_shared/ — '
+                  f'training_config snapshot will record baseline GENE_BOUNDS only')
 
         _full_bounds = None
         if _strategy_file:
@@ -1168,8 +1278,9 @@ def train(
                 if strategy_cls is not None:
                     dummy = strategy_cls.__new__(strategy_cls)
                     _full_bounds = build_gene_bounds_from_strategy(dummy)
-            except Exception:
-                pass
+            except Exception as _e:
+                print(f'[train] WARN: (snapshot) strategy file found at {_strategy_file} '
+                      f'but import/bounds-build failed: {_e}. Snapshot uses baseline GENE_BOUNDS.')
             finally:
                 if _orig_strategies is None:
                     sys.modules.pop('qengine.strategies', None)
@@ -1198,8 +1309,16 @@ def train(
             _GENE_TO_GROUP[g] for g in _evolved_gene_names
             if g in _GENE_TO_GROUP
         })
+        # Persist a copy so audit (which runs in a fresh process where
+        # _GENE_TO_GROUP starts empty) can rebuild the lookup without
+        # re-loading the strategy.
+        _gene_to_group_snapshot = {
+            g: _GENE_TO_GROUP[g] for g in _evolved_gene_names
+            if g in _GENE_TO_GROUP
+        }
     except Exception:
         _evolvable_groups = []
+        _gene_to_group_snapshot = {}
     # Fallback: if mapping was empty (e.g. strategy never loaded), keep the
     # documented superset so E01 has *something* to compare against.
     if not _evolvable_groups:
@@ -1237,6 +1356,7 @@ def train(
         resolved_config=_resolved_config,
         tunable_groups=_tunable_groups,
         evolved_gene_names=_evolved_gene_names,
+        gene_to_group=_gene_to_group_snapshot,
     )
 
     tf_minutes = int(jh.timeframe_to_one_minutes(timeframe))
@@ -1418,6 +1538,10 @@ def train(
     min_window_bars = max(20, int(round(2880 / tf_minutes)))
     print(f'[train] Per-leaf min window: {min_window_bars} bars (~2 trading days at {timeframe})')
 
+    # Checkpoint path: saved after each generation so spot-preemption only loses
+    # at most one generation of work. Cleared on successful completion.
+    checkpoint_path = models_dir / 'checkpoint.json'
+
     evolver, leaf_date_ranges = _evolve_islands(
         tree=tree,
         candles_tf=candles_tf,
@@ -1436,11 +1560,22 @@ def train(
         verbose=verbose,
         n_workers=n_workers,
         t_total_start=t_total_start,
+        checkpoint_path=checkpoint_path,
+        checkpoint_every=1,
     )
 
     evolver_path = str(models_dir / 'island_evolver.json')
     evolver.save(evolver_path)
     print(f'[train] IslandEvolver saved → {evolver_path}')
+
+    # Clean up checkpoint on successful completion (next run starts fresh
+    # unless a partial checkpoint reappears mid-training).
+    try:
+        if checkpoint_path.exists():
+            checkpoint_path.unlink()
+            print(f'[train] checkpoint cleared (training completed successfully)')
+    except Exception as e:
+        print(f'[train] WARN: could not remove checkpoint: {e}')
 
     # Also save the per-leaf date ranges for auditability
     leaf_ranges_path = str(models_dir / 'leaf_date_ranges.json')
