@@ -117,8 +117,6 @@ def _load_strategy_hp_spec(strategy_name: str) -> Optional[dict]:
         if not _strat_file.exists():
             _strat_file = _repo / 'strategies' / strategy_name / '__init__.py'
         if not _strat_file.exists():
-            _strat_file = _repo / 'strategies' / '_shared' / strategy_name / '__init__.py'
-        if not _strat_file.exists():
             return None
         parent = str(_strat_file.parent.parent)
         inserted = parent not in sys.path
@@ -174,40 +172,6 @@ def _enforce_cutoff(date_str: str) -> str:
               f'Clamping to {_MAX_TRAIN_END}.')
         return _MAX_TRAIN_END
     return date_str
-
-
-def _write_training_config_snapshot(
-    out_path: Path,
-    args: dict,
-    resolved_config: dict,
-    tunable_groups: list,
-    evolved_gene_names: list,
-    gene_to_group: Optional[dict] = None,
-) -> None:
-    """Write a snapshot of what governed this training run. Used by audit."""
-    import json
-    import datetime as _dt
-    import subprocess as _sp
-
-    try:
-        out = _sp.run(["git", "rev-parse", "HEAD"], capture_output=True,
-                      text=True, timeout=1)
-        commit = out.stdout.strip()[:12] if out.returncode == 0 else "unknown"
-    except Exception:
-        commit = "unknown"
-
-    snap = {
-        "schema_version": 1,
-        "qengine_commit": commit,
-        "started_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "args": args,
-        "resolved_config": resolved_config,
-        "tunable_groups_snapshot": list(tunable_groups),
-        "evolved_gene_names": list(evolved_gene_names),
-        "gene_to_group": dict(gene_to_group or {}),
-    }
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(snap, indent=2))
 
 
 def _date_to_ts_ms(date_str: str) -> int:
@@ -478,15 +442,6 @@ def _fit_regime_tree(
         persistence_threshold=persistence_threshold,
     )
 
-    from . import manifest as _manifest
-    _manifest.record(
-        "feature_partition",
-        n_macro_feats=len(macro_indices),
-        n_sub_feats=len(sub_indices),
-        autocorr_threshold=persistence_threshold,
-        lag=lag,
-    )
-
     print(f'[train] Fitting RegimeTree: {len(macro_indices)} macro features, '
           f'{len(sub_indices)} sub features...')
 
@@ -659,69 +614,6 @@ def _get_leaf_date_range(
 # Island evolution
 # ---------------------------------------------------------------------------
 
-def _save_evolution_checkpoint(evolver, gen_done: int, total_gens: int, path: Path) -> None:
-    """Save mid-training checkpoint. Uses IslandEvolver.save() format with a
-    `_resume_meta` sidecar dict embedded at top level. Atomic via tmp+rename."""
-    import json as _json, datetime as _dt, os as _os
-    try:
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        evolver.save(str(path))
-        with path.open() as f:
-            data = _json.load(f)
-        data["_resume_meta"] = {
-            "resume_from_gen": int(gen_done),
-            "total_gens": int(total_gens),
-            "saved_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
-        }
-        tmp = str(path) + ".tmp"
-        with open(tmp, "w") as f:
-            _json.dump(data, f, indent=2)
-        _os.replace(tmp, str(path))
-    except Exception as e:
-        print(f'[train] WARN: checkpoint save failed ({type(e).__name__}: {e})')
-
-
-def _load_evolution_checkpoint(path: Path, expected_leaf_ids: list, expected_gene_names: set):
-    """Return (evolver, resume_from_gen) or None if no/invalid checkpoint."""
-    import json as _json
-    from .island_evolver import IslandEvolver as _IE
-    path = Path(path)
-    if not path.exists():
-        return None
-    try:
-        with path.open() as f:
-            data = _json.load(f)
-        meta = data.pop("_resume_meta", None)
-        if not meta:
-            print(f'[train] WARN: {path.name} lacks _resume_meta — ignoring.')
-            return None
-        # Sanity-check that the checkpoint matches the current run's shape
-        ckpt_leaves = set(str(x) for x in data.get("leaf_ids", []))
-        cur_leaves = set(str(x) for x in expected_leaf_ids)
-        if ckpt_leaves != cur_leaves:
-            print(f'[train] WARN: checkpoint leaves ({len(ckpt_leaves)}) differ from current '
-                  f'({len(cur_leaves)}) — discarding stale checkpoint.')
-            return None
-        ckpt_genes = set(data.get("gene_bounds", {}).keys())
-        if ckpt_genes != expected_gene_names:
-            extra = sorted(ckpt_genes - expected_gene_names)[:5]
-            missing = sorted(expected_gene_names - ckpt_genes)[:5]
-            print(f'[train] WARN: checkpoint gene set differs from current '
-                  f'(extra={extra}, missing={missing}) — discarding stale checkpoint.')
-            return None
-        # Re-write cleaned data to a tmp file so IslandEvolver.load() can parse it
-        tmp = path.parent / ".checkpoint_load_tmp.json"
-        with tmp.open("w") as f:
-            _json.dump(data, f)
-        evolver = _IE.load(str(tmp))
-        tmp.unlink()
-        return evolver, int(meta.get("resume_from_gen", 0))
-    except Exception as e:
-        print(f'[train] WARN: checkpoint load failed ({type(e).__name__}: {e}) — starting fresh.')
-        return None
-
-
 def _evolve_islands(tree,
                     candles_tf: np.ndarray,
                     candles_1m: np.ndarray,
@@ -732,9 +624,7 @@ def _evolve_islands(tree,
                     pop_size: int = 5, generations: int = 3,
                     min_window_bars: int = 100, min_window_days: int = 30,
                     verbose: bool = True, n_workers: int = 1,
-                    t_total_start: float = None,
-                    checkpoint_path: Optional[Path] = None,
-                    checkpoint_every: int = 1):
+                    t_total_start: float = None):
     """Evolve per-regime genomes with fitness isolated to each island's window.
 
     Each island's fitness function runs a backtest over the largest contiguous
@@ -764,16 +654,10 @@ def _evolve_islands(tree,
         for _c in [
             _repo_root / 'strategies' / '_admin' / strategy_name / '__init__.py',
             _repo_root / 'strategies' / strategy_name / '__init__.py',
-            _repo_root / 'strategies' / '_shared' / strategy_name / '__init__.py',
         ]:
             if _c.exists():
                 _strategy_file = str(_c)
                 break
-
-        if not _strategy_file:
-            print(f'[train] WARN: strategy {strategy_name!r} not found at any of '
-                  f'_admin/, strategies/, or strategies/_shared/ — '
-                  f'evolving baseline 5-gene bounds only (this WILL produce constant fitness)')
 
         if _strategy_file:
             # Add the strategy package directory to sys.path so importlib.import_module
@@ -798,9 +682,8 @@ def _evolve_islands(tree,
                 # import PRESETS`) can resolve correctly when called later.
                 mod = _il.import_module(strategy_name)
                 strategy_cls = getattr(mod, strategy_name, None)
-            except ImportError as _e:
-                print(f'[train] WARN: strategy file found at {_strategy_file} '
-                      f'but import failed: {_e}. Falling back to baseline GENE_BOUNDS.')
+            except ImportError:
+                pass
             finally:
                 # Restore qengine.strategies but leave strategy module in sys.modules
                 if _orig_strategies is None:
@@ -842,25 +725,6 @@ def _evolve_islands(tree,
         sibling_groups=sibling_groups,
         gene_bounds=gene_bounds,
     )
-
-    # If a checkpoint exists for this configuration, load it and resume.
-    # Validate that the checkpoint's leaves + gene set match the current run
-    # before adopting it (stale checkpoints from a different config are
-    # discarded with a warning, not silently mis-used).
-    start_gen = 0
-    if checkpoint_path is not None:
-        loaded = _load_evolution_checkpoint(
-            checkpoint_path,
-            expected_leaf_ids=leaf_ids,
-            expected_gene_names=set(gene_bounds.keys() if gene_bounds else []),
-        )
-        if loaded is not None:
-            evolver, start_gen = loaded
-            if start_gen >= generations:
-                print(f'[train] checkpoint shows training already completed ({start_gen}/{generations} gens). '
-                      f'Skipping evolution loop.')
-            else:
-                print(f'[train] Resuming from checkpoint at gen {start_gen + 1}/{generations}.')
 
     # --- Fitness isolation: compute per-leaf windows ---
     print(f'[train] Computing per-leaf activation windows (min {min_window_bars} bars)...')
@@ -925,7 +789,7 @@ def _evolve_islands(tree,
         import qengine.research.backtest as _bt_mod  # noqa: F401
         print('[train] Backtest module pre-imported for worker fork inheritance.')
 
-    for gen in range(start_gen, generations):
+    for gen in range(generations):
         t_gen_start = _time.time()
         _tlog(f'[train] Generation {gen + 1}/{generations}...')
 
@@ -946,31 +810,17 @@ def _evolve_islands(tree,
             with _ctx.Pool(processes=n_workers) as pool:
                 results = pool.starmap(_run_backtest_fitness, tasks)
 
-            from . import manifest as _manifest
-            for (lid, idx), result in zip(task_keys, results):
-                fitness, worker_events = result
+            for (lid, idx), fitness in zip(task_keys, results):
                 evolver.populations[lid].individuals[idx].fitness = fitness
-                _manifest.merge_worker_events(worker_events)
-                # Emit summary event in parent (worker did not have aggregates)
-                _manifest.record(
-                    "genome_evaluated",
-                    island=lid,
-                    generation=gen,
-                    genome_id=evolver.populations[lid].individuals[idx].id,
-                    fitness=fitness,
-                )
         else:
             for lid, pop in evolver.populations.items():
                 start, end, _ = leaf_date_ranges.get(lid, (train_start, train_end, False))
                 s = _date_to_ts_ms(start)
                 e = _date_to_ts_ms(end) + 86_400_000
 
-                from . import manifest as _manifest
                 def _fn(genes, _s=s, _e=e):
-                    fitness, worker_events = _run_backtest_fitness(
-                        genes, exchange, symbol, timeframe, strategy_name, _s, _e)
-                    _manifest.merge_worker_events(worker_events)
-                    return fitness
+                    return _run_backtest_fitness(genes, exchange, symbol,
+                                                 timeframe, strategy_name, _s, _e)
                 pop.evaluate(_fn)
 
         # Only produce next generation's children if there's going to be a next
@@ -1000,15 +850,6 @@ def _evolve_islands(tree,
                   f'(min={min(fitnesses):.3f}, max={max(fitnesses):.3f}) '
                   f'[gen {elapsed:.0f}s / total {total_elapsed/60:.1f}min]')
 
-        # Checkpoint at end of each iteration so spot-preemption only loses
-        # at most `checkpoint_every` gens of work. Saves are atomic (tmp+rename)
-        # and guarded — a save failure logs but does not crash training.
-        if checkpoint_path is not None and ((gen + 1) % checkpoint_every == 0):
-            _save_evolution_checkpoint(evolver, gen + 1, generations, checkpoint_path)
-            if verbose:
-                print(f'[train]   Checkpoint saved → {checkpoint_path.name} '
-                      f'(resume from gen {gen + 2}/{generations})')
-
     return evolver, leaf_date_ranges
 
 
@@ -1020,8 +861,8 @@ def _run_backtest_fitness(
     strategy_name: str,
     start_ts_ms: int,
     end_ts_ms: int,
-) -> tuple:
-    """Run one backtest, return (fitness, manifest_events).
+) -> float:
+    """Run a qengine backtest over a 1m candle subset and return composite fitness.
 
     Fitness = 0.4·(PF−1)·100 + 0.3·max(0,100−DD·5) + 0.2·(1−bust_rate)·100 + 0.1·min(sessions/100, 1)·100
 
@@ -1034,23 +875,7 @@ def _run_backtest_fitness(
 
     Candles are read from the module-level `_WORKER_CANDLES` global which is set
     in the parent process before forking workers, avoiding 10 MB serialization per task.
-
-    Forked workers reset SIGTERM/SIGINT to SIG_DFL so signals delivered to
-    the worker do not invoke the parent's manifest close handler. Workers
-    accumulate manifest events into a process-local buffer and return them
-    alongside the fitness; the parent merges them via
-    manifest.merge_worker_events() after pool.starmap returns.
     """
-    import signal as _signal
-    try:
-        _signal.signal(_signal.SIGTERM, _signal.SIG_DFL)
-        _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
-    except (OSError, ValueError):
-        pass
-
-    from . import manifest as _manifest
-    _manifest.start_worker_buffer()
-
     import traceback as _tb
     try:
         from qengine.research.backtest import backtest as run_bt
@@ -1059,7 +884,7 @@ def _run_backtest_fitness(
         candles_1m = _WORKER_CANDLES
         if candles_1m is None:
             print('[fitness] ERROR: _WORKER_CANDLES is None — candles not set before forking')
-            return 0.0, _manifest.drain_worker_buffer()
+            return 0.0
 
         # Subset candles to the evaluation window, then fill gaps so the
         # backtest validator (checks candles[1][0]-candles[0][0]==60000ms) passes.
@@ -1069,7 +894,7 @@ def _run_backtest_fitness(
         subset = candles_1m[mask]
         subset = _trim_to_contiguous_start(subset)
         if len(subset) < 2000:  # less than ~1.4 days of 1m candles
-            return 0.0, _manifest.drain_worker_buffer()
+            return 0.0
 
         config = {
             'starting_balance': 10_000,
@@ -1145,7 +970,7 @@ def _run_backtest_fitness(
         if _net is not None:
             try:
                 if math.isnan(float(_net)):
-                    return 0.0, _manifest.drain_worker_buffer()
+                    return 0.0
             except (TypeError, ValueError):
                 pass
 
@@ -1166,7 +991,7 @@ def _run_backtest_fitness(
         # beats a marginally-losing random-entry strategy in every other term.
         # Below 10 sessions return tiny fitness scaling with activity.
         if n_sessions < 10:
-            return float(n_sessions * 0.5), _manifest.drain_worker_buffer()
+            return float(n_sessions * 0.5)
 
         # Full fitness: PF/DD/bust/session-count composite. PF-term can be
         # negative (strategies losing money), bust-term uses a cubic penalty
@@ -1177,16 +1002,12 @@ def _run_backtest_fitness(
             0.2 * ((1.0 - bust_rate) ** 3) * 100 +         # cubic bust penalty
             0.1 * min(n_sessions / 100.0, 1.0) * 100       # rewards activity
         )
-        return max(0.0, float(fitness)), _manifest.drain_worker_buffer()
+        return max(0.0, float(fitness))
 
     except Exception as e:
         print(f'[fitness] ERROR: {e}')
         print(_tb.format_exc())
-        try:
-            _manifest.record("worker_error", traceback=_tb.format_exc())
-        except Exception:
-            pass
-        return 0.0, _manifest.drain_worker_buffer()
+        return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1209,8 +1030,6 @@ def train(
     verbose: bool = True,
     n_workers: int = 1,
     candles_file: Optional[str] = None,
-    output_dir: Optional[Path] = None,
-    preflight_mode: bool = False,
 ) -> dict:
     """Full IslandPilot training pipeline.
 
@@ -1227,137 +1046,6 @@ def train(
 
     # Enforce pre-2025 cutoff
     train_end = _enforce_cutoff(train_end)
-
-    # Resolve output dir: preflight passes its tmpdir; cloud training leaves
-    # output_dir=None and uses the package-level _MODELS_DIR default.
-    models_dir = Path(output_dir) if output_dir is not None else _MODELS_DIR
-    models_dir.mkdir(parents=True, exist_ok=True)
-
-    # Snapshot what governs this run so audit can interpret artifacts later.
-    # Written up-front (before heavy work) so even early-exit failures retain
-    # a record of what was attempted. Compute the FULL evolvable gene set
-    # (strategy-discovered + baseline) so the snapshot is self-describing
-    # for audit. We replicate the same lightweight stub-load that
-    # _evolve_islands uses, so this works pre-evolution.
-    try:
-        from .island_evolver import build_gene_bounds_from_strategy
-        import importlib.util as _ilu, importlib as _il, types as _types
-        _repo_root = _HERE.parents[2]
-        _strategy_file = None
-        for _c in [
-            _repo_root / 'strategies' / '_admin' / strategy_name / '__init__.py',
-            _repo_root / 'strategies' / strategy_name / '__init__.py',
-            _repo_root / 'strategies' / '_shared' / strategy_name / '__init__.py',
-        ]:
-            if _c.exists():
-                _strategy_file = str(_c)
-                break
-
-        if not _strategy_file:
-            print(f'[train] WARN: (snapshot) strategy {strategy_name!r} not found at any of '
-                  f'_admin/, strategies/, or strategies/_shared/ — '
-                  f'training_config snapshot will record baseline GENE_BOUNDS only')
-
-        _full_bounds = None
-        if _strategy_file:
-            import os as _os
-            parent_dir = _os.path.dirname(_os.path.dirname(_strategy_file))
-            _inserted = parent_dir not in sys.path
-            if _inserted:
-                sys.path.insert(0, parent_dir)
-
-            _stub_mod = _types.ModuleType('qengine.strategies')
-            class _LiteStrategySnap: pass
-            _stub_mod.Strategy = _LiteStrategySnap
-            _stub_mod.cached = lambda f: f
-            _orig_strategies = sys.modules.get('qengine.strategies')
-            sys.modules['qengine.strategies'] = _stub_mod
-            try:
-                mod = _il.import_module(strategy_name)
-                strategy_cls = getattr(mod, strategy_name, None)
-                if strategy_cls is not None:
-                    dummy = strategy_cls.__new__(strategy_cls)
-                    _full_bounds = build_gene_bounds_from_strategy(dummy)
-            except Exception as _e:
-                print(f'[train] WARN: (snapshot) strategy file found at {_strategy_file} '
-                      f'but import/bounds-build failed: {_e}. Snapshot uses baseline GENE_BOUNDS.')
-            finally:
-                if _orig_strategies is None:
-                    sys.modules.pop('qengine.strategies', None)
-                else:
-                    sys.modules['qengine.strategies'] = _orig_strategies
-                if _inserted and parent_dir in sys.path:
-                    sys.path.remove(parent_dir)
-
-        if _full_bounds:
-            _evolved_gene_names = sorted(_full_bounds.keys())
-        else:
-            from .island_evolver import GENE_BOUNDS as _GENE_BOUNDS_BASE
-            _evolved_gene_names = sorted(_GENE_BOUNDS_BASE.keys())
-    except Exception:
-        try:
-            from .island_evolver import GENE_BOUNDS as _GENE_BOUNDS_BASE
-            _evolved_gene_names = sorted(_GENE_BOUNDS_BASE.keys())
-        except Exception:
-            _evolved_gene_names = []
-    # Exclude groups whose every member is in _SKIP_PARAMS (e.g. Filters
-    # is intentionally all-skipped per spec OQ-1). The audit-side check E01
-    # only verifies coverage of groups that actually have evolvable members.
-    try:
-        from .island_evolver import _GENE_TO_GROUP
-        _evolvable_groups = sorted({
-            _GENE_TO_GROUP[g] for g in _evolved_gene_names
-            if g in _GENE_TO_GROUP
-        })
-        # Persist a copy so audit (which runs in a fresh process where
-        # _GENE_TO_GROUP starts empty) can rebuild the lookup without
-        # re-loading the strategy.
-        _gene_to_group_snapshot = {
-            g: _GENE_TO_GROUP[g] for g in _evolved_gene_names
-            if g in _GENE_TO_GROUP
-        }
-    except Exception:
-        _evolvable_groups = []
-        _gene_to_group_snapshot = {}
-    # Fallback: if mapping was empty (e.g. strategy never loaded), keep the
-    # documented superset so E01 has *something* to compare against.
-    if not _evolvable_groups:
-        _evolvable_groups = sorted([
-            'General', 'Grid / Hedge', 'Take Profit',
-            'Entry Signal', 'Risk Management', 'Position Management',
-        ])
-    _tunable_groups = _evolvable_groups
-    try:
-        from .config import DEFAULT_CONFIG as _DEFAULT_CONFIG
-        _resolved_config = _DEFAULT_CONFIG
-    except Exception:
-        _resolved_config = {}
-
-    if preflight_mode:
-        # Preflight runs on a tiny 30-day slice with 24 total backtests.
-        # Lower thresholds so the natural-trigger paths for online_gate
-        # and proven_fitness can fire within that budget. Deep-copy so we
-        # never mutate the imported DEFAULT_CONFIG (other tests / runtime
-        # consumers re-read it).
-        from copy import deepcopy
-        _resolved_config = deepcopy(_resolved_config) if _resolved_config else {}
-        _resolved_config.setdefault("online_gate", {})["min_cycles_for_gate"] = 2
-        _resolved_config.setdefault("safety", {})["min_genome_fitness"] = 0.0
-    _write_training_config_snapshot(
-        out_path=models_dir / 'training_config.json',
-        args={
-            'exchange': exchange, 'symbol': symbol, 'timeframe': timeframe,
-            'train_start': train_start, 'train_end': train_end,
-            'strategy_name': strategy_name, 'pop_size': pop_size,
-            'generations': generations, 'max_macro': max_macro,
-            'max_sub': max_sub, 'min_leaf_samples': min_leaf_samples,
-            'n_workers': n_workers, 'dry_run': dry_run,
-        },
-        resolved_config=_resolved_config,
-        tunable_groups=_tunable_groups,
-        evolved_gene_names=_evolved_gene_names,
-        gene_to_group=_gene_to_group_snapshot,
-    )
 
     tf_minutes = int(jh.timeframe_to_one_minutes(timeframe))
 
@@ -1499,9 +1187,9 @@ def train(
     # Under --dry-run, write to a side location so we don't clobber the
     # currently-shipped models (which are paired with a matching evolver).
     if dry_run:
-        tree_path = str(models_dir / 'regime_tree.dryrun.pkl')
+        tree_path = str(_MODELS_DIR / 'regime_tree.dryrun.pkl')
     else:
-        tree_path = str(models_dir / 'regime_tree.pkl')
+        tree_path = str(_MODELS_DIR / 'regime_tree.pkl')
     tree.save(tree_path)
     print(f'[train] RegimeTree saved → {tree_path}')
 
@@ -1510,16 +1198,6 @@ def train(
     if not separation['valid']:
         print(f'[train] WARNING: {separation["recommendation"]}')
         # Continue anyway — user may still want the models
-
-    from . import manifest as _manifest
-    _manifest.record(
-        "regime_fit",
-        n_macro_clusters=getattr(tree, "n_macro", None) or len(getattr(tree, "macros", []) or []) or None,
-        n_sub_per_macro={},
-        leaves_before_merge=getattr(tree, "leaves_before_merge", None),
-        leaves_after_merge=len(tree.leaf_sample_counts),
-        separation_dict=separation,
-    )
 
     if dry_run:
         print('[train] --dry-run: skipping GA evolution.')
@@ -1537,10 +1215,6 @@ def train(
     #   5m → 576, 15m → 192, 30m → 96, 1h → 48
     min_window_bars = max(20, int(round(2880 / tf_minutes)))
     print(f'[train] Per-leaf min window: {min_window_bars} bars (~2 trading days at {timeframe})')
-
-    # Checkpoint path: saved after each generation so spot-preemption only loses
-    # at most one generation of work. Cleared on successful completion.
-    checkpoint_path = models_dir / 'checkpoint.json'
 
     evolver, leaf_date_ranges = _evolve_islands(
         tree=tree,
@@ -1560,25 +1234,14 @@ def train(
         verbose=verbose,
         n_workers=n_workers,
         t_total_start=t_total_start,
-        checkpoint_path=checkpoint_path,
-        checkpoint_every=1,
     )
 
-    evolver_path = str(models_dir / 'island_evolver.json')
+    evolver_path = str(_MODELS_DIR / 'island_evolver.json')
     evolver.save(evolver_path)
     print(f'[train] IslandEvolver saved → {evolver_path}')
 
-    # Clean up checkpoint on successful completion (next run starts fresh
-    # unless a partial checkpoint reappears mid-training).
-    try:
-        if checkpoint_path.exists():
-            checkpoint_path.unlink()
-            print(f'[train] checkpoint cleared (training completed successfully)')
-    except Exception as e:
-        print(f'[train] WARN: could not remove checkpoint: {e}')
-
     # Also save the per-leaf date ranges for auditability
-    leaf_ranges_path = str(models_dir / 'leaf_date_ranges.json')
+    leaf_ranges_path = str(_MODELS_DIR / 'leaf_date_ranges.json')
     with open(leaf_ranges_path, 'w') as f:
         json.dump({
             lid: {'start': s, 'end': e, 'had_window': bool(hw)}
@@ -1593,7 +1256,7 @@ def train(
     _tlog(f'[train]   Started:     {_t0_dt.strftime("%Y-%m-%d %H:%M:%S")} UTC')
     _tlog(f'[train]   Total time:  {elapsed_total/3600:.2f}h ({elapsed_total:.0f}s)')
     _tlog(f'[train]   Generations: {generations}  Islands: {len(evolver.populations)}  Pop: {pop_size}')
-    _tlog(f'[train]   Models dir:  {models_dir}')
+    _tlog(f'[train]   Models dir:  {_MODELS_DIR}')
     _tlog('[train] ══════════════════════════════════════════════════════════')
 
     return {

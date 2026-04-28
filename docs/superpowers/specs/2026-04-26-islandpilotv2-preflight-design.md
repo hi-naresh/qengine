@@ -1,16 +1,16 @@
-# IslandPilotV2 — Preflight & Audit Harness
+# IslandPilot — Preflight & Audit Harness
 
 **Date:** 2026-04-26
 **Author:** Claude (brainstormed with user, sneha@botwot.io)
-**Goal:** Before committing to a ~10+ hour cloud training run (Iteration 1 reference: 10h 33m on `c2-standard-60`, per CLOUD_TRAINING.md:31), prove the IslandPilotV2 pipeline is exercising every layer it claims to. After training, produce a structured log of what fired and what didn't.
+**Goal:** Before committing to a ~10+ hour cloud training run (Iteration 1 reference: 10h 33m on `c2-standard-60`, per CLOUD_TRAINING.md:31), prove the IslandPilot pipeline is exercising every layer it claims to. After training, produce a structured log of what fired and what didn't.
 
-> **Scope guard:** This spec covers verification only. Strategy-logic improvements (regime taxonomy, transition matrix, per-regime tactics, abort probabilities) are explicitly out of scope and tracked for a follow-on spec. **IslandPilot V1 is not touched.** All changes land inside `pipelines/_shared/IslandPilotV2/`.
+> **Scope guard:** This spec covers verification only. Strategy-logic improvements (regime taxonomy, transition matrix, per-regime tactics, abort probabilities) are explicitly out of scope and tracked for a follow-on spec. **IslandPilot V1 is not touched.** All changes land inside `pipelines/_shared/IslandPilot/`.
 
 ---
 
 ## 1. Problem Statement
 
-The current IslandPilotV2 preflight (`preflight.py`) is a 4-check smoke test on synthetic GBM data. It runs in ~2 min and confirms the code does not crash. **It also has a pre-existing bug**: every import path inside it points at V1 (`pipelines._shared.IslandPilot.*`, verified at lines 11, 35, 81, 101–103, 158), not V2 — the file was duplicated when V2 was forked and the imports were never updated. So even what it checks today is checking the wrong codebase.
+The current IslandPilot preflight (`preflight.py`) is a 4-check smoke test on synthetic GBM data. It runs in ~2 min and confirms the code does not crash. **It also has a pre-existing bug**: every import path inside it points at V1 (`pipelines._shared.IslandPilot.*`, verified at lines 11, 35, 81, 101–103, 158), not V2 — the file was duplicated when V2 was forked and the imports were never updated. So even what it checks today is checking the wrong codebase.
 
 The current preflight does **not** confirm:
 
@@ -56,7 +56,7 @@ A second gap: even when training completes successfully, there is no post-hoc re
 ### 3.1 Files
 
 ```
-pipelines/_shared/IslandPilotV2/
+pipelines/_shared/IslandPilot/
 ├── manifest.py              [NEW]      ~80 LOC   global event recorder
 ├── preflight_checks.py      [NEW]      ~1000 LOC ~34 @check functions
 ├── preflight.py             [REWRITE]  ~250 LOC  smoke (30s) + comprehensive (≤4.5 min)
@@ -73,7 +73,7 @@ tests/                                              [top-level repo dir, existin
 Outputs (new files added by this spec marked **NEW**; existing artifacts the pipeline already writes are listed for completeness):
 
 ```
-pipelines/_shared/IslandPilotV2/models/         [cloud training writes here by default]
+pipelines/_shared/IslandPilot/models/         [cloud training writes here by default]
 ├── regime_tree.pkl                             [pre-existing]
 ├── island_evolver.json                         [pre-existing]
 ├── leaf_date_ranges.json                       [pre-existing]
@@ -319,7 +319,7 @@ This guarantees:
 
 ### 4.3 `preflight.py` (rewrite)
 
-> **Pre-existing bug to fix during rewrite:** the current `pipelines/_shared/IslandPilotV2/preflight.py` was duplicated from V1 and still imports from `pipelines._shared.IslandPilot.*` paths (verified via grep at lines 35, 81, 101–103, 158, plus the docstring at line 11). The rewrite must change every `IslandPilot` to `IslandPilotV2` so V2 preflight tests V2 code, not V1.
+> **Pre-existing bug to fix during rewrite:** the current `pipelines/_shared/IslandPilot/preflight.py` was duplicated from V1 and still imports from `pipelines._shared.IslandPilot.*` paths (verified via grep at lines 35, 81, 101–103, 158, plus the docstring at line 11). The rewrite must change every `IslandPilot` to `IslandPilot` so V2 preflight tests V2 code, not V1.
 
 ```python
 def main():
@@ -389,7 +389,7 @@ Manifest opening, tap subscription, and worker-buffer aggregation are independen
 
 ### 4.4 `audit.py`
 
-CLI: `python audit.py <models_dir>` — `models_dir` is positional, defaults to `pipelines/_shared/IslandPilotV2/models/` if omitted, accepts any path. Audit writes its report into the same directory as the artifacts so the report travels with what it audits.
+CLI: `python audit.py <models_dir>` — `models_dir` is positional, defaults to `pipelines/_shared/IslandPilot/models/` if omitted, accepts any path. Audit writes its report into the same directory as the artifacts so the report travels with what it audits.
 
 ```python
 def main(models_dir: Path):
@@ -571,7 +571,7 @@ Severity counts: 21 critical, 12 warn, 1 info.
 Terminal pretty-print (preflight):
 
 ```
-═══ IslandPilotV2 Preflight Report ═══
+═══ IslandPilot Preflight Report ═══
 Phase 1 — Smoke (32s)            ✓ 4/4 passed
 Phase 2 — Comprehensive (3m 47s)
   Regime         R01–R06         ✓ 6/6
@@ -588,7 +588,7 @@ First critical: E05 — see preflight_report.json:checks[id=E05_intended_groups_
 Do NOT commit to cloud training until critical issues are resolved.
 ```
 
-Audit terminal output uses the same shape with header `═══ IslandPilotV2 Audit Report ═══` and verdict variants `OK / DEGRADED / BROKEN`.
+Audit terminal output uses the same shape with header `═══ IslandPilot Audit Report ═══` and verdict variants `OK / DEGRADED / BROKEN`.
 
 JSON sidecar shape (`preflight_report.json` and `audit_report.json` share the same schema):
 
@@ -743,13 +743,13 @@ Old `models/` directories (from cloud runs before this change) lack `activation_
 Two new kwargs on `train.train()`:
 
 - `preflight_mode: bool = False` — when `True`, applies the threshold overrides documented in §5.1 *before* config is finalized.
-- `output_dir: Path | None = None` — when set, writes `regime_tree.pkl`, `island_evolver.json`, `leaf_date_ranges.json`, `training_config.json`, and `activation_manifest.jsonl.gz` to this dir instead of the hardcoded `_MODELS_DIR` (currently `pipelines/_shared/IslandPilotV2/models/`, train.py:159). When `None`, behavior is unchanged.
+- `output_dir: Path | None = None` — when set, writes `regime_tree.pkl`, `island_evolver.json`, `leaf_date_ranges.json`, `training_config.json`, and `activation_manifest.jsonl.gz` to this dir instead of the hardcoded `_MODELS_DIR` (currently `pipelines/_shared/IslandPilot/models/`, train.py:159). When `None`, behavior is unchanged.
 
 Required because `_MODELS_DIR` is hardcoded; without an override, preflight invoking `train()` would clobber real cloud-trained artifacts. Preflight always passes its tmpdir; cloud training leaves the kwarg unset.
 
 Implementation: add `models_dir = output_dir or _MODELS_DIR` near the top of `train()`, then replace every `_MODELS_DIR` reference inside `train()` with `models_dir` (~5 occurrences per train.py grep).
 
-Existing call sites (CLI `python -m pipelines._shared.IslandPilotV2.train`, validate_model.py) do not pass either kwarg and see zero behavioral change.
+Existing call sites (CLI `python -m pipelines._shared.IslandPilot.train`, validate_model.py) do not pass either kwarg and see zero behavioral change.
 
 ---
 
@@ -760,7 +760,7 @@ Each AC includes its **verification method** so the implementer can prove satisf
 - **AC1.** All 34 checks implemented; each has at least one passing and one failing meta-test (informational E09 needs only a passing test since it never fails).
   *Verification:* `pytest tests/test_islandpilotv2_preflight_checks.py -q` reports ≥ 67 tests passing (34 pass-cases + 33 fail-cases; E09 has no fail-case).
 
-- **AC2.** `python preflight.py` exits 0 within 5 minutes on a 10-core M-series laptop when the pipeline is healthy ("healthy" = a fresh checkout of `pipelines/_shared/IslandPilotV2/` with no manual breakage). On other hardware, scale the budget by `(10 / cpu_count())` minutes and the implementer documents the actual wall-time in their PR.
+- **AC2.** `python preflight.py` exits 0 within 5 minutes on a 10-core M-series laptop when the pipeline is healthy ("healthy" = a fresh checkout of `pipelines/_shared/IslandPilot/` with no manual breakage). On other hardware, scale the budget by `(10 / cpu_count())` minutes and the implementer documents the actual wall-time in their PR.
   *Verification:* `time python preflight.py` on a 10-core M-series, with `echo $?` reporting 0 and elapsed time < 300s.
 
 - **AC3.** `python preflight.py` exits 1 and prints the failing check's `id` and `category` in the terminal report when any of the following are deliberately broken (one at a time):

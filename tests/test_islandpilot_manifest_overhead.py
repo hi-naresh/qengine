@@ -9,7 +9,7 @@ import pytest
 def _run_micro_workload(tmp_path, with_manifest: bool):
     """Run a tiny synthetic workload: 100 record() calls + trivial computation.
     Returns wall-time."""
-    from pipelines._shared.IslandPilotV2 import manifest as m
+    from pipelines._shared.IslandPilot import manifest as m
     m._reset_for_tests()
     if with_manifest:
         m.open(tmp_path / "m.jsonl")
@@ -49,7 +49,7 @@ def test_iter1_manifest_size_projection(tmp_path):
     """Project Iteration-1 gzipped manifest size from a 800-event sample.
     Iter1 = 10 pop × 20 gen × 63 islands ≈ 12,600 backtests; spec §9.4
     estimates ~95k events total. Projection must come in under 10 MB."""
-    from pipelines._shared.IslandPilotV2 import manifest as m
+    from pipelines._shared.IslandPilot import manifest as m
     m._reset_for_tests()
     m.open(tmp_path / "m.jsonl")
     # Sample 200 iterations × ~4 events each ≈ 800 events

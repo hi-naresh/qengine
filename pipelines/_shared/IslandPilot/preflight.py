@@ -1,216 +1,258 @@
+"""IslandPilot preflight harness.
+
+Two phases:
+  Phase 1 (Smoke, ~5s): runs unit-source @check predicates only.
+                        Fast fail if pipeline static contracts are broken.
+  Phase 2 (Comprehensive, ~4.5min): runs a bare-minimum real backtest on a
+                        30-day OANDA EUR-USD slice, captures events via the
+                        manifest tap, runs all registered checks.
+
+Outputs everything to a tempdir; never touches real models/.
+
+Run: python -m pipelines._shared.IslandPilot.preflight
 """
-Pre-flight sanity test — validates the training wiring end-to-end before
-committing to heavy compute.
-
-Runs in ~2 minutes on a laptop. Asserts:
-  (a) Gene bounds include Entry Signal genes (signal_mode, direction_bias)
-  (b) A random genome applied to the strategy actually changes hp['signal_mode']
-  (c) One backtest completes with fitness > 0
-  (d) One generation of evolution completes without crashes
-
-Run: QENGINE_TRAINING_MODE=1 python3 -m pipelines._shared.IslandPilot.preflight
-"""
-
 from __future__ import annotations
 
+import argparse
+import json
 import os
 import sys
+import tempfile
+import time
+from multiprocessing import cpu_count
 from pathlib import Path
-
-import numpy as np
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-
-def _red(msg):   return f"\033[91m{msg}\033[0m"
-def _green(msg): return f"\033[92m{msg}\033[0m"
-def _yellow(msg): return f"\033[93m{msg}\033[0m"
+from pipelines._shared.IslandPilot import manifest, preflight_checks as pc
 
 
-def check_1_gene_bounds():
-    print("\n[1/4] Gene bounds include Entry Signal genes...")
-    from pipelines._shared.IslandPilot.island_evolver import build_gene_bounds_from_strategy
+_PREFLIGHT_SLICE_START = "2024-04-01"
+_PREFLIGHT_SLICE_END = "2024-06-30"
+_CACHE_DIR = Path.home() / ".qengine_preflight_cache"
+_CACHE_FILE = _CACHE_DIR / f"eurusd_5m_{_PREFLIGHT_SLICE_START}_{_PREFLIGHT_SLICE_END}.npy"
 
-    _strategy_file = _REPO_ROOT / 'strategies' / '_admin' / 'Martingale' / '__init__.py'
-    assert _strategy_file.exists(), f"Martingale strategy not found at {_strategy_file}"
 
-    # Stub qengine.strategies so we can import Martingale without the DB chain
-    import types
-    stub = types.ModuleType('qengine.strategies')
-    class _LiteStrategy: pass
-    stub.Strategy = _LiteStrategy
-    stub.cached = lambda f: f
-    orig = sys.modules.get('qengine.strategies')
-    sys.modules['qengine.strategies'] = stub
-
-    parent = str(_strategy_file.parent.parent)
-    inserted = parent not in sys.path
-    if inserted:
-        sys.path.insert(0, parent)
-
+def _ensure_minislice_cached() -> str:
+    """Return path to a 90-day OANDA EUR-USD 5m candles file.
+    Cached at ~/.qengine_preflight_cache/."""
+    if _CACHE_FILE.exists():
+        return str(_CACHE_FILE)
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"[preflight] cache miss; exporting 90-day slice from Postgres...")
+    # The cache fetch needs Postgres. database.open_connection() short-circuits
+    # when QENGINE_TRAINING_MODE is set, so we temporarily clear it here.
+    _saved_mode = os.environ.pop("QENGINE_TRAINING_MODE", None)
     try:
-        import importlib
-        mod = importlib.import_module('Martingale')
-        strategy_cls = getattr(mod, 'Martingale')
-        dummy = strategy_cls.__new__(strategy_cls)
-        bounds = build_gene_bounds_from_strategy(dummy)
+        import numpy as np
+        from datetime import datetime, timezone
+        from qengine.services.db import database
+        from qengine.research.candles import get_candles
+        if database.is_closed():
+            database.open_connection()
+        start_ts_ms = int(datetime.strptime(_PREFLIGHT_SLICE_START, "%Y-%m-%d")
+                          .replace(tzinfo=timezone.utc).timestamp() * 1000)
+        end_ts_ms = int(datetime.strptime(_PREFLIGHT_SLICE_END, "%Y-%m-%d")
+                        .replace(tzinfo=timezone.utc).timestamp() * 1000) + 86_400_000
+        warmup, candles = get_candles(
+            exchange="OANDA", symbol="EUR-USD", timeframe="5m",
+            start_date_timestamp=start_ts_ms,
+            finish_date_timestamp=end_ts_ms,
+        )
+        if candles.size == 0:
+            raise RuntimeError("get_candles returned empty array")
+        np.save(_CACHE_FILE, candles)
+        print(f"[preflight] cached {candles.shape[0]} candles -> {_CACHE_FILE}")
+    except Exception as e:
+        print(f"[preflight] FATAL: cache miss + Postgres unavailable.\n"
+              f"  Cache path: {_CACHE_FILE}\n"
+              f"  Error: {type(e).__name__}: {e}\n"
+              f"  Fix: ensure local Postgres is running with OANDA EUR-USD 5m data.",
+              file=sys.stderr)
+        sys.exit(2)
     finally:
-        if orig is None:
-            sys.modules.pop('qengine.strategies', None)
-        else:
-            sys.modules['qengine.strategies'] = orig
-        if inserted and parent in sys.path:
-            sys.path.remove(parent)
-
-    required_entry_genes = {'signal_mode', 'direction_bias'}
-    missing = required_entry_genes - set(bounds.keys())
-    if missing:
-        print(_red(f"  FAIL: Entry Signal genes missing from bounds: {missing}"))
-        print(_red(f"  Got {len(bounds)} genes: {sorted(bounds.keys())}"))
-        return False, None
-
-    print(_green(f"  PASS: {len(bounds)} genes in bounds, includes {required_entry_genes}"))
-    return True, bounds
+        if _saved_mode is not None:
+            os.environ["QENGINE_TRAINING_MODE"] = _saved_mode
+    return str(_CACHE_FILE)
 
 
-def check_2_genome_applied(bounds):
-    print("\n[2/4] Random genomes contain signal_mode and hit different values...")
-    from pipelines._shared.IslandPilot.island_evolver import Genome
-
-    # Sample many genomes and verify signal_mode index-values are diverse
-    seen = set()
-    for seed in range(20):
-        g = Genome.random(seed=seed, bounds=bounds)
-        if 'signal_mode' not in g.genes:
-            print(_red(f"  FAIL: signal_mode not in random genome (seed={seed})"))
-            return False
-        seen.add(g.genes['signal_mode'])
-
-    print(f"  Distinct signal_mode values across 20 genomes: {sorted(seen)}")
-    if len(seen) < 3:
-        print(_yellow(f"  WARN: only {len(seen)} distinct values — GA variance may be low"))
-    print(_green("  PASS: genomes contain and vary signal_mode"))
-    return True
+def _run_smoke_phase() -> list:
+    """Run the cohort of @check predicates with 'unit' in source list."""
+    ctx = pc.CheckContext(events=[], artifacts={}, config={},
+                          available_sources={"unit"})
+    return pc.run_registered_checks(ctx)
 
 
-def check_3_one_backtest(bounds):
-    print("\n[3/4] One backtest completes with fitness > 0...")
-    from pipelines._shared.IslandPilot.train import _run_backtest_fitness
-    import pipelines._shared.IslandPilot.train as _tm
-    from pipelines._shared.IslandPilot.island_evolver import Genome
+def _self_test() -> int:
+    """Exec pytest on the meta-tests."""
+    import subprocess
+    r = subprocess.run(
+        ["pytest", "tests/test_islandpilotv2_preflight_checks.py", "-q"],
+        cwd=_REPO_ROOT,
+    )
+    return r.returncode
 
-    # Synth candles: 6 months of 1m = ~260k bars
-    n = 260_000
-    rng = np.random.default_rng(42)
-    ts = np.arange(n) * 60_000 + 1_640_995_200_000  # start 2022-01-01 UTC
-    # Geometric Brownian motion for price
-    drift = 0.0
-    vol = 0.0001
-    returns = rng.normal(drift, vol, n)
-    price = 1.10 * np.exp(np.cumsum(returns))
-    o = price
-    c = np.roll(price, -1)
-    c[-1] = c[-2]
-    h = np.maximum(o, c) + rng.uniform(0, vol, n)
-    l_ = np.minimum(o, c) - rng.uniform(0, vol, n)
-    v = np.ones(n)
-    candles = np.column_stack([ts, o, c, h, l_, v]).astype(np.float64)
 
-    # Set the module-level candles global (workers read from here)
-    _tm._WORKER_CANDLES = candles
-
-    # Build a random genome
-    g = Genome.random(seed=7, bounds=bounds)
-    fit = _run_backtest_fitness(
-        genes=g.genes,
-        exchange='OANDA',
-        symbol='EUR-USD',
-        timeframe='5m',
-        strategy_name='Martingale',
-        start_ts_ms=int(ts[0]),
-        end_ts_ms=int(ts[-1]),
+def _all_critical_passed(results: list) -> bool:
+    return not any(
+        r.status == "fail" and r.severity == "critical"
+        for r in results
     )
 
-    print(f"  Fitness: {fit:.3f}")
-    if fit == 0.0:
-        print(_yellow("  WARN: fitness 0.0. Could be valid (too few sessions, high bust rate, or low PF)."))
-        print(_yellow("        Synthetic candles may not produce trades. Trying second genome..."))
-        g2 = Genome.random(seed=13, bounds=bounds)
-        fit2 = _run_backtest_fitness(
-            genes=g2.genes, exchange='OANDA', symbol='EUR-USD', timeframe='5m',
-            strategy_name='Martingale', start_ts_ms=int(ts[0]), end_ts_ms=int(ts[-1]),
-        )
-        print(f"  Second genome fitness: {fit2:.3f}")
-        if fit2 == 0.0:
-            print(_yellow("  SOFT-PASS: both genomes returned 0 fitness on synthetic candles."))
-            print(_yellow("  This is acceptable for preflight (cull logic is working)."))
-            print(_yellow("  Real candles will have proper dynamics — run a short real-data test next."))
-            return True
-    print(_green("  PASS: backtest produced non-zero fitness"))
-    return True
+
+def _write_report(results: list, tmpdir: Path, exit_code: int, wall_time: float) -> None:
+    """Write JSON sidecar + pretty terminal report."""
+    crit_fail = sum(1 for r in results if r.status == "fail" and r.severity == "critical")
+    warns = sum(1 for r in results if r.status == "warn" or
+                (r.status == "fail" and r.severity == "warn"))
+    passes = sum(1 for r in results if r.status == "pass")
+    skips = sum(1 for r in results if r.status == "skip")
+
+    verdict = "fail" if crit_fail > 0 else ("warn" if warns > 0 else "pass")
+    report = {
+        "schema_version": 1,
+        "kind": "preflight",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "wall_time_seconds": round(wall_time, 1),
+        "verdict": verdict,
+        "summary": {
+            "critical_failures": crit_fail,
+            "warnings": warns,
+            "passes": passes,
+            "skips": skips,
+        },
+        "checks": [
+            {
+                "id": r.id, "category": r.category, "status": r.status,
+                "severity": r.severity, "message": r.message,
+                "evidence": r.evidence, "duration_ms": r.duration_ms,
+                "sources_run": r.sources_run,
+            }
+            for r in results
+        ],
+    }
+    out = tmpdir / "preflight_report.json"
+    out.write_text(json.dumps(report, indent=2, default=str))
+
+    # Terminal pretty-print
+    print()
+    print("=== IslandPilot Preflight Report ===")
+    by_cat: dict = {}
+    for r in results:
+        by_cat.setdefault(r.category or "other", []).append(r)
+    for cat, items in sorted(by_cat.items()):
+        n = len(items)
+        ok = sum(1 for r in items if r.status == "pass")
+        bad = [r for r in items if r.status == "fail"]
+        warn = [r for r in items if r.status == "warn"]
+        symbol = "OK" if not bad else ("WARN" if not any(r.severity == "critical" for r in bad) else "FAIL")
+        line = f"  {cat.title():15s} {symbol:4s} {ok}/{n}"
+        if bad:
+            line += f" -- {bad[0].id} ({bad[0].message[:60]})"
+        elif warn:
+            line += f" warn {warn[0].id} ({warn[0].message[:60]})"
+        print(line)
+
+    print()
+    print(f"VERDICT: {verdict.upper()}  ({crit_fail} critical, {warns} warnings)")
+    print(f"Report:  {out}")
+    print(f"Tmpdir:  {tmpdir}")
+    if exit_code != 0:
+        print("\nDo NOT commit to cloud training until critical issues are resolved.")
 
 
-def check_4_one_generation():
-    print("\n[4/4] Running ONE generation of training on 3 months of synth data...")
-    from pipelines._shared.IslandPilot.train import train
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--self-test", action="store_true",
+                        help="Run meta-tests only and exit")
+    args = parser.parse_args()
 
-    # Write synthetic candles to a temp file
-    import tempfile
-    tmp = Path(tempfile.gettempdir()) / 'preflight_candles.npy'
-    n = 90 * 24 * 60  # 90 days of 1m
-    rng = np.random.default_rng(0)
-    ts = np.arange(n) * 60_000 + 1_640_995_200_000
-    returns = rng.normal(0.0, 0.0001, n)
-    price = 1.10 * np.exp(np.cumsum(returns))
-    o = price; c = np.roll(price, -1); c[-1] = c[-2]
-    h = np.maximum(o, c); l_ = np.minimum(o, c); v = np.ones(n)
-    candles = np.column_stack([ts, o, c, h, l_, v]).astype(np.float64)
-    np.save(tmp, candles)
-    print(f"  Wrote {n:,} synth candles to {tmp}")
+    if args.self_test:
+        return _self_test()
+
+    t_start = time.monotonic()
+    tmp = Path(tempfile.mkdtemp(prefix="qengine_preflight_"))
+    print(f"[preflight] tmpdir: {tmp}")
+
+    manifest.open(tmp / "preflight_manifest.jsonl")
+
+    # Phase 1 -- Smoke
+    print("[preflight] Phase 1 -- Smoke...")
+    smoke_results = _run_smoke_phase()
+    if not _all_critical_passed(smoke_results):
+        manifest.close()
+        wall = time.monotonic() - t_start
+        _write_report(smoke_results, tmp, exit_code=1, wall_time=wall)
+        return 1
+
+    # Phase 2 -- Comprehensive
+    print("[preflight] Phase 2 -- Comprehensive (bare-minimum real run)...")
+    captured: list = []
+    manifest.tap(captured.append)
+
+    candles_file = _ensure_minislice_cached()
+    os.environ["QENGINE_TRAINING_MODE"] = "1"
 
     try:
-        result = train(
-            exchange='OANDA', symbol='EUR-USD', timeframe='5m',
-            train_start='2022-01-01', train_end='2022-03-31',
-            strategy_name='Martingale',
-            pop_size=4, generations=1,
-            max_macro=3, max_sub=2,   # small regime tree
-            min_leaf_samples=500,
-            n_workers=2,
-            candles_file=str(tmp),
+        from pipelines._shared.IslandPilot import train as tm
+        tm.train(
+            exchange="OANDA", symbol="EUR-USD", timeframe="5m",
+            train_start=_PREFLIGHT_SLICE_START, train_end=_PREFLIGHT_SLICE_END,
+            strategy_name="Martingale",
+            pop_size=4, generations=2,
+            max_macro=3, max_sub=2, min_leaf_samples=50,
+            n_workers=cpu_count(),
+            candles_file=candles_file,
+            output_dir=tmp,
+            preflight_mode=True,
             verbose=False,
         )
-        print(_green(f"  PASS: generation completed. Result keys: {list(result.keys())}"))
-        return True
     except Exception as e:
-        import traceback
-        print(_red(f"  FAIL: {e}"))
-        traceback.print_exc()
-        return False
+        manifest.untap()
+        manifest.close()
+        print(f"[preflight] FATAL: training raised {type(e).__name__}: {e}", file=sys.stderr)
+        wall = time.monotonic() - t_start
+        # Still write a partial report
+        _write_report(smoke_results, tmp, exit_code=2, wall_time=wall)
+        return 2
+    manifest.untap()
+
+    # Run all registered checks against captured events + artifacts
+    artifacts = {}
+    for fname in ("regime_tree.pkl", "island_evolver.json", "leaf_date_ranges.json"):
+        p = tmp / fname
+        if p.exists():
+            try:
+                if fname.endswith(".pkl"):
+                    import pickle
+                    artifacts[fname] = pickle.loads(p.read_bytes())
+                else:
+                    artifacts[fname] = json.loads(p.read_text())
+            except Exception as e:
+                artifacts[fname] = None
+                print(f"[preflight] failed to load {fname}: {e}")
+    cfg_path = tmp / "training_config.json"
+    if cfg_path.exists():
+        try:
+            artifacts["training_config.json"] = json.loads(cfg_path.read_text())
+        except Exception:
+            artifacts["training_config.json"] = {}
+
+    ctx = pc.CheckContext(
+        events=captured,
+        artifacts=artifacts,
+        config=artifacts.get("training_config.json", {}),
+        available_sources={"unit", "runtime", "artifact"},
+    )
+    all_results = pc.run_registered_checks(ctx)
+    manifest.close()
+    wall = time.monotonic() - t_start
+    exit_code = 0 if _all_critical_passed(all_results) else 1
+    _write_report(smoke_results + all_results, tmp, exit_code=exit_code, wall_time=wall)
+    return exit_code
 
 
-if __name__ == '__main__':
-    os.environ.setdefault('QENGINE_TRAINING_MODE', '1')
-
-    print("=" * 70)
-    print("IslandPilot Pre-flight Sanity Test")
-    print("=" * 70)
-
-    ok1, bounds = check_1_gene_bounds()
-    if not ok1: sys.exit(1)
-
-    ok2 = check_2_genome_applied(bounds)
-    if not ok2: sys.exit(1)
-
-    ok3 = check_3_one_backtest(bounds)
-    if not ok3: sys.exit(1)
-
-    ok4 = check_4_one_generation()
-    if not ok4: sys.exit(1)
-
-    print("\n" + "=" * 70)
-    print(_green("ALL CHECKS PASSED — safe to commit to heavy compute"))
-    print("=" * 70)
+if __name__ == "__main__":
+    sys.exit(main())

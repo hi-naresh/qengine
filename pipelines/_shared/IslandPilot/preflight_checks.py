@@ -1,4 +1,4 @@
-"""IslandPilotV2 preflight check registry.
+"""IslandPilot preflight check registry.
 
 @check decorator registers each predicate into _registry. The runner
 pairs registered metadata with the predicate's CheckResult, applies
@@ -279,7 +279,7 @@ def check_R06_grace_candles_unit(ctx: CheckContext) -> CheckResult:
     config and exposes the relevant state. Full behavioral test requires
     a fitted regime tree which is out of scope for unit-source checks."""
     try:
-        from pipelines._shared.IslandPilotV2.regime_inferencer import RegimeInferencer
+        from pipelines._shared.IslandPilot.regime_inferencer import RegimeInferencer
     except ImportError as e:
         return CheckResult.skip(f"cannot import RegimeInferencer: {e}")
     if not hasattr(RegimeInferencer, "__init__"):
@@ -301,12 +301,29 @@ def check_E01_bounds_cover_groups(ctx: CheckContext) -> CheckResult:
     evolved_names = set(cfg.get("evolved_gene_names", []))
     if not intended:
         return CheckResult.skip("no tunable_groups_snapshot in training_config")
-    try:
-        from pipelines._shared.IslandPilotV2.island_evolver import _GENE_TO_GROUP
-        groups_seen = {_GENE_TO_GROUP.get(g, "?") for g in evolved_names}
-        groups_seen.discard("?")
-    except (ImportError, AttributeError):
-        groups_seen = intended if evolved_names else set()
+
+    # Prefer the snapshot's persisted gene→group map (populated at training
+    # time when the strategy was loaded). Falls back to importing the live
+    # _GENE_TO_GROUP — but in audit, that module-global is empty in a
+    # fresh process, so the snapshot is the canonical source.
+    snap_g2g = cfg.get("gene_to_group") or {}
+    if snap_g2g:
+        groups_seen = {snap_g2g[g] for g in evolved_names if g in snap_g2g}
+    else:
+        try:
+            from pipelines._shared.IslandPilot.island_evolver import _GENE_TO_GROUP
+            if _GENE_TO_GROUP:
+                groups_seen = {_GENE_TO_GROUP.get(g, "?") for g in evolved_names}
+                groups_seen.discard("?")
+            else:
+                # Empty live mapping AND no snapshot — can't verify, skip with diagnostic
+                return CheckResult.skip(
+                    "no gene_to_group in training_config and live _GENE_TO_GROUP is empty "
+                    "(strategy never loaded in this process); cannot verify group coverage"
+                )
+        except (ImportError, AttributeError):
+            groups_seen = intended if evolved_names else set()
+
     missing = intended - groups_seen
     if missing:
         return CheckResult.fail(
@@ -324,7 +341,7 @@ def check_E01_bounds_cover_groups(ctx: CheckContext) -> CheckResult:
        description="_SKIP_PARAMS contents match documented exclusion list")
 def check_E02_skip_params_documented(ctx: CheckContext) -> CheckResult:
     try:
-        from pipelines._shared.IslandPilotV2 import island_evolver as ie
+        from pipelines._shared.IslandPilot import island_evolver as ie
         import inspect
         src = inspect.getsource(ie.build_gene_bounds_from_strategy)
         if "_SKIP_PARAMS" not in src:
@@ -389,7 +406,7 @@ def check_E05_intended_groups_mutate(ctx: CheckContext) -> CheckResult:
     if not intended:
         return CheckResult.skip("no tunable_groups_snapshot in training_config")
     try:
-        from pipelines._shared.IslandPilotV2.island_evolver import _GENE_TO_GROUP
+        from pipelines._shared.IslandPilot.island_evolver import _GENE_TO_GROUP
     except (ImportError, AttributeError):
         _GENE_TO_GROUP = {}
     events = ctx.events_of_type("apply_genome")
@@ -433,7 +450,7 @@ def check_E06_feasibility_corrections(ctx: CheckContext) -> CheckResult:
        description="Categorical gene resolver round-trips index -> string -> index")
 def check_E07_categorical_round_trip(ctx: CheckContext) -> CheckResult:
     try:
-        from pipelines._shared.IslandPilotV2.island_evolver import build_gene_bounds_from_strategy, Genome
+        from pipelines._shared.IslandPilot.island_evolver import build_gene_bounds_from_strategy, Genome
     except ImportError as e:
         return CheckResult.skip(f"cannot import: {e}")
     class _Stub:
@@ -463,7 +480,7 @@ def check_E07_categorical_round_trip(ctx: CheckContext) -> CheckResult:
 def check_E08_multiproc_pickling(ctx: CheckContext) -> CheckResult:
     try:
         import pickle
-        from pipelines._shared.IslandPilotV2.island_evolver import Genome
+        from pipelines._shared.IslandPilot.island_evolver import Genome
     except ImportError as e:
         return CheckResult.skip(f"cannot import Genome: {e}")
     try:
@@ -490,7 +507,7 @@ def check_E08_multiproc_pickling(ctx: CheckContext) -> CheckResult:
 def check_E09_audit_skip_params_inventory(ctx: CheckContext) -> CheckResult:
     try:
         import inspect
-        from pipelines._shared.IslandPilotV2 import island_evolver as ie
+        from pipelines._shared.IslandPilot import island_evolver as ie
         src = inspect.getsource(ie.build_gene_bounds_from_strategy)
         import re
         m = re.search(r"_SKIP_PARAMS\s*=\s*\{([^}]+)\}", src)
@@ -586,7 +603,7 @@ def check_A03_every_leaf_has_best_genome(ctx: CheckContext) -> CheckResult:
        description="Hyperparameter spec round-trips through Genome mutate/apply")
 def check_A04_hp_spec_round_trip(ctx: CheckContext) -> CheckResult:
     try:
-        from pipelines._shared.IslandPilotV2.island_evolver import Genome, build_gene_bounds_from_strategy
+        from pipelines._shared.IslandPilot.island_evolver import Genome, build_gene_bounds_from_strategy
     except ImportError as e:
         return CheckResult.skip(f"cannot import: {e}")
     class _Stub:
@@ -652,7 +669,7 @@ def check_G01_online_gate(ctx: CheckContext) -> CheckResult:
         # Force-trigger: feed regime with PF=0 and >=min_cycles
         try:
             import importlib
-            pkg = importlib.import_module("pipelines._shared.IslandPilotV2")
+            pkg = importlib.import_module("pipelines._shared.IslandPilot")
             IPP = getattr(pkg, "IslandPilotPipeline", None)
         except Exception as e:
             return CheckResult.skip(f"cannot import IslandPilotPipeline: {e}")
@@ -698,7 +715,7 @@ def check_G02_drift_gate(ctx: CheckContext) -> CheckResult:
     if "unit" in ctx.available_sources:
         try:
             import importlib
-            pkg = importlib.import_module("pipelines._shared.IslandPilotV2")
+            pkg = importlib.import_module("pipelines._shared.IslandPilot")
             IPP = getattr(pkg, "IslandPilotPipeline", None)
         except Exception as e:
             return CheckResult.skip(f"cannot import: {e}")
@@ -723,7 +740,7 @@ def check_G02_drift_gate(ctx: CheckContext) -> CheckResult:
 def check_G03_unknown_regime_gate(ctx: CheckContext) -> CheckResult:
     if "unit" in ctx.available_sources:
         try:
-            from pipelines._shared.IslandPilotV2.regime_inferencer import RegimeInferencer
+            from pipelines._shared.IslandPilot.regime_inferencer import RegimeInferencer
         except ImportError as e:
             return CheckResult.skip(f"cannot import: {e}")
         if hasattr(RegimeInferencer, "is_known_regime"):
@@ -746,7 +763,7 @@ def check_G04_proven_fitness_gate(ctx: CheckContext) -> CheckResult:
     if "unit" in ctx.available_sources:
         # Smoke-check: config has min_genome_fitness >= 50 (production default)
         try:
-            from pipelines._shared.IslandPilotV2.config import DEFAULT_CONFIG
+            from pipelines._shared.IslandPilot.config import DEFAULT_CONFIG
             mgf = DEFAULT_CONFIG.get("safety", {}).get("min_genome_fitness", 0.0)
             if mgf >= 50.0:
                 return CheckResult.pass_(f"proven_fitness threshold configured ({mgf})")
@@ -926,7 +943,7 @@ def check_V01_artifacts_load_clean(ctx: CheckContext) -> CheckResult:
        description="validate_model.py runs OOS on >=1 island, returns parseable verdict")
 def check_V02_validate_model_runs_oos(ctx: CheckContext) -> CheckResult:
     try:
-        from pipelines._shared.IslandPilotV2 import validate_model
+        from pipelines._shared.IslandPilot import validate_model
         if hasattr(validate_model, "main") or hasattr(validate_model, "validate_island"):
             return CheckResult.pass_("validate_model module is invocable")
         return CheckResult.warn("validate_model lacks main entry point")
@@ -945,7 +962,7 @@ def check_V03_manifest_gzip_round_trip(ctx: CheckContext) -> CheckResult:
     so we cannot blow away the parent's open _fp/_path/_open_pid."""
     import tempfile
     from pathlib import Path
-    from pipelines._shared.IslandPilotV2 import manifest as m
+    from pipelines._shared.IslandPilot import manifest as m
 
     saved = {
         "_fp": m._fp, "_path": m._path, "_tap": m._tap,

@@ -1,10 +1,10 @@
-# IslandPilotV2 Preflight & Audit Harness Implementation Plan
+# IslandPilot Preflight & Audit Harness Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a verification harness that proves IslandPilotV2 exercises every layer it claims to (pre-training preflight) and produces a structured "what fired" log (post-training audit), per the spec at `docs/superpowers/specs/2026-04-26-islandpilotv2-preflight-design.md`.
+**Goal:** Build a verification harness that proves IslandPilot exercises every layer it claims to (pre-training preflight) and produces a structured "what fired" log (post-training audit), per the spec at `docs/superpowers/specs/2026-04-26-islandpilotv2-preflight-design.md`.
 
-**Architecture:** Four new files inside `pipelines/_shared/IslandPilotV2/` (`manifest.py`, `preflight_checks.py`, `preflight.py` rewrite, `audit.py`) plus thin patches to `train.py`, `__init__.py`, `island_evolver.py`, and `regime_inferencer.py` to emit events. Shared `@check` registry lets preflight (live tap) and audit (gzipped manifest + final artifacts) run the same predicates against different evidence streams. 34 checks across 7 categories.
+**Architecture:** Four new files inside `pipelines/_shared/IslandPilot/` (`manifest.py`, `preflight_checks.py`, `preflight.py` rewrite, `audit.py`) plus thin patches to `train.py`, `__init__.py`, `island_evolver.py`, and `regime_inferencer.py` to emit events. Shared `@check` registry lets preflight (live tap) and audit (gzipped manifest + final artifacts) run the same predicates against different evidence streams. 34 checks across 7 categories.
 
 **Tech Stack:** Python 3 stdlib only — `json`, `gzip`, `pathlib`, `multiprocessing`, `signal`, `tempfile`, `subprocess`, `dataclasses`. Tests use `pytest`.
 
@@ -14,14 +14,14 @@
 
 | File | Status | Responsibility |
 |---|---|---|
-| `pipelines/_shared/IslandPilotV2/manifest.py` | NEW | Append-only JSONL event recorder with worker buffer + signal-safe close |
-| `pipelines/_shared/IslandPilotV2/preflight_checks.py` | NEW | All 34 `@check`-decorated predicates + `CheckResult`/`CheckContext` dataclasses + runner |
-| `pipelines/_shared/IslandPilotV2/preflight.py` | REWRITE | Two-phase orchestrator: smoke (unit-source checks) + comprehensive (real bare-min train + all checks + force-trigger gates) |
-| `pipelines/_shared/IslandPilotV2/audit.py` | NEW | Post-training auditor: read manifest+artifacts, run audit-source checks, write report |
-| `pipelines/_shared/IslandPilotV2/train.py` | PATCH | `output_dir` kwarg, `preflight_mode` kwarg, `training_config.json` writer, manifest emit sites, worker-result unpacking |
-| `pipelines/_shared/IslandPilotV2/__init__.py` | PATCH | Manifest emit sites for `apply_genome`, `gate_fire`, `cycle_complete` |
-| `pipelines/_shared/IslandPilotV2/island_evolver.py` | PATCH | Manifest emit sites for `migration`, `feasibility_correction`, `categorical_resolve` |
-| `pipelines/_shared/IslandPilotV2/regime_inferencer.py` | PATCH | Manifest emit site for `transition` |
+| `pipelines/_shared/IslandPilot/manifest.py` | NEW | Append-only JSONL event recorder with worker buffer + signal-safe close |
+| `pipelines/_shared/IslandPilot/preflight_checks.py` | NEW | All 34 `@check`-decorated predicates + `CheckResult`/`CheckContext` dataclasses + runner |
+| `pipelines/_shared/IslandPilot/preflight.py` | REWRITE | Two-phase orchestrator: smoke (unit-source checks) + comprehensive (real bare-min train + all checks + force-trigger gates) |
+| `pipelines/_shared/IslandPilot/audit.py` | NEW | Post-training auditor: read manifest+artifacts, run audit-source checks, write report |
+| `pipelines/_shared/IslandPilot/train.py` | PATCH | `output_dir` kwarg, `preflight_mode` kwarg, `training_config.json` writer, manifest emit sites, worker-result unpacking |
+| `pipelines/_shared/IslandPilot/__init__.py` | PATCH | Manifest emit sites for `apply_genome`, `gate_fire`, `cycle_complete` |
+| `pipelines/_shared/IslandPilot/island_evolver.py` | PATCH | Manifest emit sites for `migration`, `feasibility_correction`, `categorical_resolve` |
+| `pipelines/_shared/IslandPilot/regime_inferencer.py` | PATCH | Manifest emit site for `transition` |
 | `tests/test_islandpilotv2_manifest.py` | NEW | Unit tests for manifest API, robustness, multiprocessing aggregation |
 | `tests/test_islandpilotv2_preflight_checks.py` | NEW | Meta-tests: each check has a fail-case and a pass-case |
 | `tests/test_islandpilotv2_manifest_overhead.py` | NEW | AC5/AC6 overhead + size-projection tests |
@@ -34,7 +34,7 @@
 ### Task 1: `manifest.py` parent-process API
 
 **Files:**
-- Create: `pipelines/_shared/IslandPilotV2/manifest.py`
+- Create: `pipelines/_shared/IslandPilot/manifest.py`
 - Test: `tests/test_islandpilotv2_manifest.py`
 
 - [ ] **Step 1: Write failing tests for parent-process API**
@@ -45,7 +45,7 @@ import json
 import gzip
 from pathlib import Path
 import pytest
-from pipelines._shared.IslandPilotV2 import manifest
+from pipelines._shared.IslandPilot import manifest
 
 
 @pytest.fixture(autouse=True)
@@ -126,8 +126,8 @@ Expected: ImportError or NameError — `manifest` module/functions don't exist y
 - [ ] **Step 3: Implement parent-process API**
 
 ```python
-# pipelines/_shared/IslandPilotV2/manifest.py
-"""Append-only JSONL event recorder for IslandPilotV2 verification harness.
+# pipelines/_shared/IslandPilot/manifest.py
+"""Append-only JSONL event recorder for IslandPilot verification harness.
 
 Three modes:
 - Closed (default): record() is a no-op. Training without preflight/audit pays nothing.
@@ -348,7 +348,7 @@ Expected: 6 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/manifest.py tests/test_islandpilotv2_manifest.py
+git add pipelines/_shared/IslandPilot/manifest.py tests/test_islandpilotv2_manifest.py
 git commit -m "feat(islandpilotv2): manifest.py parent-process API"
 ```
 
@@ -357,7 +357,7 @@ git commit -m "feat(islandpilotv2): manifest.py parent-process API"
 ### Task 2: `manifest.py` worker buffer + multiprocessing aggregation
 
 **Files:**
-- Modify: `pipelines/_shared/IslandPilotV2/manifest.py` (replace `start_worker_buffer`/`drain_worker_buffer`/`merge_worker_events` stubs)
+- Modify: `pipelines/_shared/IslandPilot/manifest.py` (replace `start_worker_buffer`/`drain_worker_buffer`/`merge_worker_events` stubs)
 - Test: `tests/test_islandpilotv2_manifest.py` (append worker tests)
 
 - [ ] **Step 1: Write failing worker tests**
@@ -444,7 +444,7 @@ Expected: FAIL with `NotImplementedError`.
 
 - [ ] **Step 3: Replace worker-buffer stubs with implementation**
 
-In `pipelines/_shared/IslandPilotV2/manifest.py`, replace the three stub functions with:
+In `pipelines/_shared/IslandPilot/manifest.py`, replace the three stub functions with:
 
 ```python
 def start_worker_buffer() -> None:
@@ -498,7 +498,7 @@ Expected: 11 tests pass (6 from Task 1 + 5 worker tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/manifest.py tests/test_islandpilotv2_manifest.py
+git add pipelines/_shared/IslandPilot/manifest.py tests/test_islandpilotv2_manifest.py
 git commit -m "feat(islandpilotv2): manifest worker buffer + Pool round-trip"
 ```
 
@@ -507,7 +507,7 @@ git commit -m "feat(islandpilotv2): manifest worker buffer + Pool round-trip"
 ### Task 3: `manifest.py` malformed-line tolerance + load helper
 
 **Files:**
-- Modify: `pipelines/_shared/IslandPilotV2/manifest.py` (add `load_manifest`)
+- Modify: `pipelines/_shared/IslandPilot/manifest.py` (add `load_manifest`)
 - Test: `tests/test_islandpilotv2_manifest.py` (append load tests)
 
 - [ ] **Step 1: Write failing tests**
@@ -608,7 +608,7 @@ Expected: 14 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/manifest.py tests/test_islandpilotv2_manifest.py
+git add pipelines/_shared/IslandPilot/manifest.py tests/test_islandpilotv2_manifest.py
 git commit -m "feat(islandpilotv2): manifest load helper with malformed-line tolerance"
 ```
 
@@ -619,7 +619,7 @@ git commit -m "feat(islandpilotv2): manifest load helper with malformed-line tol
 ### Task 4: `@check` decorator + `CheckResult` + `CheckContext` + registry
 
 **Files:**
-- Create: `pipelines/_shared/IslandPilotV2/preflight_checks.py`
+- Create: `pipelines/_shared/IslandPilot/preflight_checks.py`
 - Test: `tests/test_islandpilotv2_preflight_checks.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -627,7 +627,7 @@ git commit -m "feat(islandpilotv2): manifest load helper with malformed-line tol
 ```python
 # tests/test_islandpilotv2_preflight_checks.py
 import pytest
-from pipelines._shared.IslandPilotV2 import preflight_checks as pc
+from pipelines._shared.IslandPilot import preflight_checks as pc
 
 
 def test_check_decorator_registers():
@@ -727,8 +727,8 @@ Expected: ImportError.
 - [ ] **Step 3: Implement framework**
 
 ```python
-# pipelines/_shared/IslandPilotV2/preflight_checks.py
-"""IslandPilotV2 preflight check registry.
+# pipelines/_shared/IslandPilot/preflight_checks.py
+"""IslandPilot preflight check registry.
 
 @check decorator registers each predicate into _registry. The runner
 pairs registered metadata with the predicate's CheckResult, applies
@@ -899,7 +899,7 @@ Expected: 7 tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
+git add pipelines/_shared/IslandPilot/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
 git commit -m "feat(islandpilotv2): @check decorator + CheckContext + runner with timeout"
 ```
 
@@ -910,11 +910,11 @@ git commit -m "feat(islandpilotv2): @check decorator + CheckContext + runner wit
 ### Task 5: `output_dir` kwarg in `train.py`
 
 **Files:**
-- Modify: `pipelines/_shared/IslandPilotV2/train.py:159`, plus 5 occurrences of `_MODELS_DIR` inside `train()`
+- Modify: `pipelines/_shared/IslandPilot/train.py:159`, plus 5 occurrences of `_MODELS_DIR` inside `train()`
 
 - [ ] **Step 1: Identify all `_MODELS_DIR` usage sites**
 
-Run: `grep -n "_MODELS_DIR" pipelines/_shared/IslandPilotV2/train.py`
+Run: `grep -n "_MODELS_DIR" pipelines/_shared/IslandPilot/train.py`
 
 Note the line numbers. Expected output (lines may shift slightly):
 ```
@@ -967,7 +967,7 @@ Add immediately after the function's existing arg validation block (before any `
 Edit each of the 4 occurrences inside the `train()` function body (NOT the module-level definition at line 159–160) to use `models_dir`. Verify with:
 
 ```bash
-grep -nE "_MODELS_DIR / " pipelines/_shared/IslandPilotV2/train.py
+grep -nE "_MODELS_DIR / " pipelines/_shared/IslandPilot/train.py
 ```
 
 Should now show only the module-level lines (159–160), no in-function uses.
@@ -980,7 +980,7 @@ Append to `tests/test_islandpilotv2_manifest.py` (since we don't yet have a trai
 def test_train_output_dir_kwarg_signature():
     """train() must accept output_dir kwarg."""
     import inspect
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     sig = inspect.signature(tm.train)
     assert "output_dir" in sig.parameters
     assert sig.parameters["output_dir"].default is None
@@ -992,7 +992,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/train.py tests/test_islandpilotv2_manifest.py
+git add pipelines/_shared/IslandPilot/train.py tests/test_islandpilotv2_manifest.py
 git commit -m "feat(islandpilotv2): output_dir kwarg in train() to redirect artifacts"
 ```
 
@@ -1001,7 +1001,7 @@ git commit -m "feat(islandpilotv2): output_dir kwarg in train() to redirect arti
 ### Task 6: `training_config.json` snapshot writer in `train.py`
 
 **Files:**
-- Modify: `pipelines/_shared/IslandPilotV2/train.py` (write snapshot at start of `train()`)
+- Modify: `pipelines/_shared/IslandPilot/train.py` (write snapshot at start of `train()`)
 - Test: `tests/test_islandpilotv2_manifest.py` (append)
 
 - [ ] **Step 1: Write failing test**
@@ -1010,7 +1010,7 @@ git commit -m "feat(islandpilotv2): output_dir kwarg in train() to redirect arti
 def test_training_config_snapshot_written(tmp_path, monkeypatch):
     """train() writes models_dir/training_config.json with key snapshot fields."""
     import json
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     # Patch _evolve_islands to no-op so we can run train() to the snapshot point fast
     monkeypatch.setattr(tm, "_evolve_islands", lambda *a, **kw: ({}, {}))
     monkeypatch.setattr(tm, "_save_artifacts", lambda *a, **kw: None)
@@ -1108,7 +1108,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/train.py tests/test_islandpilotv2_manifest.py
+git add pipelines/_shared/IslandPilot/train.py tests/test_islandpilotv2_manifest.py
 git commit -m "feat(islandpilotv2): training_config.json snapshot writer"
 ```
 
@@ -1117,7 +1117,7 @@ git commit -m "feat(islandpilotv2): training_config.json snapshot writer"
 ### Task 7: Worker buffer integration + signal reset in `_run_backtest_fitness`
 
 **Files:**
-- Modify: `pipelines/_shared/IslandPilotV2/train.py` (`_run_backtest_fitness` signature + body, parent loop unpacking)
+- Modify: `pipelines/_shared/IslandPilot/train.py` (`_run_backtest_fitness` signature + body, parent loop unpacking)
 - Test: `tests/test_islandpilotv2_manifest.py` (append)
 
 - [ ] **Step 1: Write failing test for tuple return**
@@ -1126,7 +1126,7 @@ git commit -m "feat(islandpilotv2): training_config.json snapshot writer"
 def test_run_backtest_fitness_returns_tuple(tmp_path, monkeypatch):
     """_run_backtest_fitness must return (fitness, events) after the patch."""
     import numpy as np
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     # Set up minimal globals it needs
     fake_candles = np.zeros((100, 6), dtype=np.float64)
     fake_candles[:, 0] = np.arange(100) * 60_000  # ts ms
@@ -1224,13 +1224,13 @@ Expected: PASS.
 
 - [ ] **Step 6: Sanity-check that train.py still imports and parses**
 
-Run: `python -c "from pipelines._shared.IslandPilotV2 import train"`
+Run: `python -c "from pipelines._shared.IslandPilot import train"`
 Expected: no errors.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/train.py tests/test_islandpilotv2_manifest.py
+git add pipelines/_shared/IslandPilot/train.py tests/test_islandpilotv2_manifest.py
 git commit -m "feat(islandpilotv2): worker manifest buffer + signal reset + tuple unpacking"
 ```
 
@@ -1239,10 +1239,10 @@ git commit -m "feat(islandpilotv2): worker manifest buffer + signal reset + tupl
 ### Task 8: `manifest.record()` emit sites in train.py + island_evolver.py + regime_inferencer.py + __init__.py
 
 **Files:**
-- Modify: `pipelines/_shared/IslandPilotV2/train.py` (regime_fit, feature_partition, genome_evaluated)
-- Modify: `pipelines/_shared/IslandPilotV2/island_evolver.py` (migration, feasibility_correction, categorical_resolve)
-- Modify: `pipelines/_shared/IslandPilotV2/regime_inferencer.py` (transition)
-- Modify: `pipelines/_shared/IslandPilotV2/__init__.py` (apply_genome, gate_fire, cycle_complete)
+- Modify: `pipelines/_shared/IslandPilot/train.py` (regime_fit, feature_partition, genome_evaluated)
+- Modify: `pipelines/_shared/IslandPilot/island_evolver.py` (migration, feasibility_correction, categorical_resolve)
+- Modify: `pipelines/_shared/IslandPilot/regime_inferencer.py` (transition)
+- Modify: `pipelines/_shared/IslandPilot/__init__.py` (apply_genome, gate_fire, cycle_complete)
 
 - [ ] **Step 1: Add emit site in `train.py` for regime_fit**
 
@@ -1403,14 +1403,14 @@ In `record_outcome` (around line 512–541) at end:
 
 - [ ] **Step 7: Sanity-check imports**
 
-Run: `python -c "from pipelines._shared.IslandPilotV2 import train, island_evolver, regime_inferencer, __init__"`
+Run: `python -c "from pipelines._shared.IslandPilot import train, island_evolver, regime_inferencer, __init__"`
 
-Expected: no import errors. (Note: `__init__` import gives ModuleNotFoundError on direct import; the package is `pipelines._shared.IslandPilotV2`. Use `import pipelines._shared.IslandPilotV2`.)
+Expected: no import errors. (Note: `__init__` import gives ModuleNotFoundError on direct import; the package is `pipelines._shared.IslandPilot`. Use `import pipelines._shared.IslandPilot`.)
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/{train.py,island_evolver.py,regime_inferencer.py,__init__.py}
+git add pipelines/_shared/IslandPilot/{train.py,island_evolver.py,regime_inferencer.py,__init__.py}
 git commit -m "feat(islandpilotv2): manifest.record() emit sites across pipeline"
 ```
 
@@ -1423,7 +1423,7 @@ git commit -m "feat(islandpilotv2): manifest.record() emit sites across pipeline
 ### Task 9: Regime checks (R01–R06)
 
 **Files:**
-- Modify: `pipelines/_shared/IslandPilotV2/preflight_checks.py` (append check functions)
+- Modify: `pipelines/_shared/IslandPilot/preflight_checks.py` (append check functions)
 - Modify: `tests/test_islandpilotv2_preflight_checks.py` (append meta-tests)
 
 - [ ] **Step 1: Append meta-tests for R01–R06**
@@ -1441,21 +1441,21 @@ def _make_ctx(events=None, artifacts=None, config=None, sources=None):
 
 
 def test_R01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R01_partition_min_features as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R01_partition_min_features as fn
     ctx = _make_ctx(events=[{"event": "feature_partition",
                              "n_macro_feats": 5, "n_sub_feats": 3}])
     assert fn(ctx).status == "pass"
 
 
 def test_R01_fail():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R01_partition_min_features as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R01_partition_min_features as fn
     ctx = _make_ctx(events=[{"event": "feature_partition",
                              "n_macro_feats": 1, "n_sub_feats": 0}])
     assert fn(ctx).status == "fail"
 
 
 def test_R02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R02_partition_threshold_path as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R02_partition_threshold_path as fn
     ctx = _make_ctx(events=[{"event": "feature_partition",
                              "n_macro_feats": 5, "n_sub_feats": 3,
                              "autocorr_threshold": 0.7}])
@@ -1463,13 +1463,13 @@ def test_R02_pass():
 
 
 def test_R02_fail_no_event():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R02_partition_threshold_path as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R02_partition_threshold_path as fn
     ctx = _make_ctx(events=[])
     assert fn(ctx).status == "fail"
 
 
 def test_R03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R03_gmm_min_leaves as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R03_gmm_min_leaves as fn
     ctx = _make_ctx(events=[{"event": "regime_fit",
                              "n_macro_clusters": 3, "leaves_before_merge": 6,
                              "leaves_after_merge": 5}])
@@ -1477,7 +1477,7 @@ def test_R03_pass():
 
 
 def test_R03_fail():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R03_gmm_min_leaves as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R03_gmm_min_leaves as fn
     ctx = _make_ctx(events=[{"event": "regime_fit",
                              "n_macro_clusters": 1, "leaves_before_merge": 1,
                              "leaves_after_merge": 1}])
@@ -1485,21 +1485,21 @@ def test_R03_fail():
 
 
 def test_R04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R04_sparse_merge_fired as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R04_sparse_merge_fired as fn
     ctx = _make_ctx(events=[{"event": "regime_fit",
                              "leaves_before_merge": 8, "leaves_after_merge": 5}])
     assert fn(ctx).status == "pass"
 
 
 def test_R04_warn_no_merge():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R04_sparse_merge_fired as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R04_sparse_merge_fired as fn
     ctx = _make_ctx(events=[{"event": "regime_fit",
                              "leaves_before_merge": 5, "leaves_after_merge": 5}])
     assert fn(ctx).status in ("pass", "warn")
 
 
 def test_R05_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
     ctx = _make_ctx(events=[
         {"event": "transition", "from_regime": "a", "to_regime": "b", "hysteresis_passed": True},
         {"event": "transition", "from_regime": "b", "to_regime": "b", "hysteresis_passed": False},  # blocked
@@ -1508,7 +1508,7 @@ def test_R05_pass():
 
 
 def test_R05_fail_no_blocks():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
     ctx = _make_ctx(events=[
         {"event": "transition", "from_regime": "a", "to_regime": "b", "hysteresis_passed": True},
     ])
@@ -1517,7 +1517,7 @@ def test_R05_fail_no_blocks():
 
 
 def test_R06_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R06_grace_candles_unit as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R06_grace_candles_unit as fn
     ctx = _make_ctx(sources={"unit"})
     # Unit check: invokes inferencer with synthetic state
     assert fn(ctx).status in ("pass", "warn")
@@ -1636,7 +1636,7 @@ def check_R06_grace_candles_unit(ctx: CheckContext) -> CheckResult:
     """Construct a RegimeInferencer with a tiny synthetic tree, force two
     transitions back-to-back, assert the second is suppressed during grace."""
     try:
-        from pipelines._shared.IslandPilotV2.regime_inferencer import RegimeInferencer
+        from pipelines._shared.IslandPilot.regime_inferencer import RegimeInferencer
     except ImportError as e:
         return CheckResult.skip(f"cannot import RegimeInferencer: {e}")
     # Construct minimal inferencer; check transition_grace_candles config exists
@@ -1660,7 +1660,7 @@ Expected: 11 R-tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
+git add pipelines/_shared/IslandPilot/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
 git commit -m "feat(islandpilotv2): regime checks R01-R06"
 ```
 
@@ -1674,7 +1674,7 @@ Same pattern as Task 9. Append 9 check functions and 17 meta-tests (8 fail+pass 
 
 ```python
 def test_E01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E01_bounds_cover_groups as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E01_bounds_cover_groups as fn
     ctx = _make_ctx(
         artifacts={"training_config.json": {
             "tunable_groups_snapshot": ["General", "Grid / Hedge", "Take Profit"],
@@ -1686,7 +1686,7 @@ def test_E01_pass():
 
 
 def test_E01_fail_missing_group():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E01_bounds_cover_groups as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E01_bounds_cover_groups as fn
     ctx = _make_ctx(
         artifacts={"training_config.json": {
             "tunable_groups_snapshot": ["General", "Grid / Hedge", "Take Profit"],
@@ -1698,13 +1698,13 @@ def test_E01_fail_missing_group():
 
 
 def test_E02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E02_skip_params_documented as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E02_skip_params_documented as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "warn")
 
 
 def test_E03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E03_initial_pop_variance as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E03_initial_pop_variance as fn
     ctx = _make_ctx(events=[
         {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
         {"event": "apply_genome", "genes_applied": {"max_levels": 5}},
@@ -1714,7 +1714,7 @@ def test_E03_pass():
 
 
 def test_E03_fail_no_variance():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E03_initial_pop_variance as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E03_initial_pop_variance as fn
     ctx = _make_ctx(events=[
         {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
         {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
@@ -1724,7 +1724,7 @@ def test_E03_fail_no_variance():
 
 
 def test_E04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E04_mutation_propagates as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E04_mutation_propagates as fn
     ctx = _make_ctx(events=[
         {"event": "genome_evaluated", "generation": 0, "fitness": 50.0},
         {"event": "genome_evaluated", "generation": 1, "fitness": 60.0},
@@ -1733,7 +1733,7 @@ def test_E04_pass():
 
 
 def test_E04_fail_no_gen_progress():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E04_mutation_propagates as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E04_mutation_propagates as fn
     ctx = _make_ctx(events=[
         {"event": "genome_evaluated", "generation": 0, "fitness": 50.0},
     ])
@@ -1741,7 +1741,7 @@ def test_E04_fail_no_gen_progress():
 
 
 def test_E05_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E05_intended_groups_mutate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E05_intended_groups_mutate as fn
     ctx = _make_ctx(
         events=[{"event": "apply_genome",
                  "genes_applied": {"max_levels": 3, "tp_value": 24.0}}],
@@ -1754,7 +1754,7 @@ def test_E05_pass():
 
 
 def test_E05_fail_silent_group():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E05_intended_groups_mutate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E05_intended_groups_mutate as fn
     ctx = _make_ctx(
         events=[{"event": "apply_genome",
                  "genes_applied": {"max_levels": 3}}],  # tp_value missing
@@ -1767,7 +1767,7 @@ def test_E05_fail_silent_group():
 
 
 def test_E06_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E06_feasibility_corrections as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E06_feasibility_corrections as fn
     ctx = _make_ctx(events=[
         {"event": "feasibility_correction", "gene": "tp_value",
          "original": 5, "corrected": 12, "reason": "tp < hedge*1.5"},
@@ -1776,25 +1776,25 @@ def test_E06_pass():
 
 
 def test_E06_warn_no_corrections():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E06_feasibility_corrections as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E06_feasibility_corrections as fn
     ctx = _make_ctx(events=[])
     assert fn(ctx).status in ("pass", "warn")  # may be fine if no genome violated
 
 
 def test_E07_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E07_categorical_round_trip as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E07_categorical_round_trip as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_E08_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E08_multiproc_pickling as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E08_multiproc_pickling as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_E09_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E09_audit_skip_params_inventory as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E09_audit_skip_params_inventory as fn
     ctx = _make_ctx(sources={"artifact"})
     # E09 is informational; never fails
     assert fn(ctx).status in ("pass", "skip")
@@ -1817,7 +1817,7 @@ def check_E01_bounds_cover_groups(ctx: CheckContext) -> CheckResult:
     # Map each evolved gene to its group via build_gene_bounds_from_strategy
     try:
         # Best-effort: if Martingale strategy is importable, group by gene
-        from pipelines._shared.IslandPilotV2.island_evolver import _GENE_TO_GROUP
+        from pipelines._shared.IslandPilot.island_evolver import _GENE_TO_GROUP
         groups_seen = {_GENE_TO_GROUP.get(g, "?") for g in evolved_names}
     except (ImportError, AttributeError):
         # Fallback: assume any evolved gene name covers a group (loose check)
@@ -1839,7 +1839,7 @@ def check_E01_bounds_cover_groups(ctx: CheckContext) -> CheckResult:
        description="_SKIP_PARAMS contents match documented exclusion list")
 def check_E02_skip_params_documented(ctx: CheckContext) -> CheckResult:
     try:
-        from pipelines._shared.IslandPilotV2 import island_evolver as ie
+        from pipelines._shared.IslandPilot import island_evolver as ie
         # Find _SKIP_PARAMS inside build_gene_bounds_from_strategy locals
         import inspect
         src = inspect.getsource(ie.build_gene_bounds_from_strategy)
@@ -1896,7 +1896,7 @@ def check_E05_intended_groups_mutate(ctx: CheckContext) -> CheckResult:
     if not intended:
         return CheckResult.skip("no tunable_groups_snapshot in training_config")
     try:
-        from pipelines._shared.IslandPilotV2.island_evolver import _GENE_TO_GROUP
+        from pipelines._shared.IslandPilot.island_evolver import _GENE_TO_GROUP
     except (ImportError, AttributeError):
         # Fall back to gene→group mapping by name patterns
         _GENE_TO_GROUP = {}
@@ -1941,7 +1941,7 @@ def check_E06_feasibility_corrections(ctx: CheckContext) -> CheckResult:
        description="Categorical gene resolver round-trips index → string → index")
 def check_E07_categorical_round_trip(ctx: CheckContext) -> CheckResult:
     try:
-        from pipelines._shared.IslandPilotV2.island_evolver import build_gene_bounds_from_strategy, Genome
+        from pipelines._shared.IslandPilot.island_evolver import build_gene_bounds_from_strategy, Genome
     except ImportError as e:
         return CheckResult.skip(f"cannot import: {e}")
     # Build bounds from a synthetic strategy stub
@@ -1966,7 +1966,7 @@ def check_E07_categorical_round_trip(ctx: CheckContext) -> CheckResult:
 def check_E08_multiproc_pickling(ctx: CheckContext) -> CheckResult:
     try:
         import pickle
-        from pipelines._shared.IslandPilotV2.island_evolver import Genome
+        from pipelines._shared.IslandPilot.island_evolver import Genome
     except ImportError as e:
         return CheckResult.skip(f"cannot import Genome: {e}")
     g = Genome(genes={"x": 1.0, "y": "ema_cross"}, id_=0)
@@ -1983,7 +1983,7 @@ def check_E08_multiproc_pickling(ctx: CheckContext) -> CheckResult:
 def check_E09_audit_skip_params_inventory(ctx: CheckContext) -> CheckResult:
     try:
         import inspect
-        from pipelines._shared.IslandPilotV2 import island_evolver as ie
+        from pipelines._shared.IslandPilot import island_evolver as ie
         src = inspect.getsource(ie.build_gene_bounds_from_strategy)
         # Pull the _SKIP_PARAMS literal
         import re
@@ -2022,7 +2022,7 @@ Expected: 13 E-tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/preflight_checks.py pipelines/_shared/IslandPilotV2/island_evolver.py tests/test_islandpilotv2_preflight_checks.py
+git add pipelines/_shared/IslandPilot/preflight_checks.py pipelines/_shared/IslandPilot/island_evolver.py tests/test_islandpilotv2_preflight_checks.py
 git commit -m "feat(islandpilotv2): evolver checks E01-E09 + _GENE_TO_GROUP mapping"
 ```
 
@@ -2034,7 +2034,7 @@ git commit -m "feat(islandpilotv2): evolver checks E01-E09 + _GENE_TO_GROUP mapp
 
 ```python
 def test_A01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A01_apply_genome_reads_groups as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A01_apply_genome_reads_groups as fn
     ctx = _make_ctx(events=[
         {"event": "apply_genome",
          "genes_applied": {"max_levels": 3, "tp_value": 24.0, "hedge_value": 12.0}},
@@ -2043,13 +2043,13 @@ def test_A01_pass():
 
 
 def test_A01_fail_no_apply_events():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A01_apply_genome_reads_groups as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A01_apply_genome_reads_groups as fn
     ctx = _make_ctx(events=[])
     assert fn(ctx).status == "fail"
 
 
 def test_A02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A02_mode_aware_coercion as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A02_mode_aware_coercion as fn
     ctx = _make_ctx(events=[
         {"event": "apply_genome",
          "genes_applied": {"tp_mode": "fixed_pips", "tp_value": 24.0}},
@@ -2060,7 +2060,7 @@ def test_A02_pass():
 
 
 def test_A03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A03_every_leaf_has_best_genome as fn
     ctx = _make_ctx(
         artifacts={"island_evolver.json": {
             "populations": {
@@ -2074,7 +2074,7 @@ def test_A03_pass():
 
 
 def test_A03_fail_missing_best():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A03_every_leaf_has_best_genome as fn
     ctx = _make_ctx(
         artifacts={"island_evolver.json": {
             "populations": {
@@ -2087,7 +2087,7 @@ def test_A03_fail_missing_best():
 
 
 def test_A04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A04_hp_spec_round_trip as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A04_hp_spec_round_trip as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "warn", "skip")
 ```
@@ -2158,7 +2158,7 @@ def check_A03_every_leaf_has_best_genome(ctx: CheckContext) -> CheckResult:
        description="Hyperparameter spec round-trips through Genome mutate/apply")
 def check_A04_hp_spec_round_trip(ctx: CheckContext) -> CheckResult:
     try:
-        from pipelines._shared.IslandPilotV2.island_evolver import Genome, build_gene_bounds_from_strategy
+        from pipelines._shared.IslandPilot.island_evolver import Genome, build_gene_bounds_from_strategy
     except ImportError as e:
         return CheckResult.skip(f"cannot import: {e}")
     class _Stub:
@@ -2185,7 +2185,7 @@ Expected: 6 A-tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
+git add pipelines/_shared/IslandPilot/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
 git commit -m "feat(islandpilotv2): application checks A01-A04"
 ```
 
@@ -2197,46 +2197,46 @@ git commit -m "feat(islandpilotv2): application checks A01-A04"
 
 ```python
 def test_G01_pass_force_trigger():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G01_online_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G01_online_gate as fn
     ctx = _make_ctx(sources={"unit"})
     # Unit check force-triggers: feeds synthetic stats that should block
     assert fn(ctx).status == "pass"
 
 
 def test_G02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G02_drift_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G02_drift_gate as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_G03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G03_unknown_regime_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G03_unknown_regime_gate as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_G04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G04_proven_fitness_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G04_proven_fitness_gate as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_G05_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G05_abort_volatility as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G05_abort_volatility as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_G06_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G06_session_halt as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G06_session_halt as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_G01_fail_when_logic_broken(monkeypatch):
     """Verify G01 catches the case where the gate fails to block."""
-    from pipelines._shared.IslandPilotV2 import preflight_checks as pc_mod
-    from pipelines._shared.IslandPilotV2 import __init__ as pkg
+    from pipelines._shared.IslandPilot import preflight_checks as pc_mod
+    from pipelines._shared.IslandPilot import __init__ as pkg
 
     # Monkey-patch _check_online_gate to always allow (bug)
     if hasattr(pkg, "IslandPilotPipeline"):
@@ -2290,7 +2290,7 @@ def check_G01_online_gate(ctx: CheckContext) -> CheckResult:
     """Force-trigger: feed a regime with PF < threshold, assert gate blocks."""
     if "unit" in ctx.available_sources:
         try:
-            from pipelines._shared.IslandPilotV2 import IslandPilotPipeline
+            from pipelines._shared.IslandPilot import IslandPilotPipeline
         except ImportError as e:
             return CheckResult.skip(f"cannot import IslandPilotPipeline: {e}")
         # Synthetic state: 5 cycles in regime, all losses → PF=0
@@ -2321,7 +2321,7 @@ def check_G01_online_gate(ctx: CheckContext) -> CheckResult:
 def check_G02_drift_gate(ctx: CheckContext) -> CheckResult:
     if "unit" in ctx.available_sources:
         try:
-            from pipelines._shared.IslandPilotV2 import IslandPilotPipeline
+            from pipelines._shared.IslandPilot import IslandPilotPipeline
         except ImportError as e:
             return CheckResult.skip(f"cannot import: {e}")
         p = _make_synthetic_pipeline()
@@ -2348,7 +2348,7 @@ def check_G02_drift_gate(ctx: CheckContext) -> CheckResult:
 def check_G03_unknown_regime_gate(ctx: CheckContext) -> CheckResult:
     if "unit" in ctx.available_sources:
         try:
-            from pipelines._shared.IslandPilotV2.regime_inferencer import RegimeInferencer
+            from pipelines._shared.IslandPilot.regime_inferencer import RegimeInferencer
         except ImportError as e:
             return CheckResult.skip(f"cannot import: {e}")
         # If RegimeInferencer has is_known_regime property/method:
@@ -2367,7 +2367,7 @@ def check_G03_unknown_regime_gate(ctx: CheckContext) -> CheckResult:
 def check_G04_proven_fitness_gate(ctx: CheckContext) -> CheckResult:
     if "unit" in ctx.available_sources:
         try:
-            from pipelines._shared.IslandPilotV2 import IslandPilotPipeline
+            from pipelines._shared.IslandPilot import IslandPilotPipeline
         except ImportError as e:
             return CheckResult.skip(f"cannot import: {e}")
         p = _make_synthetic_pipeline()
@@ -2427,7 +2427,7 @@ Expected: 7 G-tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
+git add pipelines/_shared/IslandPilot/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
 git commit -m "feat(islandpilotv2): force-trigger gate checks G01-G06"
 ```
 
@@ -2439,7 +2439,7 @@ git commit -m "feat(islandpilotv2): force-trigger gate checks G01-G06"
 
 ```python
 def test_M01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_M01_acceptance_ratio as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_M01_acceptance_ratio as fn
     ctx = _make_ctx(events=[
         {"event": "migration", "donor_island": "a", "recipient_island": "b", "accepted": True},
         {"event": "migration", "donor_island": "b", "recipient_island": "c", "accepted": False},
@@ -2449,7 +2449,7 @@ def test_M01_pass():
 
 
 def test_M01_warn_no_accepts():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_M01_acceptance_ratio as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_M01_acceptance_ratio as fn
     ctx = _make_ctx(events=[
         {"event": "migration", "donor_island": "a", "recipient_island": "b", "accepted": False},
     ])
@@ -2457,7 +2457,7 @@ def test_M01_warn_no_accepts():
 
 
 def test_M02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_M02_migration_interval as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_M02_migration_interval as fn
     ctx = _make_ctx(events=[
         {"event": "migration", "accepted": True},
         {"event": "genome_evaluated", "generation": 0},
@@ -2468,7 +2468,7 @@ def test_M02_pass():
 
 
 def test_O01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O01_three_regimes_with_cycles as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O01_three_regimes_with_cycles as fn
     ctx = _make_ctx(events=[
         {"event": "cycle_complete", "regime": "r1"},
         {"event": "cycle_complete", "regime": "r2"},
@@ -2478,13 +2478,13 @@ def test_O01_pass():
 
 
 def test_O01_fail():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O01_three_regimes_with_cycles as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O01_three_regimes_with_cycles as fn
     ctx = _make_ctx(events=[{"event": "cycle_complete", "regime": "r1"}])
     assert fn(ctx).status == "fail"
 
 
 def test_O02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O02_fitness_dispersion as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O02_fitness_dispersion as fn
     ctx = _make_ctx(events=[
         {"event": "genome_evaluated", "fitness": 50.0},
         {"event": "genome_evaluated", "fitness": 60.0},
@@ -2494,7 +2494,7 @@ def test_O02_pass():
 
 
 def test_O02_fail_zero_dispersion():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O02_fitness_dispersion as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O02_fitness_dispersion as fn
     ctx = _make_ctx(events=[
         {"event": "genome_evaluated", "fitness": 0.0},
         {"event": "genome_evaluated", "fitness": 0.0},
@@ -2503,7 +2503,7 @@ def test_O02_fail_zero_dispersion():
 
 
 def test_O03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O03_per_regime_stats_increment as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O03_per_regime_stats_increment as fn
     ctx = _make_ctx(events=[
         {"event": "cycle_complete", "regime": "r1", "regime_cycles_after": 1},
         {"event": "cycle_complete", "regime": "r1", "regime_cycles_after": 2},
@@ -2512,13 +2512,13 @@ def test_O03_pass():
 
 
 def test_O04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O04_recent_pnls_window as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O04_recent_pnls_window as fn
     ctx = _make_ctx(events=[{"event": "cycle_complete", "regime": "r1", "pnl": 5.0}])
     assert fn(ctx).status in ("pass", "warn")
 
 
 def test_V01_pass(tmp_path):
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_V01_artifacts_load_clean as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_V01_artifacts_load_clean as fn
     # Create dummy artifacts
     import json, pickle
     (tmp_path / "regime_tree.pkl").write_bytes(pickle.dumps({}))
@@ -2536,20 +2536,20 @@ def test_V01_pass(tmp_path):
 
 
 def test_V01_fail_missing():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_V01_artifacts_load_clean as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_V01_artifacts_load_clean as fn
     ctx = _make_ctx(artifacts={"regime_tree.pkl": None}, sources={"artifact"})
     assert fn(ctx).status == "fail"
 
 
 def test_V02_pass(tmp_path):
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_V02_validate_model_runs_oos as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_V02_validate_model_runs_oos as fn
     ctx = _make_ctx(sources={"runtime"})
     # V02 invokes validate_model.py — best-effort, may skip
     assert fn(ctx).status in ("pass", "warn", "skip")
 
 
 def test_V03_pass(tmp_path):
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_V03_manifest_gzip_round_trip as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_V03_manifest_gzip_round_trip as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 ```
@@ -2665,7 +2665,7 @@ def check_V01_artifacts_load_clean(ctx: CheckContext) -> CheckResult:
 def check_V02_validate_model_runs_oos(ctx: CheckContext) -> CheckResult:
     # Best-effort: just verify validate_model.py is importable and exposes main
     try:
-        from pipelines._shared.IslandPilotV2 import validate_model
+        from pipelines._shared.IslandPilot import validate_model
         if hasattr(validate_model, "main") or hasattr(validate_model, "validate_island"):
             return CheckResult.pass_("validate_model module is invocable")
         return CheckResult.warn("validate_model lacks main entry point")
@@ -2679,7 +2679,7 @@ def check_V02_validate_model_runs_oos(ctx: CheckContext) -> CheckResult:
 def check_V03_manifest_gzip_round_trip(ctx: CheckContext) -> CheckResult:
     import tempfile
     from pathlib import Path
-    from pipelines._shared.IslandPilotV2 import manifest as m
+    from pipelines._shared.IslandPilot import manifest as m
     m._reset_for_tests()
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "rt.jsonl"
@@ -2703,7 +2703,7 @@ Expected: 13 tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
+git add pipelines/_shared/IslandPilot/preflight_checks.py tests/test_islandpilotv2_preflight_checks.py
 git commit -m "feat(islandpilotv2): migration + outcomes + roundtrip checks"
 ```
 
@@ -2714,14 +2714,14 @@ git commit -m "feat(islandpilotv2): migration + outcomes + roundtrip checks"
 ### Task 14: `preflight.py` rewrite
 
 **Files:**
-- Modify: `pipelines/_shared/IslandPilotV2/preflight.py` (full rewrite)
+- Modify: `pipelines/_shared/IslandPilot/preflight.py` (full rewrite)
 
 - [ ] **Step 1: Rewrite preflight.py**
 
-Replace the entire content of `pipelines/_shared/IslandPilotV2/preflight.py` with:
+Replace the entire content of `pipelines/_shared/IslandPilot/preflight.py` with:
 
 ```python
-"""IslandPilotV2 preflight harness.
+"""IslandPilot preflight harness.
 
 Two phases:
   Phase 1 (Smoke, ~5s): runs unit-source @check predicates only.
@@ -2732,7 +2732,7 @@ Two phases:
 
 Outputs everything to a tempdir; never touches real models/.
 
-Run: python -m pipelines._shared.IslandPilotV2.preflight
+Run: python -m pipelines._shared.IslandPilot.preflight
 """
 from __future__ import annotations
 
@@ -2749,7 +2749,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from pipelines._shared.IslandPilotV2 import manifest, preflight_checks as pc
+from pipelines._shared.IslandPilot import manifest, preflight_checks as pc
 
 
 _PREFLIGHT_SLICE_START = "2024-06-01"
@@ -2846,7 +2846,7 @@ def _write_report(results: list, tmpdir: Path, exit_code: int, wall_time: float)
 
     # Terminal pretty-print
     print()
-    print("═══ IslandPilotV2 Preflight Report ═══")
+    print("═══ IslandPilot Preflight Report ═══")
     by_cat: dict = {}
     for r in results:
         by_cat.setdefault(r.category or "other", []).append(r)
@@ -2903,7 +2903,7 @@ def main() -> int:
     candles_file = _ensure_minislice_cached()
     os.environ["QENGINE_TRAINING_MODE"] = "1"
 
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     tm.train(
         exchange="OANDA", symbol="EUR-USD", timeframe="5m",
         train_start=_PREFLIGHT_SLICE_START, train_end=_PREFLIGHT_SLICE_END,
@@ -2955,18 +2955,18 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Sanity import check**
 
-Run: `python -c "from pipelines._shared.IslandPilotV2 import preflight"`
+Run: `python -c "from pipelines._shared.IslandPilot import preflight"`
 Expected: no errors.
 
 - [ ] **Step 3: Run preflight self-test**
 
-Run: `python -m pipelines._shared.IslandPilotV2.preflight --self-test`
+Run: `python -m pipelines._shared.IslandPilot.preflight --self-test`
 Expected: pytest exit code 0 (all meta-tests pass).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/preflight.py
+git add pipelines/_shared/IslandPilot/preflight.py
 git commit -m "feat(islandpilotv2): preflight.py rewrite with smoke + comprehensive phases"
 ```
 
@@ -2975,19 +2975,19 @@ git commit -m "feat(islandpilotv2): preflight.py rewrite with smoke + comprehens
 ### Task 15: `audit.py`
 
 **Files:**
-- Create: `pipelines/_shared/IslandPilotV2/audit.py`
+- Create: `pipelines/_shared/IslandPilot/audit.py`
 
 - [ ] **Step 1: Write audit.py**
 
 ```python
-"""IslandPilotV2 post-training audit.
+"""IslandPilot post-training audit.
 
 Reads activation_manifest.jsonl.gz + final artifacts; runs all registered
 @check predicates with source ∈ {manifest, artifact}; writes audit_report.json
 into the same directory as the artifacts.
 
-Run: python -m pipelines._shared.IslandPilotV2.audit [models_dir]
-     (default: pipelines/_shared/IslandPilotV2/models/)
+Run: python -m pipelines._shared.IslandPilot.audit [models_dir]
+     (default: pipelines/_shared/IslandPilot/models/)
 """
 from __future__ import annotations
 
@@ -3002,7 +3002,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from pipelines._shared.IslandPilotV2 import manifest, preflight_checks as pc
+from pipelines._shared.IslandPilot import manifest, preflight_checks as pc
 
 
 def _load_artifact(path: Path):
@@ -3093,7 +3093,7 @@ def main(models_dir: Path) -> int:
     out.write_text(json.dumps(report, indent=2, default=str))
 
     print()
-    print(f"═══ IslandPilotV2 Audit Report ═══")
+    print(f"═══ IslandPilot Audit Report ═══")
     print(f"  models_dir: {models_dir}")
     print(f"  manifest:   {'present' if has_manifest else 'MISSING'}")
     print(f"  verdict:    {verdict.upper()}")
@@ -3117,13 +3117,13 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: Sanity import**
 
-Run: `python -c "from pipelines._shared.IslandPilotV2 import audit"`
+Run: `python -c "from pipelines._shared.IslandPilot import audit"`
 Expected: no errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/audit.py
+git add pipelines/_shared/IslandPilot/audit.py
 git commit -m "feat(islandpilotv2): audit.py post-training auditor"
 ```
 
@@ -3136,7 +3136,7 @@ git commit -m "feat(islandpilotv2): audit.py post-training auditor"
 - [ ] **Step 1: Run preflight on healthy code, capture timing**
 
 ```bash
-time python -m pipelines._shared.IslandPilotV2.preflight
+time python -m pipelines._shared.IslandPilot.preflight
 ```
 
 Expected: exit 0 within 5 minutes on a 10-core M-series; report shows ≥30 passes, ≤4 warns, 0 critical fails.
@@ -3150,7 +3150,7 @@ Create `docs/superpowers/notes/2026-04-26-preflight-ac3-evidence.md` (notes only
 
 ## Test 1: E05 fails when an evolved param is moved to _SKIP_PARAMS
 - Edit island_evolver.py:188: add 'tp_value' to _SKIP_PARAMS
-- Run: `python -m pipelines._shared.IslandPilotV2.preflight`
+- Run: `python -m pipelines._shared.IslandPilot.preflight`
 - Expected: exit 1; E05 in report shows "Take Profit produced zero mutations"
 - Restore: revert the edit
 
@@ -3202,7 +3202,7 @@ import pytest
 
 def _run_micro_backtest_with_manifest(tmp_path, with_manifest: bool):
     """Run a tiny synthetic backtest, returning wall-time."""
-    from pipelines._shared.IslandPilotV2 import manifest as m
+    from pipelines._shared.IslandPilot import manifest as m
     m._reset_for_tests()
     if with_manifest:
         m.open(tmp_path / "m.jsonl")
@@ -3231,7 +3231,7 @@ def test_manifest_overhead_under_1_pct(tmp_path):
 
 def test_iter1_manifest_size_projection(tmp_path):
     """Project Iteration-1 manifest size from a small sample."""
-    from pipelines._shared.IslandPilotV2 import manifest as m
+    from pipelines._shared.IslandPilot import manifest as m
     m._reset_for_tests()
     m.open(tmp_path / "m.jsonl")
     # Sample 1000 events of mixed types (proxy for Iter1 distribution)
@@ -3293,7 +3293,7 @@ REPO = Path(__file__).resolve().parents[1]
 def test_adding_a_check_touches_only_two_files():
     """Insert a synthetic @check + meta-test, verify git diff shows exactly
     preflight_checks.py + the test file. Then revert."""
-    checks_path = REPO / "pipelines/_shared/IslandPilotV2/preflight_checks.py"
+    checks_path = REPO / "pipelines/_shared/IslandPilot/preflight_checks.py"
     tests_path = REPO / "tests/test_islandpilotv2_preflight_checks.py"
 
     checks_orig = checks_path.read_text()
@@ -3308,7 +3308,7 @@ def check_Z99_synthetic(ctx):
 """)
     tests_path.write_text(tests_orig + sentinel + """
 def test_Z99_synthetic_exists():
-    from pipelines._shared.IslandPilotV2 import preflight_checks as pc
+    from pipelines._shared.IslandPilot import preflight_checks as pc
     assert "Z99_synthetic" in pc._registry
 """)
 
@@ -3399,7 +3399,7 @@ Append to `tests/test_islandpilotv2_manifest.py`:
 ```python
 def test_preflight_mode_lowers_thresholds():
     import inspect
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     sig = inspect.signature(tm.train)
     assert "preflight_mode" in sig.parameters
     assert sig.parameters["preflight_mode"].default is False
@@ -3410,7 +3410,7 @@ Run: `pytest tests/test_islandpilotv2_manifest.py::test_preflight_mode_lowers_th
 - [ ] **Step 3: Commit**
 
 ```bash
-git add pipelines/_shared/IslandPilotV2/train.py tests/test_islandpilotv2_manifest.py
+git add pipelines/_shared/IslandPilot/train.py tests/test_islandpilotv2_manifest.py
 git commit -m "feat(islandpilotv2): preflight_mode kwarg in train()"
 ```
 

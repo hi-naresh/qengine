@@ -1,5 +1,5 @@
 import pytest
-from pipelines._shared.IslandPilotV2 import preflight_checks as pc
+from pipelines._shared.IslandPilot import preflight_checks as pc
 
 
 def test_check_decorator_registers():
@@ -103,21 +103,21 @@ def _make_ctx(events=None, artifacts=None, config=None, sources=None):
 
 
 def test_R01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R01_partition_min_features as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R01_partition_min_features as fn
     ctx = _make_ctx(events=[{"event": "feature_partition",
                              "n_macro_feats": 5, "n_sub_feats": 3}])
     assert fn(ctx).status == "pass"
 
 
 def test_R01_fail():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R01_partition_min_features as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R01_partition_min_features as fn
     ctx = _make_ctx(events=[{"event": "feature_partition",
                              "n_macro_feats": 1, "n_sub_feats": 0}])
     assert fn(ctx).status == "fail"
 
 
 def test_R02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R02_partition_threshold_path as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R02_partition_threshold_path as fn
     ctx = _make_ctx(events=[{"event": "feature_partition",
                              "n_macro_feats": 5, "n_sub_feats": 3,
                              "autocorr_threshold": 0.7}])
@@ -125,13 +125,13 @@ def test_R02_pass():
 
 
 def test_R02_fail_no_event():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R02_partition_threshold_path as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R02_partition_threshold_path as fn
     ctx = _make_ctx(events=[])
     assert fn(ctx).status == "fail"
 
 
 def test_R03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R03_gmm_min_leaves as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R03_gmm_min_leaves as fn
     ctx = _make_ctx(events=[{"event": "regime_fit",
                              "n_macro_clusters": 3, "leaves_before_merge": 6,
                              "leaves_after_merge": 5}])
@@ -139,7 +139,7 @@ def test_R03_pass():
 
 
 def test_R03_fail():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R03_gmm_min_leaves as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R03_gmm_min_leaves as fn
     ctx = _make_ctx(events=[{"event": "regime_fit",
                              "n_macro_clusters": 1, "leaves_before_merge": 1,
                              "leaves_after_merge": 1}])
@@ -147,21 +147,21 @@ def test_R03_fail():
 
 
 def test_R04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R04_sparse_merge_fired as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R04_sparse_merge_fired as fn
     ctx = _make_ctx(events=[{"event": "regime_fit",
                              "leaves_before_merge": 8, "leaves_after_merge": 5}])
     assert fn(ctx).status == "pass"
 
 
 def test_R04_warn_no_merge():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R04_sparse_merge_fired as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R04_sparse_merge_fired as fn
     ctx = _make_ctx(events=[{"event": "regime_fit",
                              "leaves_before_merge": 5, "leaves_after_merge": 5}])
     assert fn(ctx).status in ("pass", "warn")
 
 
 def test_R05_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
     # Include an apply_genome event so the runtime-engaged guard passes.
     ctx = _make_ctx(events=[
         {"event": "apply_genome", "genes_applied": {"tp_value": 20.0}},
@@ -172,7 +172,7 @@ def test_R05_pass():
 
 
 def test_R05_warn_no_blocks():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R05_hysteresis_prevents_whipsaw as fn
     # Include an apply_genome event so the runtime-engaged guard passes.
     ctx = _make_ctx(events=[
         {"event": "apply_genome", "genes_applied": {"tp_value": 20.0}},
@@ -182,7 +182,7 @@ def test_R05_warn_no_blocks():
 
 
 def test_R06_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_R06_grace_candles_unit as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_R06_grace_candles_unit as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "warn", "skip")
 
@@ -191,7 +191,7 @@ def test_R06_pass():
 
 def _seed_gene_to_group():
     """Populate _GENE_TO_GROUP with known mappings so E01/E05 can resolve genes."""
-    from pipelines._shared.IslandPilotV2 import island_evolver as ie
+    from pipelines._shared.IslandPilot import island_evolver as ie
     ie._GENE_TO_GROUP.update({
         "max_levels": "General",
         "hedge_value": "Grid / Hedge",
@@ -200,7 +200,7 @@ def _seed_gene_to_group():
 
 
 def test_E01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E01_bounds_cover_groups as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E01_bounds_cover_groups as fn
     _seed_gene_to_group()
     ctx = _make_ctx(
         artifacts={"training_config.json": {
@@ -213,7 +213,7 @@ def test_E01_pass():
 
 
 def test_E01_fail_missing_group():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E01_bounds_cover_groups as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E01_bounds_cover_groups as fn
     _seed_gene_to_group()
     ctx = _make_ctx(
         artifacts={"training_config.json": {
@@ -226,13 +226,13 @@ def test_E01_fail_missing_group():
 
 
 def test_E02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E02_skip_params_documented as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E02_skip_params_documented as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "warn")
 
 
 def test_E03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E03_initial_pop_variance as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E03_initial_pop_variance as fn
     ctx = _make_ctx(events=[
         {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
         {"event": "apply_genome", "genes_applied": {"max_levels": 5}},
@@ -242,7 +242,7 @@ def test_E03_pass():
 
 
 def test_E03_fail_no_variance():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E03_initial_pop_variance as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E03_initial_pop_variance as fn
     ctx = _make_ctx(events=[
         {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
         {"event": "apply_genome", "genes_applied": {"max_levels": 3}},
@@ -252,7 +252,7 @@ def test_E03_fail_no_variance():
 
 
 def test_E04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E04_mutation_propagates as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E04_mutation_propagates as fn
     ctx = _make_ctx(events=[
         {"event": "genome_evaluated", "generation": 0, "fitness": 50.0},
         {"event": "genome_evaluated", "generation": 1, "fitness": 60.0},
@@ -261,7 +261,7 @@ def test_E04_pass():
 
 
 def test_E04_fail_no_gen_progress():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E04_mutation_propagates as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E04_mutation_propagates as fn
     ctx = _make_ctx(events=[
         {"event": "genome_evaluated", "generation": 0, "fitness": 50.0},
     ])
@@ -269,7 +269,7 @@ def test_E04_fail_no_gen_progress():
 
 
 def test_E05_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E05_intended_groups_mutate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E05_intended_groups_mutate as fn
     _seed_gene_to_group()
     ctx = _make_ctx(
         events=[{"event": "apply_genome",
@@ -283,7 +283,7 @@ def test_E05_pass():
 
 
 def test_E05_fail_silent_group():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E05_intended_groups_mutate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E05_intended_groups_mutate as fn
     _seed_gene_to_group()
     ctx = _make_ctx(
         events=[{"event": "apply_genome",
@@ -297,7 +297,7 @@ def test_E05_fail_silent_group():
 
 
 def test_E06_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E06_feasibility_corrections as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E06_feasibility_corrections as fn
     ctx = _make_ctx(events=[
         {"event": "feasibility_correction", "gene": "tp_value",
          "original": 5, "corrected": 12, "reason": "tp < hedge*1.5"},
@@ -306,31 +306,31 @@ def test_E06_pass():
 
 
 def test_E06_warn_no_corrections():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E06_feasibility_corrections as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E06_feasibility_corrections as fn
     ctx = _make_ctx(events=[])
     assert fn(ctx).status in ("pass", "warn")
 
 
 def test_E07_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E07_categorical_round_trip as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E07_categorical_round_trip as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "skip")
 
 
 def test_E08_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E08_multiproc_pickling as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E08_multiproc_pickling as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "skip")
 
 
 def test_E09_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_E09_audit_skip_params_inventory as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_E09_audit_skip_params_inventory as fn
     ctx = _make_ctx(sources={"artifact"})
     assert fn(ctx).status in ("pass", "skip")
 
 
 def test_A01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A01_apply_genome_reads_groups as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A01_apply_genome_reads_groups as fn
     ctx = _make_ctx(events=[
         {"event": "apply_genome",
          "genes_applied": {"max_levels": 3, "tp_value": 24.0, "hedge_value": 12.0}},
@@ -339,7 +339,7 @@ def test_A01_pass():
 
 
 def test_A01_fail_no_apply_events():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A01_apply_genome_reads_groups as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A01_apply_genome_reads_groups as fn
     # Zero apply_genome events means pipeline runtime never engaged — A01 now
     # skips with a deferred-to-deployment message instead of failing.
     ctx = _make_ctx(events=[])
@@ -347,7 +347,7 @@ def test_A01_fail_no_apply_events():
 
 
 def test_A02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A02_mode_aware_coercion as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A02_mode_aware_coercion as fn
     ctx = _make_ctx(events=[
         {"event": "apply_genome",
          "genes_applied": {"tp_mode": "fixed_pips", "tp_value": 24.0}},
@@ -358,7 +358,7 @@ def test_A02_pass():
 
 
 def test_A03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A03_every_leaf_has_best_genome as fn
     ctx = _make_ctx(
         artifacts={"island_evolver.json": {
             "populations": {
@@ -374,7 +374,7 @@ def test_A03_pass():
 
 
 def test_A03_fail_no_individuals():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A03_every_leaf_has_best_genome as fn
     ctx = _make_ctx(
         artifacts={"island_evolver.json": {
             "populations": {"0": {"island_id": "0", "size": 4, "individuals": []}}
@@ -385,7 +385,7 @@ def test_A03_fail_no_individuals():
 
 
 def test_A03_fail_no_genes():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A03_every_leaf_has_best_genome as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A03_every_leaf_has_best_genome as fn
     ctx = _make_ctx(
         artifacts={"island_evolver.json": {
             "populations": {"0": {"island_id": "0", "size": 4,
@@ -397,49 +397,49 @@ def test_A03_fail_no_genes():
 
 
 def test_A04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_A04_hp_spec_round_trip as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_A04_hp_spec_round_trip as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "warn", "skip")
 
 
 def test_G01_pass_force_trigger():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G01_online_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G01_online_gate as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "skip")
 
 
 def test_G02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G02_drift_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G02_drift_gate as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "skip")
 
 
 def test_G03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G03_unknown_regime_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G03_unknown_regime_gate as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "skip")
 
 
 def test_G04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G04_proven_fitness_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G04_proven_fitness_gate as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status in ("pass", "skip")
 
 
 def test_G05_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G05_abort_volatility as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G05_abort_volatility as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_G06_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G06_session_halt as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G06_session_halt as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"
 
 
 def test_G01_manifest_path():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_G01_online_gate as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_G01_online_gate as fn
     # Include an apply_genome event so the runtime-engaged guard passes.
     ctx = _make_ctx(
         events=[
@@ -454,7 +454,7 @@ def test_G01_manifest_path():
 # ===== Migration / Outcomes / Roundtrip meta-tests (M, O, V) ===============
 
 def test_M01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_M01_acceptance_ratio as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_M01_acceptance_ratio as fn
     ctx = _make_ctx(events=[
         {"event": "migration", "donor_island": "a", "recipient_island": "b", "accepted": True},
         {"event": "migration", "donor_island": "b", "recipient_island": "c", "accepted": False},
@@ -464,7 +464,7 @@ def test_M01_pass():
 
 
 def test_M01_warn_no_accepts():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_M01_acceptance_ratio as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_M01_acceptance_ratio as fn
     ctx = _make_ctx(events=[
         {"event": "migration", "donor_island": "a", "recipient_island": "b", "accepted": False},
     ])
@@ -472,7 +472,7 @@ def test_M01_warn_no_accepts():
 
 
 def test_M02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_M02_migration_interval as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_M02_migration_interval as fn
     ctx = _make_ctx(events=[
         {"event": "migration", "accepted": True},
         {"event": "genome_evaluated", "generation": 0},
@@ -483,7 +483,7 @@ def test_M02_pass():
 
 
 def test_O01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O01_three_regimes_with_cycles as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O01_three_regimes_with_cycles as fn
     ctx = _make_ctx(events=[
         {"event": "cycle_complete", "regime": "r1"},
         {"event": "cycle_complete", "regime": "r2"},
@@ -493,13 +493,13 @@ def test_O01_pass():
 
 
 def test_O01_fail():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O01_three_regimes_with_cycles as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O01_three_regimes_with_cycles as fn
     ctx = _make_ctx(events=[{"event": "cycle_complete", "regime": "r1"}])
     assert fn(ctx).status == "fail"
 
 
 def test_O02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O02_fitness_dispersion as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O02_fitness_dispersion as fn
     ctx = _make_ctx(events=[
         {"event": "genome_evaluated", "fitness": 50.0},
         {"event": "genome_evaluated", "fitness": 60.0},
@@ -509,7 +509,7 @@ def test_O02_pass():
 
 
 def test_O02_fail_zero_dispersion():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O02_fitness_dispersion as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O02_fitness_dispersion as fn
     ctx = _make_ctx(events=[
         {"event": "genome_evaluated", "fitness": 0.0},
         {"event": "genome_evaluated", "fitness": 0.0},
@@ -518,7 +518,7 @@ def test_O02_fail_zero_dispersion():
 
 
 def test_O03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O03_per_regime_stats_increment as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O03_per_regime_stats_increment as fn
     ctx = _make_ctx(events=[
         {"event": "cycle_complete", "regime": "r1", "regime_cycles_after": 1},
         {"event": "cycle_complete", "regime": "r1", "regime_cycles_after": 2},
@@ -527,13 +527,13 @@ def test_O03_pass():
 
 
 def test_O04_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_O04_recent_pnls_window as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_O04_recent_pnls_window as fn
     ctx = _make_ctx(events=[{"event": "cycle_complete", "regime": "r1", "pnl": 5.0}])
     assert fn(ctx).status in ("pass", "warn")
 
 
 def test_V01_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_V01_artifacts_load_clean as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_V01_artifacts_load_clean as fn
     ctx = _make_ctx(
         artifacts={
             "regime_tree.pkl": {},
@@ -546,18 +546,18 @@ def test_V01_pass():
 
 
 def test_V01_fail_missing():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_V01_artifacts_load_clean as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_V01_artifacts_load_clean as fn
     ctx = _make_ctx(artifacts={"regime_tree.pkl": None}, sources={"artifact"})
     assert fn(ctx).status == "fail"
 
 
 def test_V02_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_V02_validate_model_runs_oos as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_V02_validate_model_runs_oos as fn
     ctx = _make_ctx(sources={"runtime"})
     assert fn(ctx).status in ("pass", "warn", "skip")
 
 
 def test_V03_pass():
-    from pipelines._shared.IslandPilotV2.preflight_checks import check_V03_manifest_gzip_round_trip as fn
+    from pipelines._shared.IslandPilot.preflight_checks import check_V03_manifest_gzip_round_trip as fn
     ctx = _make_ctx(sources={"unit"})
     assert fn(ctx).status == "pass"

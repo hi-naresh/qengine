@@ -10,8 +10,8 @@ REPO = Path(__file__).resolve().parents[1]
 def test_adding_a_check_touches_only_two_files():
     """Insert a synthetic @check + meta-test, verify git diff shows exactly
     preflight_checks.py + the test file. Then revert."""
-    checks_path = REPO / "pipelines/_shared/IslandPilotV2/preflight_checks.py"
-    tests_path = REPO / "tests/test_islandpilotv2_preflight_checks.py"
+    checks_path = REPO / "pipelines/_shared/IslandPilot/preflight_checks.py"
+    tests_path = REPO / "tests/test_islandpilot_preflight_checks.py"
 
     assert checks_path.exists(), f"missing: {checks_path}"
     assert tests_path.exists(), f"missing: {tests_path}"
@@ -41,7 +41,7 @@ def test_adding_a_check_touches_only_two_files():
     ))
     tests_path.write_text(tests_orig + sentinel + (
         'def test_Z99_synthetic_exists():\n'
-        '    from pipelines._shared.IslandPilotV2 import preflight_checks as pc\n'
+        '    from pipelines._shared.IslandPilot import preflight_checks as pc\n'
         '    assert "Z99_synthetic" in pc._registry\n'
     ))
 
@@ -72,7 +72,7 @@ def test_existing_check_count_is_34():
     # We need to ensure no other test has cleared the registry first by
     # forcing a fresh import via reload.
     import importlib
-    from pipelines._shared.IslandPilotV2 import preflight_checks as pc
+    from pipelines._shared.IslandPilot import preflight_checks as pc
     importlib.reload(pc)
     assert len(pc._registry) == 34, (
         f"expected 34 registered checks, got {len(pc._registry)}: "

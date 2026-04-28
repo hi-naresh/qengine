@@ -179,10 +179,6 @@ class RegimeTree:
         self._leaf_map = leaf_map
         self.leaf_sample_counts = leaf_counts
 
-        # Snapshot leaf count before sparse-merge so audit/preflight can
-        # tell whether the merge actually fired.
-        self.leaves_before_merge = len(leaf_counts)
-
         # 3. Merge sparse leaves
         self._merge_sparse_leaves()
 

@@ -108,14 +108,6 @@ def _validate_genome_feasibility(genes: dict) -> dict:
     if 'tp_value' in g and 'hedge_value' in g:
         min_tp = g['hedge_value'] * 1.5
         if g['tp_value'] < min_tp:
-            from . import manifest as _manifest
-            _manifest.record(
-                "feasibility_correction",
-                gene="tp_value",
-                original=float(g['tp_value']),
-                corrected=float(min_tp),
-                reason="tp_value < hedge_value * 1.5",
-            )
             g['tp_value'] = min_tp
 
     # Constraint 2: base_size_value × sizing_factor^max_levels ≤ 20.0
@@ -126,16 +118,7 @@ def _validate_genome_feasibility(genes: dict) -> dict:
     if 'base_size_value' in g and 'sizing_factor' in g and 'max_levels' in g:
         max_ticket = g['base_size_value'] * (g['sizing_factor'] ** g['max_levels'])
         if max_ticket > 20.0:
-            from . import manifest as _manifest
-            corrected_base = 20.0 / (g['sizing_factor'] ** g['max_levels'])
-            _manifest.record(
-                "feasibility_correction",
-                gene="base_size_value",
-                original=float(g['base_size_value']),
-                corrected=float(corrected_base),
-                reason="base_size_value * sizing_factor^max_levels > 20",
-            )
-            g['base_size_value'] = corrected_base
+            g['base_size_value'] = 20.0 / (g['sizing_factor'] ** g['max_levels'])
 
     return g
 
@@ -230,7 +213,6 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
         # Use override bounds if available
         if name in _BOUND_OVERRIDES:
             bounds[name] = _BOUND_OVERRIDES[name]
-            _GENE_TO_GROUP[name] = group
             continue
 
         hp_type = spec.get('type')
@@ -254,17 +236,7 @@ def build_gene_bounds_from_strategy(strategy) -> Dict[str, Tuple[float, float, t
             if opts:
                 bounds[name] = (0, len(opts) - 1, int)
 
-        # Record gene→group mapping for any gene that ended up in bounds
-        if name in bounds:
-            _GENE_TO_GROUP[name] = group
-
     return bounds
-
-# Gene name → tunable group, populated lazily by build_gene_bounds_from_strategy
-# so that audit (E05 in preflight_checks) can look up which group a gene belongs to
-# without re-loading the strategy class.
-_GENE_TO_GROUP: Dict[str, str] = {}
-
 
 # Legacy — kept for backward compat with old genomes that have these keys
 SIZING_CURVE_MAP = {0: "geometric", 1: "sqrt", 2: "linear", 3: "fibonacci"}
@@ -536,16 +508,6 @@ class IslandEvolver:
                 recipient_mean = float(np.mean(recipient_fitnesses)) if recipient_fitnesses else -np.inf
 
                 if donor_genome.fitness is None or donor_genome.fitness >= recipient_mean:
-                    from . import manifest as _manifest
-                    _manifest.record(
-                        "migration",
-                        macro=str(donor_id).split("_sub")[0] if "_sub" in str(donor_id) else str(donor_id),
-                        donor_island=str(donor_id),
-                        recipient_island=str(sid),
-                        donor_fitness=float(donor_genome.fitness or 0.0),
-                        recipient_mean=float(recipient_mean),
-                        accepted=True,
-                    )
                     recipient_pop.inject(donor_genome)
                     self.migration_log.append({
                         "from": donor_id,
@@ -556,16 +518,6 @@ class IslandEvolver:
                         "accepted": True,
                     })
                 else:
-                    from . import manifest as _manifest
-                    _manifest.record(
-                        "migration",
-                        macro=str(donor_id).split("_sub")[0] if "_sub" in str(donor_id) else str(donor_id),
-                        donor_island=str(donor_id),
-                        recipient_island=str(sid),
-                        donor_fitness=float(donor_genome.fitness or 0.0),
-                        recipient_mean=float(recipient_mean),
-                        accepted=False,
-                    )
                     self.migration_log.append({
                         "from": donor_id,
                         "to": sid,

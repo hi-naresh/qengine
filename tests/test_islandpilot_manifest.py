@@ -3,7 +3,7 @@ import gzip
 import multiprocessing as mp
 from pathlib import Path
 import pytest
-from pipelines._shared.IslandPilotV2 import manifest
+from pipelines._shared.IslandPilot import manifest
 
 
 @pytest.fixture(autouse=True)
@@ -239,7 +239,7 @@ def test_close_is_noop_in_forked_worker(tmp_path):
 def test_train_output_dir_kwarg_signature():
     """train() must accept output_dir kwarg."""
     import inspect
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     sig = inspect.signature(tm.train)
     assert "output_dir" in sig.parameters
     assert sig.parameters["output_dir"].default is None
@@ -248,7 +248,7 @@ def test_train_output_dir_kwarg_signature():
 def test_training_config_snapshot_written(tmp_path):
     """_write_training_config_snapshot writes a JSON file with the expected fields."""
     import json
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     cfg_path = tmp_path / "training_config.json"
     tm._write_training_config_snapshot(
         out_path=cfg_path,
@@ -271,7 +271,7 @@ def test_run_backtest_fitness_returns_tuple_signature():
     """_run_backtest_fitness must signal a tuple return after the patch.
     The actual call requires DB; we verify the contract via signature inspection."""
     import inspect
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     sig = inspect.signature(tm._run_backtest_fitness)
     ret_anno = sig.return_annotation
     # Accept several spellings of "tuple"
@@ -283,7 +283,7 @@ def test_run_backtest_fitness_returns_tuple_signature():
 def test_preflight_mode_kwarg_signature():
     """train() must accept preflight_mode kwarg with default False."""
     import inspect
-    from pipelines._shared.IslandPilotV2 import train as tm
+    from pipelines._shared.IslandPilot import train as tm
     sig = inspect.signature(tm.train)
     assert "preflight_mode" in sig.parameters
     assert sig.parameters["preflight_mode"].default is False

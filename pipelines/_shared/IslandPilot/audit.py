@@ -1,11 +1,11 @@
-"""IslandPilotV2 post-training audit.
+"""IslandPilot post-training audit.
 
 Reads activation_manifest.jsonl.gz + final artifacts; runs all registered
 @check predicates with source in {manifest, artifact}; writes audit_report.json
 into the same directory as the artifacts.
 
-Run: python -m pipelines._shared.IslandPilotV2.audit [models_dir]
-     (default: pipelines/_shared/IslandPilotV2/models/)
+Run: python -m pipelines._shared.IslandPilot.audit [models_dir]
+     (default: pipelines/_shared/IslandPilot/models/)
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from pipelines._shared.IslandPilotV2 import manifest, preflight_checks as pc
+from pipelines._shared.IslandPilot import manifest, preflight_checks as pc
 
 
 def _load_artifact(path: Path):
@@ -111,7 +111,7 @@ def main(models_dir: Path) -> int:
     out.write_text(json.dumps(report, indent=2, default=str))
 
     print()
-    print(f"=== IslandPilotV2 Audit Report ===")
+    print(f"=== IslandPilot Audit Report ===")
     print(f"  models_dir: {models_dir}")
     print(f"  manifest:   {'present' if has_manifest else 'MISSING'}")
     print(f"  verdict:    {verdict.upper()}")

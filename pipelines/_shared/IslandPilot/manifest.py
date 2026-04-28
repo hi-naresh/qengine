@@ -1,4 +1,4 @@
-"""Append-only JSONL event recorder for IslandPilotV2 verification harness.
+"""Append-only JSONL event recorder for IslandPilot verification harness.
 
 Three modes:
 - Closed (default): record() is a no-op. Training without preflight/audit pays nothing.
